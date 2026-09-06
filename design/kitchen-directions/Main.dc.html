@@ -1,0 +1,155 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;700;800;900&display=swap" rel="stylesheet">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Rubik', system-ui, sans-serif; direction: rtl; }
+    a { color: #FF5C7A; } a:hover { color: #E8446A; }
+
+    @keyframes float-a { 0%,100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-10px) rotate(6deg); } }
+    @keyframes float-b { 0%,100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(8px) rotate(-8deg); } }
+    @keyframes pulse-dot { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.35); opacity: 0.55; } }
+    @keyframes wiggle { 0%,100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
+  </style>
+</helmet>
+
+<div style="position: relative; width: 100%; height: 100%; background: #FFF3DE; overflow: hidden;" dir="rtl">
+
+  <div style="position: absolute; top: 26px; left: 24px; width: 34px; height: 34px; border-radius: 50%; background: #FFC93C; animation: float-a 4.5s ease-in-out infinite;"></div>
+  <div style="position: absolute; top: 150px; left: 8px; width: 18px; height: 18px; border-radius: 6px; background: #4FC3E8; animation: float-b 3.8s ease-in-out infinite;"></div>
+  <div style="position: absolute; top: 480px; left: 20px; width: 22px; height: 22px; border-radius: 50%; background: #FF5C7A; opacity: 0.65; animation: float-a 5.2s ease-in-out infinite;"></div>
+
+  <div style="position: relative; padding: 28px 22px 96px; display: flex; flex-direction: column; gap: 20px;">
+
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <div style="display: flex; flex-direction: column; gap: 2px;">
+        <h1 style="margin: 0; font-size: 26px; font-weight: 900; color: #3A2E52;">ניהול מטבח</h1>
+        <div style="font-size: 14px; font-weight: 600; color: #8A7FA8;">יום שבת, 5/9 &middot; המטבח מחכה לך</div>
+      </div>
+      <div style="width: 54px; height: 54px; border-radius: 18px; background: {{accent}}; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 0 rgba(0,0,0,0.08); animation: wiggle 3.5s ease-in-out infinite;">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 10h16v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-6z"/>
+          <path d="M4 10a8 8 0 0 1 16 0"/>
+          <circle cx="12" cy="5" r="1.6" fill="#FFFFFF" stroke="none"/>
+        </svg>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;">
+      <div style="background: #FFD9E2; border: 3px solid #FF5C7A; border-radius: 20px; padding: 14px 8px; text-align: center; display: flex; flex-direction: column; gap: 2px;">
+        <div style="font-size: 24px; font-weight: 900; color: #C6386A;">1</div>
+        <div style="font-size: 11.5px; font-weight: 700; color: #C6386A;">דחוף היום</div>
+      </div>
+      <div style="background: #FFF0C2; border: 3px solid #FFC93C; border-radius: 20px; padding: 14px 8px; text-align: center; display: flex; flex-direction: column; gap: 2px;">
+        <div style="font-size: 24px; font-weight: 900; color: #8A6A0E;">1</div>
+        <div style="font-size: 11.5px; font-weight: 700; color: #8A6A0E;">משימות פתוחות</div>
+      </div>
+      <div style="background: #D6F5EA; border: 3px solid #2ECFA6; border-radius: 20px; padding: 14px 8px; text-align: center; display: flex; flex-direction: column; gap: 2px;">
+        <div style="font-size: 24px; font-weight: 900; color: #1C8A6C;">0</div>
+        <div style="font-size: 11.5px; font-weight: 700; color: #1C8A6C;">מצרכים חסרים</div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <div style="font-size: 15px; font-weight: 800; color: #3A2E52;">להכין היום &#127775;</div>
+      <div style="background: #FFFFFF; border: 3px solid #FF5C7A; border-radius: 22px; padding: 16px; display: flex; align-items: center; justify-content: space-between; gap: 10px; box-shadow: 0 6px 0 rgba(255,92,122,0.18);">
+        <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+          <div style="width: 16px; height: 16px; border-radius: 50%; background: #FF5C7A; flex-shrink: 0; animation: pulse-dot 1.8s ease-in-out infinite;"></div>
+          <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0;">
+            <div style="font-size: 15px; font-weight: 800; color: #3A2E52;">קרם ברולה</div>
+            <div style="font-size: 12.5px; font-weight: 600; color: #9B8FBF;">מתכון &times;1.5</div>
+          </div>
+        </div>
+        <div style="background: #FFE1E9; color: #C6386A; font-weight: 800; font-size: 14px; border-radius: 14px; padding: 8px 14px; flex-shrink: 0;">3 יח&#39;</div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <div style="font-size: 15px; font-weight: 800; color: #3A2E52;">מלאי מוכן</div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;">
+
+        <div style="background: #FFFFFF; border-radius: 18px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 3px 0 rgba(58,46,82,0.06);">
+          <div style="font-size: 13.5px; font-weight: 700; color: #3A2E52;">קרם ברולה</div>
+          <div style="font-size: 12px; font-weight: 700; color: #2ECFA6;">3 יח&#39;</div>
+        </div>
+        <div style="background: #FFFFFF; border-radius: 18px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 3px 0 rgba(58,46,82,0.06);">
+          <div style="font-size: 13.5px; font-weight: 700; color: #3A2E52;">בצק לפיצות</div>
+          <div style="font-size: 12px; font-weight: 700; color: #2ECFA6;">12 יח&#39;</div>
+        </div>
+        <div style="background: #FFFFFF; border-radius: 18px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 3px 0 rgba(58,46,82,0.06);">
+          <div style="font-size: 13.5px; font-weight: 700; color: #3A2E52;">ארנצ&#39;יני</div>
+          <div style="font-size: 12px; font-weight: 700; color: #2ECFA6;">40 יח&#39;</div>
+        </div>
+        <div style="background: #FFFFFF; border-radius: 18px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 3px 0 rgba(58,46,82,0.06);">
+          <div style="font-size: 13.5px; font-weight: 700; color: #3A2E52;">סלסת עגבניות</div>
+          <div style="font-size: 12px; font-weight: 700; color: #2ECFA6;">1 ליטר</div>
+        </div>
+        <div style="background: #FFFFFF; border-radius: 18px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 3px 0 rgba(58,46,82,0.06);">
+          <div style="font-size: 13.5px; font-weight: 700; color: #3A2E52;">סלט ביצים</div>
+          <div style="font-size: 12px; font-weight: 700; color: #E8A93C;">0.5 ליטר</div>
+        </div>
+        <div style="background: #FFFFFF; border-radius: 18px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 3px 0 rgba(58,46,82,0.06);">
+          <div style="font-size: 13.5px; font-weight: 700; color: #3A2E52;">קרם זוקיני</div>
+          <div style="font-size: 12px; font-weight: 700; color: #E8A93C;">0.5 ליטר</div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <div style="position: absolute; bottom: 0; right: 0; left: 0; height: 76px; background: #FFFFFF; border-radius: 24px 24px 0 0; box-shadow: 0 -6px 20px rgba(58,46,82,0.08); display: flex; align-items: center; justify-content: space-around; padding: 0 6px;">
+
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+      <div style="width: 34px; height: 34px; border-radius: 12px; background: {{accent}}; display: flex; align-items: center; justify-content: center;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v9h5v-5h2v5h5v-9"/></svg>
+      </div>
+      <div style="font-size: 10.5px; font-weight: 800; color: #3A2E52;">בית</div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C2BAD6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M8.3 12.3l2.4 2.4 5-5"/></svg>
+      <div style="font-size: 10.5px; font-weight: 700; color: #C2BAD6;">משימות</div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C2BAD6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h16l-1.5 9.2a2 2 0 0 1-2 1.8H7.5a2 2 0 0 1-2-1.8L4 9z"/><path d="M8.5 9 10 4M15.5 9 14 4"/></svg>
+      <div style="font-size: 10.5px; font-weight: 700; color: #C2BAD6;">מצרכים</div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C2BAD6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.2a2 2 0 0 1 2-2h6v17.6H6a2 2 0 0 1-2-2V5.2z"/><path d="M20 5.2a2 2 0 0 0-2-2h-6v17.6h6a2 2 0 0 0 2-2V5.2z"/></svg>
+      <div style="font-size: 10.5px; font-weight: 700; color: #C2BAD6;">מתכונים</div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C2BAD6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/></svg>
+      <div style="font-size: 10.5px; font-weight: 700; color: #C2BAD6;">צריכה</div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C2BAD6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18" cy="12" r="1.7"/></svg>
+      <div style="font-size: 10.5px; font-weight: 700; color: #C2BAD6;">עוד</div>
+    </div>
+
+  </div>
+
+</div>
+</x-dc>
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#FF8A3D","options":["#FF8A3D","#FF5C7A","#4FC3E8","#8A6FE8"]}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#FF8A3D' };
+  }
+}
+</script>
+</body>
+</html>

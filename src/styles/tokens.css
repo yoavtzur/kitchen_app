@@ -1,0 +1,40 @@
+:root {
+  --color-bg: #fff3de;
+  --color-surface: #ffffff;
+  --color-surface-2: #ffead1;
+  --color-border: #f5dfc0;
+  --color-text: #3a2e52;
+  --color-text-muted: #8a7fa8;
+  --color-primary: #ff5c7a;
+  --color-primary-dark: #e8446a;
+  --color-primary-contrast: #ffffff;
+
+  /* Readable text/dot tone + its pale pill background; "-bright" is the punchier accent
+     used for thick card borders and the urgent pulse, where contrast isn't the concern. */
+  --color-red: #c6386a;
+  --color-red-bg: #ffd9e2;
+  --color-red-bright: #ff5c7a;
+  --color-yellow: #8a6a0e;
+  --color-yellow-bg: #fff0c2;
+  --color-yellow-bright: #ffc93c;
+  --color-green: #1c8a6c;
+  --color-green-bg: #d6f5ea;
+  --color-green-bright: #2ecfa6;
+
+  --radius-s: 12px;
+  --radius-m: 20px;
+  --radius-l: 28px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --font-family: 'Rubik', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --shadow-card: 0 3px 0 rgba(58, 46, 82, 0.08);
+  --shadow-pop: 0 6px 0 rgba(58, 46, 82, 0.12);
+  --nav-height: 64px;
+}

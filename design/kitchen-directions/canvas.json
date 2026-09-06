@@ -1,0 +1,16 @@
+{
+  "pages": [
+    { "id": "page-1", "name": "עיצוב" },
+    { "id": "page-2", "name": "כיוונים שלא נבחרו" }
+  ],
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 390, "h": 900 },
+    { "file": "Professional.dc.html", "x": 0, "y": 0, "w": 390, "h": 900, "title": "מקצועי ונקי", "page": "page-2" },
+    { "file": "KitchenLife.dc.html", "x": 490, "y": 0, "w": 390, "h": 900, "title": "מטבח חי", "page": "page-2" }
+  ],
+  "annotations": [
+    { "id": "note-professional", "x": 0, "y": -60, "w": 390, "text": "לא נבחר — מקצועי ונקי", "page": "page-2" },
+    { "id": "note-kitchen", "x": 490, "y": -60, "w": 390, "text": "לא נבחר — מטבח חי", "page": "page-2" }
+  ],
+  "launch": { "view": "canvas", "page": "page-1" }
+}

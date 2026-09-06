@@ -1,0 +1,11 @@
+{
+  "name": "ניהול מטבח",
+  "short_name": "מטבח",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#fff3de",
+  "theme_color": "#ff5c7a",
+  "lang": "he",
+  "dir": "rtl",
+  "icons": []
+}

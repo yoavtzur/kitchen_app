@@ -45,15 +45,12 @@ and "ship it" become the same action, which is the whole point of doing this ins
 `npx vercel --prod` this project used before.
 
 **Vercel deployment:** production URL is **https://app-zeta-lovat-92.vercel.app** (Vercel project
-`yoav16/app`). As of 2026-09-07 this is still deployed via the manual command below, **not yet** via
-Vercel's Git integration — connecting it requires two one-time manual steps in the Vercel dashboard
-(OAuth consent that only the account owner can grant, so this can't be scripted from here):
-1. **vercel.com/account/login-connections** → Connect GitHub.
-2. **vercel.com/yoav16/app/settings/git** → Connect Git Repository → `yoavtzur/kitchen_app`.
-
-Once connected, Vercel deploys `main` to production and every other branch/PR to its own preview URL
-automatically — no manual command needed for either. Until then, redeploy manually from
-`C:\Users\yoavt\app` after merging to `main`:
+`yoav16/app`). Since 2026-09-07 this deploys automatically via Vercel's Git integration — connected
+to `yoavtzur/kitchen_app`, verified live end to end: a push to a feature branch produced its own
+Preview deployment, and merging that branch into `main` produced a new Production deployment ~30s
+later, with zero manual commands. No redeploy step is needed anymore after merging to `main` — the
+manual command below is now only a fallback (e.g. deploying a local-only experiment that hasn't been
+pushed, or if the Git integration is ever disconnected):
 
 ```bash
 npx vercel@latest --token "$(cat "C:\Users\yoavt\.vercel-kitchen-app-token")" --yes --prod

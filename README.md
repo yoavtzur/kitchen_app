@@ -1,32 +1,38 @@
-# React + TypeScript + Vite
+# ניהול מטבח (Kitchen App)
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A Hebrew-language (RTL), mobile-first kitchen management PWA for a restaurant: tracks raw-ingredient
+and prepared-product inventory, recipes, a weekly/daily consumption plan, auto-derived daily prep
+tasks, and a supply order sheet. Built with React, TypeScript, and Vite.
 
-Currently, two official plugins are available:
+**Two modes, same app:** with no Supabase project configured, it's fully client-only — all state in
+the browser's `localStorage`, no account, no network. With a Supabase project configured (see below),
+every cook signs up, joins their restaurant with a 6-character code, and the whole app state syncs in
+real time across every device at that restaurant, with an offline queue for bad kitchen wifi.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+See [CLAUDE.md](./CLAUDE.md) for the full architecture writeup.
 
-## React Compiler
+## Getting started
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+To run in multi-device sync mode instead of local-only, copy `.env.example` to `.env.local` and fill
+in your Supabase project's URL and anon key.
+
+## Scripts
+
+```bash
+npm run dev       # start the Vite dev server
+npm run build     # tsc -b && vite build — the real build check, not just tests
+npm run test      # vitest run (single run, not watch mode)
+npm run lint      # oxlint
+npm run preview   # preview a production build
+```
+
+## Deployment
+
+`main` is production and deploys automatically via Vercel's Git integration on every push — see
+CLAUDE.md's "Git & deployment" section for the branch workflow (work on a feature branch, merge to
+`main` only once verified) and how the Supabase env vars are wired up in production.

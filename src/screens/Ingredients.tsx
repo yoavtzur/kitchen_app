@@ -3,7 +3,7 @@ import { useApp } from '../store/AppContext';
 import { daysOfSupply } from '../lib/calc';
 import { todayStr } from '../lib/date';
 import { newId } from '../lib/ids';
-import { unitLabel } from '../lib/units';
+import { canConvert, unitLabel } from '../lib/units';
 import { NumberEditor } from '../components/NumberEditor';
 import { BottomSheet } from '../components/BottomSheet';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -28,9 +28,52 @@ function coverageColor(days: number): 'red' | 'yellow' | 'green' {
   return 'green';
 }
 
+function UnitPickerSheet({
+  ingredient,
+  onClose,
+  onPick,
+}: {
+  ingredient: Ingredient;
+  onClose: () => void;
+  onPick: (unit: Unit) => void;
+}) {
+  return (
+    <BottomSheet title={`יחידת מידה — ${ingredient.name}`} onClose={onClose}>
+      <div className="stack-gap-2">
+        {UNIT_OPTIONS.map((u) => (
+          <button
+            key={u.value}
+            type="button"
+            className="row-item"
+            style={{ width: '100%', textAlign: 'start', border: 'none', background: 'none', cursor: 'pointer' }}
+            onClick={() => onPick(u.value)}
+          >
+            <span>{u.label}</span>
+            {u.value === ingredient.unit && <span className="muted">נוכחי</span>}
+          </button>
+        ))}
+      </div>
+    </BottomSheet>
+  );
+}
+
 function IngredientDetailSheet({ ingredient, onClose }: { ingredient: Ingredient; onClose: () => void }) {
   const { state, dispatch } = useApp();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [pickingUnit, setPickingUnit] = useState(false);
+  // Set only for a cross-family change (e.g. weight -> count), where SET_INGREDIENT_UNIT can't
+  // convert the existing numbers automatically — see the comment on that case in reducer.ts.
+  const [pendingUnit, setPendingUnit] = useState<Unit | null>(null);
+
+  function handlePickUnit(unit: Unit) {
+    setPickingUnit(false);
+    if (unit === ingredient.unit) return;
+    if (canConvert(ingredient.unit, unit)) {
+      dispatch({ type: 'SET_INGREDIENT_UNIT', id: ingredient.id, unit });
+    } else {
+      setPendingUnit(unit);
+    }
+  }
 
   return (
     <BottomSheet title={ingredient.name} onClose={onClose}>
@@ -77,7 +120,9 @@ function IngredientDetailSheet({ ingredient, onClose }: { ingredient: Ingredient
       </div>
       <div className="row-item">
         <span>יחידת מידה</span>
-        <span className="muted">{unitLabel(ingredient.unit)}</span>
+        <button type="button" className="btn" onClick={() => setPickingUnit(true)}>
+          {unitLabel(ingredient.unit)}
+        </button>
       </div>
       {ingredient.supplier && (
         <div className="row-item">
@@ -110,6 +155,28 @@ function IngredientDetailSheet({ ingredient, onClose }: { ingredient: Ingredient
               • {line}
             </p>
           ))}
+        </ConfirmDialog>
+      )}
+
+      {pickingUnit && (
+        <UnitPickerSheet ingredient={ingredient} onClose={() => setPickingUnit(false)} onPick={handlePickUnit} />
+      )}
+
+      {pendingUnit && (
+        <ConfirmDialog
+          title="שינוי יחידת מידה"
+          confirmLabel="שנה בכל זאת"
+          onClose={() => setPendingUnit(null)}
+          onConfirm={() => {
+            dispatch({ type: 'SET_INGREDIENT_UNIT', id: ingredient.id, unit: pendingUnit });
+            setPendingUnit(null);
+          }}
+        >
+          <p>
+            אי אפשר להמיר אוטומטית בין {unitLabel(ingredient.unit)} ל-{unitLabel(pendingUnit)} — אלו יחידות
+            ממשפחות שונות (משקל / נפח / יחידות). הכמויות (מלאי, צריכה, מלאי מינימום) יישארו באותו מספר אבל
+            יתויגו ביחידה החדשה — כדאי לבדוק ולתקן אותן ידנית אחרי השינוי.
+          </p>
         </ConfirmDialog>
       )}
     </BottomSheet>

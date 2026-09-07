@@ -62,6 +62,68 @@ describe('SET_PRODUCT_QTY clears today’s manual prep override', () => {
   });
 });
 
+describe('SET_INGREDIENT_UNIT', () => {
+  const tomatoes = {
+    id: 'ing-tomato',
+    name: 'עגבניות',
+    unit: 'kg' as const,
+    currentQty: 4,
+    dailyUsage: 1.5,
+    weeklyUsage: 10,
+    parLevel: 12,
+    dailyUsageByWeekday: { 5: 3 },
+  };
+
+  it('converts currentQty/dailyUsage/weeklyUsage/parLevel/weekday overrides within the same family', () => {
+    const state = baseState({ ingredients: [tomatoes] });
+    const next = reducer(state, { type: 'SET_INGREDIENT_UNIT', id: 'ing-tomato', unit: 'g' });
+    expect(next.ingredients[0]).toMatchObject({
+      unit: 'g',
+      currentQty: 4000,
+      dailyUsage: 1500,
+      weeklyUsage: 10000,
+      parLevel: 12000,
+      dailyUsageByWeekday: { 5: 3000 },
+    });
+  });
+
+  it('converts a matching order-line override in the same family', () => {
+    const state = baseState({
+      ingredients: [tomatoes],
+      orderLines: [{ ingredientId: 'ing-tomato', qtyOverride: 2, ordered: false }],
+    });
+    const next = reducer(state, { type: 'SET_INGREDIENT_UNIT', id: 'ing-tomato', unit: 'g' });
+    expect(next.orderLines[0].qtyOverride).toBe(2000);
+  });
+
+  it('leaves an unrelated ingredient’s order line untouched', () => {
+    const state = baseState({
+      ingredients: [tomatoes],
+      orderLines: [{ ingredientId: 'ing-egg', qtyOverride: 30, ordered: false }],
+    });
+    const next = reducer(state, { type: 'SET_INGREDIENT_UNIT', id: 'ing-tomato', unit: 'g' });
+    expect(next.orderLines[0].qtyOverride).toBe(30);
+  });
+
+  it('a no-op when the unit is unchanged', () => {
+    const state = baseState({ ingredients: [tomatoes] });
+    const next = reducer(state, { type: 'SET_INGREDIENT_UNIT', id: 'ing-tomato', unit: 'kg' });
+    expect(next).toEqual(state);
+  });
+
+  it('a cross-family change (weight -> count) relabels the unit but leaves the numbers as-is', () => {
+    const state = baseState({ ingredients: [tomatoes] });
+    const next = reducer(state, { type: 'SET_INGREDIENT_UNIT', id: 'ing-tomato', unit: 'unit' });
+    expect(next.ingredients[0]).toMatchObject({ unit: 'unit', currentQty: 4, dailyUsage: 1.5, weeklyUsage: 10, parLevel: 12 });
+  });
+
+  it('an unknown ingredient id leaves state untouched', () => {
+    const state = baseState({ ingredients: [tomatoes] });
+    const next = reducer(state, { type: 'SET_INGREDIENT_UNIT', id: 'no-such-id', unit: 'g' });
+    expect(next).toEqual(state);
+  });
+});
+
 describe('auto task completion + undo round trip', () => {
   it('undo restores ingredients and product exactly as they were before confirmation', () => {
     const state = baseState({ products: [cremeBrulee], recipes: [recipe] });

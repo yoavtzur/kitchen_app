@@ -12,18 +12,21 @@ import type {
   SpecialEvent,
   Task,
   TaskCompletion,
+  Unit,
   Weekday,
   WeekdayUsage,
 } from '../types';
 import { todayStr } from '../lib/date';
 import { autoTaskId } from '../lib/tasks';
 import { pruneEntities } from '../lib/integrity';
+import { convert } from '../lib/units';
 
 export type Action =
   | { type: 'SET_INGREDIENT_QTY'; id: string; qty: number }
   | { type: 'SET_INGREDIENT_USAGE'; id: string; dailyUsage?: number; weeklyUsage?: number }
   | { type: 'SET_INGREDIENT_PAR'; id: string; parLevel: number }
   | { type: 'SET_INGREDIENT_WEEKDAY_USAGE'; id: string; weekday: Weekday; dailyUsage?: number }
+  | { type: 'SET_INGREDIENT_UNIT'; id: string; unit: Unit }
   | { type: 'ADD_INGREDIENT'; ingredient: Ingredient }
   | { type: 'UPDATE_INGREDIENT'; ingredient: Ingredient }
   | { type: 'DELETE_INGREDIENT'; id: string }
@@ -319,6 +322,46 @@ export function reducer(state: AppState, action: Action): AppState {
           i.id === action.id ? withWeekdayOverride(i, action.weekday, action.dailyUsage) : i,
         ),
       };
+    case 'SET_INGREDIENT_UNIT': {
+      const target = state.ingredients.find((i) => i.id === action.id);
+      if (!target || target.unit === action.unit) return state;
+      const fromUnit = target.unit;
+      // convert() returns null across unit families (e.g. weight <-> count) — there's no sensible
+      // factor to apply, so the raw numbers are left as-is under the new unit. The UI warns before
+      // dispatching a cross-family change for exactly this reason; the reducer just stays total
+      // and deterministic either way, since it can't know whether the caller already confirmed.
+      const convertQty = (qty: number) => convert(qty, fromUnit, action.unit) ?? qty;
+      return {
+        ...state,
+        ingredients: state.ingredients.map((i) =>
+          i.id === action.id
+            ? {
+                ...i,
+                unit: action.unit,
+                currentQty: convertQty(i.currentQty),
+                dailyUsage: convertQty(i.dailyUsage),
+                weeklyUsage: convertQty(i.weeklyUsage),
+                parLevel: i.parLevel === undefined ? undefined : convertQty(i.parLevel),
+                dailyUsageByWeekday: i.dailyUsageByWeekday
+                  ? (Object.fromEntries(
+                      Object.entries(i.dailyUsageByWeekday).map(([weekday, usage]) => [
+                        weekday,
+                        usage === undefined ? usage : convertQty(usage),
+                      ]),
+                    ) as WeekdayUsage)
+                  : i.dailyUsageByWeekday,
+              }
+            : i,
+        ),
+        // A manual order-sheet override is typed in the ingredient's own unit too (see Orders.tsx)
+        // — convert it along with everything else so the order sheet doesn't silently jump scale.
+        orderLines: state.orderLines.map((line) =>
+          line.ingredientId === action.id && line.qtyOverride !== undefined
+            ? { ...line, qtyOverride: convertQty(line.qtyOverride) }
+            : line,
+        ),
+      };
+    }
     case 'ADD_INGREDIENT':
       return { ...state, ingredients: [...state.ingredients, action.ingredient] };
     case 'UPDATE_INGREDIENT':

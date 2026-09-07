@@ -20,10 +20,48 @@ npm run preview   # preview a production build
 
 Run a single test file: `npx vitest run src/lib/__tests__/calc.test.ts`
 
-There are 11 test files (130 tests), colocated in `__tests__` folders next to what they cover:
+There are 12 test files (140+ tests), colocated in `__tests__` folders next to what they cover:
 `src/lib/__tests__/{calc,date,ids,integrity,tasks}.test.ts`, `src/store/__tests__/{reducer,storage}.test.ts`,
-`src/sync/__tests__/{engine,localAdapter,log,persist}.test.ts`. No jsdom, no React Testing Library —
+`src/sync/__tests__/{backoff,engine,localAdapter,log,persist}.test.ts`. No jsdom, no React Testing Library —
 everything is tested as pure functions in node, including the entire sync protocol (see below).
+
+## Git & deployment
+
+The repo lives at **github.com/yoavtzur/kitchen_app** (private), remote `origin`. Local git identity
+(`user.name`/`user.email`) is set repo-locally, not globally — this machine had no global git identity
+configured before this project needed one. Push/fetch auth is likewise repo-local: a fine-grained GitHub
+PAT (kept at `C:\Users\yoavt\.github-kitchen-app-token`, outside the repo — same pattern as the Vercel
+token below) is wired in via `git config http.https://github.com/.extraheader "Authorization: Basic …"`,
+so plain `git push`/`git fetch` work without the token ever appearing in a remote URL or `git log`. If
+that PAT is rotated, regenerate the header the same way (`base64` of `x-access-token:<new token>`) — it
+needs at least **Contents: Read and write** on this one repo.
+
+**Branch workflow (the point of wiring this up at all):** `main` is production — treat it as always
+deployable, never push work-in-progress directly to it. Do real work on a feature branch, and only merge
+into `main` once it's actually verified (tests pass, build is clean, and — for anything UI-observable —
+checked live in the browser per this file's own testing conventions). Once Vercel's Git integration is
+connected (see below), that merge is also what triggers the real production deploy — so "merge to main"
+and "ship it" become the same action, which is the whole point of doing this instead of the ad hoc
+`npx vercel --prod` this project used before.
+
+**Vercel deployment:** production URL is **https://app-zeta-lovat-92.vercel.app** (Vercel project
+`yoav16/app`). As of 2026-09-07 this is still deployed via the manual command below, **not yet** via
+Vercel's Git integration — connecting it requires two one-time manual steps in the Vercel dashboard
+(OAuth consent that only the account owner can grant, so this can't be scripted from here):
+1. **vercel.com/account/login-connections** → Connect GitHub.
+2. **vercel.com/yoav16/app/settings/git** → Connect Git Repository → `yoavtzur/kitchen_app`.
+
+Once connected, Vercel deploys `main` to production and every other branch/PR to its own preview URL
+automatically — no manual command needed for either. Until then, redeploy manually from
+`C:\Users\yoavt\app` after merging to `main`:
+
+```bash
+npx vercel@latest --token "$(cat "C:\Users\yoavt\.vercel-kitchen-app-token")" --yes --prod
+```
+
+Production also needs `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` set as Vercel env vars (done
+2026-09-06 via `vercel env add ... production`) for the deployed build to run in Supabase sync mode
+rather than local-only — see "Multi-device sync" below and the "Two modes, same app" note above.
 
 ## Architecture
 

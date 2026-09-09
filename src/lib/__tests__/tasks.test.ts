@@ -119,6 +119,66 @@ describe('getDisplayTasks — manual tasks', () => {
   });
 });
 
+describe('getDisplayTasks — station category', () => {
+  it('an auto task takes its category from the recipe, ignoring any categoryOverride', () => {
+    const state = baseState({ products: [cremeBrulee], recipes: [cremeBruleeRecipe] });
+    expect(getDisplayTasks(date, state)[0].category).toBe('dessert');
+  });
+
+  it('a free-text manual task uses its own categoryOverride', () => {
+    const state = baseState({
+      tasks: [
+        {
+          id: 'task-manual-1',
+          date,
+          title: 'לנקות תנור',
+          categoryOverride: 'taboon',
+          multiplier: 1,
+          priority: 'yellow',
+          done: false,
+          source: 'manual',
+        },
+      ],
+    });
+    expect(getDisplayTasks(date, state)[0].category).toBe('taboon');
+  });
+
+  it('a manual task with no recipe and no categoryOverride falls back to general', () => {
+    const state = baseState({
+      tasks: [
+        {
+          id: 'task-manual-1',
+          date,
+          title: 'לנקות מדפים',
+          multiplier: 1,
+          priority: 'yellow',
+          done: false,
+          source: 'manual',
+        },
+      ],
+    });
+    expect(getDisplayTasks(date, state)[0].category).toBe('general');
+  });
+
+  it('a manual task linked to a recipe takes the recipe’s category', () => {
+    const state = baseState({
+      recipes: [cremeBruleeRecipe],
+      tasks: [
+        {
+          id: 'task-manual-1',
+          date,
+          recipeId: cremeBruleeRecipe.id,
+          multiplier: 1,
+          priority: 'yellow',
+          done: false,
+          source: 'manual',
+        },
+      ],
+    });
+    expect(getDisplayTasks(date, state)[0].category).toBe('dessert');
+  });
+});
+
 describe('auto tasks respect the product/recipe unit relationship', () => {
   const kgProduct: Product = {
     id: 'prod-cream',

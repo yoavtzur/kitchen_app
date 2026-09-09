@@ -11,8 +11,10 @@ import { BottomSheet } from '../components/BottomSheet';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { EmptyState } from '../components/EmptyState';
 import { SearchInput } from '../components/SearchInput';
+import { CategoryTabs } from '../components/CategoryTabs';
 import { matchesQuery } from '../lib/search';
-import type { Priority, Task } from '../types';
+import { CATEGORY_TABS, RECIPE_CATEGORIES, type CategoryFilter } from '../lib/recipeCategories';
+import type { Priority, RecipeCategory, Task } from '../types';
 
 const PRIORITY_CYCLE: Priority[] = ['red', 'yellow', 'green'];
 
@@ -150,6 +152,7 @@ function AddManualTaskSheet({ date, onClose }: { date: string; onClose: () => vo
   const [multiplier, setMultiplier] = useState('1');
   const [priority, setPriority] = useState<Priority>('yellow');
   const [assigneeId, setAssigneeId] = useState('');
+  const [category, setCategory] = useState<RecipeCategory>('general');
 
   const isFreeText = recipeId === FREE_TEXT_OPTION;
 
@@ -161,6 +164,7 @@ function AddManualTaskSheet({ date, onClose }: { date: string; onClose: () => vo
       date,
       recipeId: isFreeText ? undefined : recipeId,
       title: isFreeText ? title.trim() : undefined,
+      categoryOverride: isFreeText ? category : undefined,
       multiplier: isFreeText ? 1 : parseFloat(multiplier) || 1,
       priority,
       assigneeId: assigneeId || undefined,
@@ -185,10 +189,22 @@ function AddManualTaskSheet({ date, onClose }: { date: string; onClose: () => vo
         </select>
       </div>
       {isFreeText ? (
-        <div className="field">
-          <label>כותרת המשימה</label>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="לדוגמה: לנקות מדפים" autoFocus />
-        </div>
+        <>
+          <div className="field">
+            <label>כותרת המשימה</label>
+            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="לדוגמה: לנקות מדפים" autoFocus />
+          </div>
+          <div className="field">
+            <label>עמדה</label>
+            <select value={category} onChange={(e) => setCategory(e.target.value as RecipeCategory)}>
+              {RECIPE_CATEGORIES.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </>
       ) : (
         <div className="field">
           <label>כפולת מתכון</label>
@@ -266,7 +282,20 @@ function TaskRow({ task }: { task: DisplayTask }) {
     }
   }
 
-  const cook = state.cooks.find((c) => c.id === task.assigneeId);
+  function setAssignee(assigneeId: string) {
+    if (isAuto) {
+      dispatch({
+        type: 'SET_AUTO_TASK_ASSIGNEE',
+        id: task.id,
+        productId: task.productId!,
+        date: task.date,
+        assigneeId: assigneeId || null,
+      });
+    } else {
+      dispatch({ type: 'SET_TASK_ASSIGNEE', id: task.id, assigneeId: assigneeId || null });
+    }
+  }
+
   // A recipe-backed task shows its multiplier — unless the units don't line up, in which
   // case the multiplier is meaningless and the badge below explains why.
   const title = recipe
@@ -318,13 +347,21 @@ function TaskRow({ task }: { task: DisplayTask }) {
           יחידת המלאי לא תואמת ליחידת המתכון — צריך לתקן בעריכת הפריט
         </p>
       )}
-      {cook && (
-        <div style={{ marginTop: 'var(--space-2)' }}>
-          <span className="pill" style={{ background: cook.color + '22', color: cook.color }}>
-            {cook.name}
-          </span>
-        </div>
-      )}
+      <div className="row" style={{ marginTop: 'var(--space-2)', gap: 8 }}>
+        <select
+          value={task.assigneeId ?? ''}
+          onChange={(e) => setAssignee(e.target.value)}
+          aria-label="שיוך לטבח"
+          style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '6px', width: 'auto' }}
+        >
+          <option value="">— ללא —</option>
+          {state.cooks.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </div>
       {detailOpen && <TaskDetailSheet task={task} onClose={() => setDetailOpen(false)} />}
       {completing && <CompleteTaskDialog task={task} onClose={() => setCompleting(false)} />}
     </div>
@@ -336,11 +373,16 @@ export function Tasks() {
   const [date, setDate] = useState(todayStr());
   const [addingManual, setAddingManual] = useState(false);
   const [query, setQuery] = useState('');
+  const [category, setCategory] = useState<CategoryFilter>('all');
+
+  const searching = query.trim().length > 0;
 
   const dayTasks = getDisplayTasks(date, state).filter((t) => {
     const recipeName = state.recipes.find((r) => r.id === t.recipeId)?.name;
     const cookName = state.cooks.find((c) => c.id === t.assigneeId)?.name;
-    return matchesQuery(query, recipeName, t.title, cookName);
+    if (!matchesQuery(query, recipeName, t.title, cookName)) return false;
+    if (!searching && category !== 'all' && t.category !== category) return false;
+    return true;
   });
 
   return (
@@ -357,6 +399,8 @@ export function Tasks() {
       </div>
 
       <SearchInput value={query} onChange={setQuery} placeholder="חיפוש משימה או טבח..." />
+
+      {!searching && <CategoryTabs tabs={CATEGORY_TABS} value={category} onChange={setCategory} />}
 
       {dayTasks.length === 0 ? (
         <EmptyState text={query ? 'לא נמצאו משימות.' : 'אין משימות ליום זה — הכל במלאי.'} />

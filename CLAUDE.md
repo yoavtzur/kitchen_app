@@ -20,7 +20,7 @@ npm run preview   # preview a production build
 
 Run a single test file: `npx vitest run src/lib/__tests__/calc.test.ts`
 
-There are 12 test files (140+ tests), colocated in `__tests__` folders next to what they cover:
+There are 12 test files (155+ tests), colocated in `__tests__` folders next to what they cover:
 `src/lib/__tests__/{calc,date,ids,integrity,tasks}.test.ts`, `src/store/__tests__/{reducer,storage}.test.ts`,
 `src/sync/__tests__/{backoff,engine,localAdapter,log,persist}.test.ts`. No jsdom, no React Testing Library —
 everything is tested as pure functions in node, including the entire sync protocol (see below).
@@ -309,6 +309,44 @@ see its entry below for why those specifically weren't also poked at live):**
   backoff paths themselves are exercised by the new unit tests rather than by forcing a live schema
   mismatch or a real dropped connection, since neither is easy to trigger safely against the shared
   live project.
+
+**Also done — granular permissions, dated order history, tasks by station (2026-09-09,
+branch `claude/rls-granular-abac-wgbz0z`):** three features layered on top of the sync work
+above, none of which needed a new table:
+
+- **Granular ABAC.** The role vocabulary migrated from `owner`/`member` to `chef`/`cook`
+  (`supabase/migrations/0003_rls_and_granular_roles.sql`), and `memberships` gained
+  `can_edit_recipes`/`can_delete_recipes` flags a chef can grant a cook individually. Because
+  there is no `recipes` table — every recipe lives inside `snapshots.state`, one jsonb blob per
+  restaurant — RLS itself stays untouched (still SELECT-only everywhere, per the design notes at
+  the top of `0001_init.sql`); permission enforcement instead lives inside `append_ops` itself,
+  the one chokepoint every write already passes through, via a new `action_requires()` helper
+  that maps an op's action type to the permission it needs. A rejected batch is flagged
+  `permanent` all the way back to the sync engine (`src/sync/engine.ts`'s `APPEND_ERR` handling)
+  so a forbidden op drains from the queue instead of retrying forever. `src/auth/usePermissions.ts`
+  exposes `{ role, isChef, canEditRecipes, canDeleteRecipes }` (full permissions in local mode —
+  a single-device user is their own chef), consumed by `ChefOnly` (`src/components/Gate.tsx`),
+  the gated save/delete paths in `Recipes.tsx`/`RecipeEditor.tsx`, and a new "הרשאות צוות" section
+  in `Settings.tsx` (chef-only) with a `set_member_permissions` RPC behind it.
+- **Dated order history.** `OrderLine` gained a `date` field — see `orderLineKey`
+  (`src/lib/date.ts`) for the composite `(ingredientId, date)` key; deliberately no synthetic id,
+  since ops carry reducer actions, not rows. `SUBMIT_ORDER` is a new absolute-set reducer action
+  (idempotent under replay, same reasoning as `SET_ORDER_LINE_ORDERED`). The server-side half of
+  the `SCHEMA_VERSION` 3→4 bump (`supabase/migrations/0004_order_history.sql`) rewrites every
+  restaurant's stored `orderLines` in place with a jsonb rewrite rather than a table alter, since
+  there's no `order_lines` table either — see that migration's own comment for why. `Orders.tsx`
+  is now two tabs (`CategoryTabs`): the existing current-order table, and a new weekly history
+  grid highlighting (`.pill yellow`/`.pill red`) an ingredient's day against its own weekly mean.
+- **Tasks by station.** `DisplayTask` (`src/lib/tasks.ts`) gained a resolved `category` — a
+  recipe-backed task's own recipe category, else a free-text task's new `Task.categoryOverride`,
+  else `'general'`. `Tasks.tsx` reuses the same `CategoryTabs` station row as `Recipes.tsx` (the
+  shared list now lives in `src/lib/recipeCategories.ts` rather than being duplicated a third
+  time), and `SET_TASK_ASSIGNEE` (manual tasks) plus the already-existing but previously-unused
+  `SET_AUTO_TASK_ASSIGNEE` back a `<select>` on every task row.
+
+Both SQL migrations (`0003`, `0004`) need to be applied by hand to the live Supabase project —
+nothing in the build does this. Until `0004` runs there, every synced client sits at
+`upgrade-required` and refuses to append (the expected signal that it hasn't been applied yet).
 
 **Not started — Phase 7 (optional):**
 

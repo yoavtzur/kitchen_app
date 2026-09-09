@@ -1,5 +1,21 @@
 import type { AppState, OrderLine } from '../types';
 import { createSeedState, SCHEMA_VERSION } from '../data/seed';
+import { todayStr } from '../lib/date';
+
+/** A v3 state: everything the current AppState has except dates on order lines. */
+type V3State = Omit<AppState, 'orderLines'> & { orderLines: Omit<OrderLine, 'date'>[] };
+
+/** v4 adds a date to every order line so the order sheet becomes a history instead of one
+ * static snapshot. Every pre-existing line (the sheet in progress) is stamped with today, so it
+ * survives the migration and becomes the first day of history rather than being silently lost. */
+function migrateV3toV4(old: V3State): AppState {
+  const today = todayStr();
+  return {
+    ...old,
+    schemaVersion: 4,
+    orderLines: old.orderLines.map((line) => ({ ...line, date: today })),
+  };
+}
 
 const STORAGE_KEY = 'kitchen-app-state';
 
@@ -31,7 +47,7 @@ function migrateV1toV2(old: Record<string, unknown>): V2State {
  * link here rather than dropping the user's recipes. Also prunes references to entities that
  * were deleted before deletes cascaded, and adds the persistent order sheet.
  */
-function migrateV2toV3(old: V2State): AppState {
+function migrateV2toV3(old: V2State): V3State {
   const ingredients = old.ingredients ?? [];
   const products = [...(old.products ?? [])];
   const recipes = [...(old.recipes ?? [])];
@@ -115,7 +131,7 @@ function migrateV2toV3(old: V2State): AppState {
     specialEvents: (old.specialEvents ?? [])
       .map((ev) => ({ ...ev, extras: ev.extras.filter((ex) => productIds.has(ex.productId)) }))
       .filter((ev) => ev.extras.length > 0),
-    orderLines: [] as OrderLine[],
+    orderLines: [],
   };
 }
 
@@ -125,9 +141,10 @@ export function loadState(): AppState {
     if (!raw) return createSeedState();
     const parsed = JSON.parse(raw) as AppState;
     if (parsed.schemaVersion === SCHEMA_VERSION) return parsed;
-    if (parsed.schemaVersion === 2) return migrateV2toV3(parsed as unknown as V2State);
+    if (parsed.schemaVersion === 3) return migrateV3toV4(parsed as unknown as V3State);
+    if (parsed.schemaVersion === 2) return migrateV3toV4(migrateV2toV3(parsed as unknown as V2State));
     if (parsed.schemaVersion === 1) {
-      return migrateV2toV3(migrateV1toV2(parsed as unknown as Record<string, unknown>));
+      return migrateV3toV4(migrateV2toV3(migrateV1toV2(parsed as unknown as Record<string, unknown>)));
     }
     return createSeedState();
   } catch {
@@ -152,9 +169,10 @@ export function parseImportedState(json: string): AppState {
   if (typeof parsed !== 'object' || parsed === null || !('schemaVersion' in parsed)) {
     throw new Error('קובץ לא תקין');
   }
-  if (parsed.schemaVersion === 2) return migrateV2toV3(parsed as unknown as V2State);
+  if (parsed.schemaVersion === 3) return migrateV3toV4(parsed as unknown as V3State);
+  if (parsed.schemaVersion === 2) return migrateV3toV4(migrateV2toV3(parsed as unknown as V2State));
   if (parsed.schemaVersion === 1) {
-    return migrateV2toV3(migrateV1toV2(parsed as unknown as Record<string, unknown>));
+    return migrateV3toV4(migrateV2toV3(migrateV1toV2(parsed as unknown as Record<string, unknown>)));
   }
   return parsed;
 }

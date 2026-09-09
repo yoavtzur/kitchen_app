@@ -107,7 +107,12 @@ function createSyncStore(adapter: SyncAdapter, initial: SyncState, kv?: KVStore,
         adapter.appendOps(effect.ops).then(
           (rows) => apply({ type: 'APPEND_OK', rows }),
           (err: unknown) =>
-            apply({ type: 'APPEND_ERR', opIds: effect.ops.map((o) => o.opId), message: String(err) }),
+            apply({
+              type: 'APPEND_ERR',
+              opIds: effect.ops.map((o) => o.opId),
+              message: String(err),
+              permanent: err instanceof Error && 'permanent' in err ? Boolean(err.permanent) : false,
+            }),
         );
         return;
       case 'FETCH_OPS': {

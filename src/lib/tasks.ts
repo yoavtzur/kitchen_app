@@ -1,4 +1,4 @@
-import type { AppState, Priority, Task, TaskCompletion } from '../types';
+import type { AppState, Priority, RecipeCategory, Task, TaskCompletion } from '../types';
 import { multiplierForProduct, priorityFor, toPrepare, weightedRecipeItems } from './calc';
 
 export type DisplayTask = {
@@ -13,6 +13,10 @@ export type DisplayTask = {
   assigneeId?: string;
   done: boolean;
   source: 'auto' | 'manual';
+  /** Station this task belongs to — the recipe's own category for an auto/recipe-backed task,
+   * else the free-text task's categoryOverride, else 'general'. Resolved once here instead of
+   * repeated per-screen recipe lookups. */
+  category: RecipeCategory;
   note?: string;
   appliedCompletion?: TaskCompletion;
   /** The product's stock unit cannot be converted to the recipe's yield unit — the
@@ -29,20 +33,24 @@ export function autoTaskId(productId: string, date: string): string {
 export function getDisplayTasks(date: string, state: AppState): DisplayTask[] {
   const manual: DisplayTask[] = state.tasks
     .filter((t) => t.date === date)
-    .map((t: Task) => ({
-      id: t.id,
-      date: t.date,
-      recipeId: t.recipeId,
-      title: t.title,
-      multiplier: t.multiplier,
-      priority: t.priority,
-      priorityManual: t.priorityManual,
-      assigneeId: t.assigneeId,
-      done: t.done,
-      source: 'manual',
-      note: t.note,
-      appliedCompletion: t.appliedCompletion,
-    }));
+    .map((t: Task) => {
+      const recipe = t.recipeId ? state.recipes.find((r) => r.id === t.recipeId) : undefined;
+      return {
+        id: t.id,
+        date: t.date,
+        recipeId: t.recipeId,
+        title: t.title,
+        multiplier: t.multiplier,
+        priority: t.priority,
+        priorityManual: t.priorityManual,
+        assigneeId: t.assigneeId,
+        done: t.done,
+        source: 'manual',
+        category: recipe?.category ?? t.categoryOverride ?? 'general',
+        note: t.note,
+        appliedCompletion: t.appliedCompletion,
+      };
+    });
 
   const auto: DisplayTask[] = [];
   for (const product of state.products) {
@@ -76,6 +84,7 @@ export function getDisplayTasks(date: string, state: AppState): DisplayTask[] {
       assigneeId: override?.assigneeId,
       done: override?.done ?? false,
       source: 'auto',
+      category: recipe.category,
       appliedCompletion: override?.appliedCompletion,
       unitMismatch: unitMismatch || undefined,
     });

@@ -1,19 +1,13 @@
 import { useState } from 'react';
 import { useApp } from '../store/AppContext';
+import { usePermissions } from '../auth/usePermissions';
 import { BottomSheet } from '../components/BottomSheet';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { describeImpact, impactOfDeletingRecipe } from '../lib/integrity';
 import { newId } from '../lib/ids';
 import { WeekdayUsageEditor } from '../components/WeekdayUsageEditor';
+import { RECIPE_CATEGORIES as CATEGORY_OPTIONS } from '../lib/recipeCategories';
 import type { Ingredient, Product, ProductKind, Recipe, RecipeCategory, RecipeItem, Unit, Weekday, WeekdayUsage } from '../types';
-
-const CATEGORY_OPTIONS: { value: RecipeCategory; label: string }[] = [
-  { value: 'cold', label: 'פס קר' },
-  { value: 'hot', label: 'פס חם' },
-  { value: 'taboon', label: 'טאבון' },
-  { value: 'dessert', label: 'קינוחים' },
-  { value: 'general', label: 'כללי' },
-];
 
 const KIND_OPTIONS: { value: ProductKind; label: string }[] = [
   { value: 'menu', label: 'מנה בתפריט' },
@@ -111,6 +105,7 @@ type Props = {
  */
 export function RecipeEditor({ recipe, defaultCategory, onClose }: Props) {
   const { state, dispatch } = useApp();
+  const { canEditRecipes, canDeleteRecipes } = usePermissions();
 
   const linkedProduct =
     state.products.find((p) => p.id === recipe?.producesProductId) ??
@@ -187,7 +182,7 @@ export function RecipeEditor({ recipe, defaultCategory, onClose }: Props) {
   }
 
   function save() {
-    if (!name.trim()) return;
+    if (!canEditRecipes || !name.trim()) return;
     const finalItems: RecipeItem[] = [];
     for (const it of items) {
       if (it.qty <= 0) continue;
@@ -255,7 +250,7 @@ export function RecipeEditor({ recipe, defaultCategory, onClose }: Props) {
   }
 
   function remove() {
-    if (!recipe) return;
+    if (!recipe || !canDeleteRecipes) return;
     dispatch({ type: 'DELETE_RECIPE', id: recipe.id });
     onClose();
   }
@@ -499,7 +494,7 @@ export function RecipeEditor({ recipe, defaultCategory, onClose }: Props) {
       </div>
 
       <div className="row" style={{ gap: 8, marginTop: 'var(--space-5)' }}>
-        {recipe && (
+        {recipe && canDeleteRecipes && (
           <button
             type="button"
             className="btn"
@@ -509,9 +504,11 @@ export function RecipeEditor({ recipe, defaultCategory, onClose }: Props) {
             מחק פריט
           </button>
         )}
-        <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={save}>
-          שמור
-        </button>
+        {canEditRecipes && (
+          <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={save}>
+            שמור
+          </button>
+        )}
       </div>
 
       {pickerOpen && (

@@ -4,18 +4,38 @@
 // then log a cook out mid-shift. Treating this cache as authoritative until an explicit
 // SIGNED_OUT event means a cook who opened the app once stays "in" even if the network never
 // cooperates again during that shift.
+import type { MemberPermissions, MemberRole } from '../types';
+
 export type CachedMembership = {
   restaurantId: string;
   cookId: string | null;
-  role: 'owner' | 'member';
-};
+  role: MemberRole;
+} & MemberPermissions;
 
 const KEY = 'kitchen-auth-membership';
+
+/** Normalizes a cache blob written before granular roles existed: `owner`/`member` become
+ * `chef`/`cook`, and missing permission flags default to false — a stale cook shouldn't
+ * silently gain edit/delete rights just because their cached blob predates this field. */
+function normalize(raw: unknown): CachedMembership | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.restaurantId !== 'string') return null;
+  const legacyRole = r.role as string | undefined;
+  const role: MemberRole = legacyRole === 'chef' || legacyRole === 'owner' ? 'chef' : 'cook';
+  return {
+    restaurantId: r.restaurantId,
+    cookId: typeof r.cookId === 'string' ? r.cookId : null,
+    role,
+    canEditRecipes: Boolean(r.canEditRecipes),
+    canDeleteRecipes: Boolean(r.canDeleteRecipes),
+  };
+}
 
 export function readCachedMembership(): CachedMembership | null {
   try {
     const raw = localStorage.getItem(KEY);
-    return raw ? (JSON.parse(raw) as CachedMembership) : null;
+    return raw ? normalize(JSON.parse(raw)) : null;
   } catch {
     return null;
   }

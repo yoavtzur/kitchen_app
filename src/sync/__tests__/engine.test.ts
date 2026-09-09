@@ -16,7 +16,7 @@ function baseState(overrides: Partial<AppState> = {}): AppState {
     taskOverrides: [],
     specialEvents: [],
     dayPlans: [],
-    orderLines: [{ ingredientId: 'ing-egg', ordered: true }],
+    orderLines: [{ ingredientId: 'ing-egg', date: '2026-09-05', ordered: true }],
     ...overrides,
   };
 }
@@ -133,6 +133,44 @@ describe('APPEND_ERR', () => {
     expect(effectsOfType(effects, 'APPEND')[0].ops.map((o) => o.opId)).toEqual(['op-1']);
     expect(next.inFlight).toEqual(['op-1']);
   });
+
+  it('a permanent error drains the failed op instead of retrying it', () => {
+    let state = readyState();
+    [state] = dispatch(state, 'op-1', setQty(5));
+    const [next, effects] = syncReduce(state, {
+      type: 'APPEND_ERR',
+      opIds: ['op-1'],
+      message: 'forbidden_action (42501)',
+      permanent: true,
+    });
+    expect(next.pending).toEqual([]);
+    expect(next.inFlight).toBeNull();
+    expect(next.lastError).toBe('forbidden_action (42501)');
+    expect(effectsOfType(effects, 'RETRY_IN')).toHaveLength(0);
+    // display recomputes without the dropped op's effect
+    expect(next.display.ingredients[0].currentQty).toBe(10);
+  });
+
+  it('a permanent error only drains the failed op, leaving other pending ops queued', () => {
+    let state = readyState();
+    [state] = dispatch(state, 'op-1', setQty(5));
+    [state] = dispatch(state, 'op-2', { type: 'SET_INGREDIENT_PAR', id: 'ing-egg', parLevel: 3 });
+    const [next] = syncReduce(state, {
+      type: 'APPEND_ERR',
+      opIds: ['op-1'],
+      message: 'forbidden',
+      permanent: true,
+    });
+    expect(next.pending.map((p) => p.opId)).toEqual(['op-2']);
+  });
+
+  it('a transient error (no permanent flag) still retries with the existing backoff', () => {
+    let state = readyState();
+    [state] = dispatch(state, 'op-1', setQty(5));
+    const [next, effects] = syncReduce(state, { type: 'APPEND_ERR', opIds: ['op-1'], message: 'network down' });
+    expect(next.pending.map((p) => p.opId)).toEqual(['op-1']);
+    expect(effectsOfType(effects, 'RETRY_IN')).toHaveLength(1);
+  });
 });
 
 describe('gap detection triggers a resync', () => {
@@ -182,7 +220,7 @@ describe('convergence: two clients with different pending, merged into one serve
   it('two clients that dispatched different local ops both converge once the server confirms both', () => {
     const seed = baseState({
       ingredients: [{ ...baseState().ingredients[0], currentQty: 50 }],
-      orderLines: [{ ingredientId: 'ing-egg', ordered: true }],
+      orderLines: [{ ingredientId: 'ing-egg', date: '2026-09-05', ordered: true }],
     });
 
     // Two devices, each with its own optimistic queue built from the same starting point.
@@ -191,7 +229,11 @@ describe('convergence: two clients with different pending, merged into one serve
     [clientA] = dispatch(clientA, 'a-2', { type: 'SET_INGREDIENT_PAR', id: 'ing-egg', parLevel: 5 });
 
     let clientB = readyState(seed);
-    const clientBReceipt: Action = { type: 'RECEIVE_ORDER', receipts: [{ ingredientId: 'ing-egg', qty: 8 }] };
+    const clientBReceipt: Action = {
+      type: 'RECEIVE_ORDER',
+      date: '2026-09-05',
+      receipts: [{ ingredientId: 'ing-egg', qty: 8 }],
+    };
     [clientB] = dispatch(clientB, 'b-1', clientBReceipt);
 
     // The server sees all three ops (from both devices) and assigns one total order.
@@ -223,9 +265,9 @@ describe('convergence: two clients with different pending, merged into one serve
       { type: 'SET_INGREDIENT_QTY', id: 'ing-egg', qty: 12 },
       { type: 'SET_INGREDIENT_QTY', id: 'ing-egg', qty: 30 },
       { type: 'SET_INGREDIENT_PAR', id: 'ing-egg', parLevel: 4 },
-      { type: 'RECEIVE_ORDER', receipts: [{ ingredientId: 'ing-egg', qty: 6 }] },
-      { type: 'SET_ORDER_LINE_ORDERED', ingredientId: 'ing-egg', ordered: true },
-      { type: 'SET_ORDER_LINE_ORDERED', ingredientId: 'ing-egg', ordered: false },
+      { type: 'RECEIVE_ORDER', date: '2026-09-05', receipts: [{ ingredientId: 'ing-egg', qty: 6 }] },
+      { type: 'SET_ORDER_LINE_ORDERED', ingredientId: 'ing-egg', date: '2026-09-05', ordered: true },
+      { type: 'SET_ORDER_LINE_ORDERED', ingredientId: 'ing-egg', date: '2026-09-05', ordered: false },
       { type: 'ADD_COOK', cook: { id: 'cook-x', name: 'טסט', color: '#000' } },
       { type: 'DELETE_COOK', id: 'cook-x' },
     ];

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useAuth } from '../auth/AuthContext';
+import { usePermissions } from '../auth/usePermissions';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { Auth } from '../screens/Auth';
 import { Onboarding } from '../screens/Onboarding';
@@ -36,4 +37,13 @@ export function CookGate({ children }: { children: ReactNode }) {
   if (!isSupabaseConfigured) return <>{children}</>;
   if (membership && !membership.cookId) return <PickCook />;
   return <>{children}</>;
+}
+
+/** Renders `children` only for a chef; `fallback` (default: nothing) otherwise. No new provider
+ * needed — AuthProvider already sits above every gate, so usePermissions reaches anywhere in
+ * the tree. Client-side gating only; the real boundary is the append_ops RPC (see
+ * supabase/migrations/0003_rls_and_granular_roles.sql). */
+export function ChefOnly({ children, fallback = null }: { children: ReactNode; fallback?: ReactNode }) {
+  const { isChef } = usePermissions();
+  return <>{isChef ? children : fallback}</>;
 }

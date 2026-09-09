@@ -53,6 +53,7 @@ export type Action =
   | { type: 'UPDATE_TASK'; task: Task }
   | { type: 'DELETE_TASK'; id: string }
   | { type: 'SET_TASK_PRIORITY'; id: string; priority: Priority }
+  | { type: 'SET_TASK_ASSIGNEE'; id: string; assigneeId?: string | null }
   | {
       type: 'CONFIRM_TASK_COMPLETION';
       taskId: string;
@@ -87,10 +88,13 @@ export type Action =
   | { type: 'DELETE_SPECIAL_EVENT'; id: string }
   | { type: 'ADD_COOK'; cook: Cook }
   | { type: 'DELETE_COOK'; id: string }
-  | { type: 'SET_ORDER_LINE_QTY'; ingredientId: string; qtyOverride?: number | null }
-  | { type: 'SET_ORDER_LINE_ORDERED'; ingredientId: string; ordered: boolean }
-  | { type: 'RECEIVE_ORDER'; receipts: { ingredientId: string; qty: number }[] }
-  | { type: 'CLEAR_ORDER_SHEET' }
+  | { type: 'SET_ORDER_LINE_QTY'; ingredientId: string; date: string; qtyOverride?: number | null }
+  | { type: 'SET_ORDER_LINE_ORDERED'; ingredientId: string; date: string; ordered: boolean }
+  | { type: 'RECEIVE_ORDER'; date: string; receipts: { ingredientId: string; qty: number }[] }
+  | { type: 'CLEAR_ORDER_SHEET'; date: string }
+  // Absolute set (idempotent under replay), mirroring SET_ORDER_LINE_ORDERED's own reasoning:
+  // submits the whole current-day sheet as one op instead of one op per ingredient.
+  | { type: 'SUBMIT_ORDER'; date: string; lines: { ingredientId: string; qty: number }[] }
   | { type: 'UPDATE_SETTINGS'; settings: Partial<Settings> }
   | { type: 'IMPORT_STATE'; state: AppState };
 
@@ -126,16 +130,17 @@ function linkRecipeProduct(
 function upsertOrderLine(
   state: AppState,
   ingredientId: string,
+  date: string,
   patch: Partial<OrderLine>,
 ): AppState {
-  const existing = state.orderLines.find((l) => l.ingredientId === ingredientId);
+  const existing = state.orderLines.find((l) => l.ingredientId === ingredientId && l.date === date);
   const next: OrderLine = existing
     ? { ...existing, ...patch }
-    : { ingredientId, ordered: false, ...patch };
+    : { ingredientId, date, ordered: false, ...patch };
   return {
     ...state,
     orderLines: existing
-      ? state.orderLines.map((l) => (l.ingredientId === ingredientId ? next : l))
+      ? state.orderLines.map((l) => (l.ingredientId === ingredientId && l.date === date ? next : l))
       : [...state.orderLines, next],
   };
 }
@@ -482,6 +487,15 @@ export function reducer(state: AppState, action: Action): AppState {
           t.id === action.id ? { ...t, priority: action.priority, priorityManual: true } : t,
         ),
       };
+    case 'SET_TASK_ASSIGNEE':
+      return {
+        ...state,
+        tasks: state.tasks.map((t) =>
+          t.id === action.id
+            ? { ...t, assigneeId: action.assigneeId === null ? undefined : action.assigneeId }
+            : t,
+        ),
+      };
     case 'CONFIRM_TASK_COMPLETION': {
       // Idempotent: a task already marked done keeps its original appliedCompletion rather than
       // deducting the same ingredients twice (two cooks confirming the same task at once, or a
@@ -611,19 +625,21 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, cooks: state.cooks.filter((c) => c.id !== action.id) };
 
     case 'SET_ORDER_LINE_QTY':
-      return upsertOrderLine(state, action.ingredientId, {
+      return upsertOrderLine(state, action.ingredientId, action.date, {
         qtyOverride: action.qtyOverride === null ? undefined : action.qtyOverride,
       });
     // An absolute set, not a toggle: two cooks tapping the same checkbox both land on the same
     // intended state instead of a toggle flipping it back and forth under concurrent writes.
     case 'SET_ORDER_LINE_ORDERED':
-      return upsertOrderLine(state, action.ingredientId, { ordered: action.ordered });
+      return upsertOrderLine(state, action.ingredientId, action.date, { ordered: action.ordered });
     case 'RECEIVE_ORDER': {
       // Goods arrived: add exactly what the sheet said into stock and clear those rows, leaving
-      // anything still on order untouched. Only receipts for lines still open are applied, so a
-      // retried or duplicated RECEIVE_ORDER (two cooks tapping "קבלת סחורה" at once, or the same
-      // op replayed) can't add the same delivery to stock twice.
-      const openLineIds = new Set(state.orderLines.map((l) => l.ingredientId));
+      // anything still on order (or on another date) untouched. Only receipts for lines still
+      // open on this date are applied, so a retried or duplicated RECEIVE_ORDER (two cooks
+      // tapping "קבלת סחורה" at once, or the same op replayed) can't add the same delivery twice.
+      const openLineIds = new Set(
+        state.orderLines.filter((l) => l.date === action.date).map((l) => l.ingredientId),
+      );
       const openReceipts = action.receipts.filter((r) => openLineIds.has(r.ingredientId));
       if (openReceipts.length === 0) return state;
       const received = new Set(openReceipts.map((r) => r.ingredientId));
@@ -633,11 +649,23 @@ export function reducer(state: AppState, action: Action): AppState {
           const receipt = openReceipts.find((r) => r.ingredientId === i.id);
           return receipt ? { ...i, currentQty: i.currentQty + receipt.qty } : i;
         }),
-        orderLines: state.orderLines.filter((l) => !received.has(l.ingredientId)),
+        orderLines: state.orderLines.filter(
+          (l) => !(l.date === action.date && received.has(l.ingredientId)),
+        ),
       };
     }
     case 'CLEAR_ORDER_SHEET':
-      return { ...state, orderLines: [] };
+      return { ...state, orderLines: state.orderLines.filter((l) => l.date !== action.date) };
+    case 'SUBMIT_ORDER': {
+      let next = state;
+      for (const line of action.lines) {
+        next = upsertOrderLine(next, line.ingredientId, action.date, {
+          qtyOverride: line.qty,
+          ordered: true,
+        });
+      }
+      return next;
+    }
 
     case 'UPDATE_SETTINGS':
       return { ...state, settings: { ...state.settings, ...action.settings } };

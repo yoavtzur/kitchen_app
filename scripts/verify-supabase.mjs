@@ -1,6 +1,10 @@
-// One-off manual verification script for Phase 2 — NOT part of the app or the build.
-// Signs up two throwaway test accounts and exercises create_restaurant / join_restaurant /
-// append_ops end to end, printing what happened. Safe to delete after running once.
+// One-off manual verification script — NOT part of the app or the build. Originally written for
+// Phase 2 (create_restaurant / join_restaurant / append_ops / RLS isolation); extended to also
+// verify the granular ABAC added by supabase/migrations/0003_rls_and_granular_roles.sql. That
+// migration must already be applied to the project this script points at (see .env.local), since
+// enforcement lives inside append_ops itself rather than RLS — this is the one check that proves
+// the RPC boundary from OUTSIDE the UI, not just that React hides a button. Safe to delete after
+// running once; throwaway test accounts/restaurant rows are left in the DB as harmless demo data.
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync } from 'node:fs';
 
@@ -119,6 +123,106 @@ async function main() {
     throw new Error(`Expected member to see seqs [1,2,3], got ${JSON.stringify(memberOps)}`);
   }
   console.log('  member sees seqs [1,2,3] — full log visible to a teammate');
+
+  // --- Granular ABAC (0003_rls_and_granular_roles.sql): enforcement lives inside append_ops
+  // itself, not RLS (there's no recipes table). This is the one check that can't be trusted
+  // from the UI alone — it proves the RPC boundary rejects/accepts based on the DB row, not
+  // anything the client claims.
+  const memberSession = (await member.auth.getSession()).data.session;
+  const memberUserId = memberSession.user.id;
+
+  const updateRecipeAction = {
+    type: 'UPDATE_RECIPE',
+    recipe: {
+      id: 'recipe-verify-abac',
+      name: 'ABAC Test Recipe',
+      category: 'general',
+      yieldQty: 1,
+      yieldUnit: 'unit',
+      items: [],
+      steps: [],
+    },
+  };
+
+  // A plain cook (no can_edit_recipes yet) must be rejected with 42501.
+  const { data: forbiddenData, error: forbiddenErr } = await member.rpc('append_ops', {
+    p_restaurant_id: restaurantId,
+    p_client_id: 'verify-member-device',
+    p_ops: [{ op_id: crypto.randomUUID(), action: updateRecipeAction }],
+  });
+  if (!forbiddenErr) {
+    throw new Error(`Expected UPDATE_RECIPE to be rejected for a cook with no flags, but it succeeded: ${JSON.stringify(forbiddenData)}`);
+  }
+  if (forbiddenErr.code !== '42501') {
+    throw new Error(`Expected error code 42501, got ${forbiddenErr.code}: ${forbiddenErr.message}`);
+  }
+  console.log('✓ ABAC: cook with no can_edit_recipes is rejected (42501) on UPDATE_RECIPE');
+
+  // Chef grants the cook edit-recipes permission via set_member_permissions.
+  await must(
+    'set_member_permissions (grant can_edit_recipes)',
+    owner.rpc('set_member_permissions', {
+      p_user_id: memberUserId,
+      p_role: 'cook',
+      p_can_edit_recipes: true,
+      p_can_delete_recipes: false,
+    }),
+  );
+  console.log('  granted can_edit_recipes to the cook');
+
+  // The SAME call must now succeed with a fresh op_id (the earlier op_id was never inserted).
+  const allowed = await must(
+    'append_ops (cook, UPDATE_RECIPE, now permitted)',
+    member.rpc('append_ops', {
+      p_restaurant_id: restaurantId,
+      p_client_id: 'verify-member-device',
+      p_ops: [{ op_id: crypto.randomUUID(), action: updateRecipeAction }],
+    }),
+  );
+  if (allowed.length !== 1) throw new Error(`Expected 1 row appended, got ${allowed.length}`);
+  console.log('  UPDATE_RECIPE succeeded once can_edit_recipes was granted');
+
+  // can_edit_recipes does NOT imply can_delete_recipes — DELETE_RECIPE must still be rejected.
+  const { error: deleteErr } = await member.rpc('append_ops', {
+    p_restaurant_id: restaurantId,
+    p_client_id: 'verify-member-device',
+    p_ops: [{ op_id: crypto.randomUUID(), action: { type: 'DELETE_RECIPE', id: 'recipe-verify-abac' } }],
+  });
+  if (!deleteErr) throw new Error('Expected DELETE_RECIPE to be rejected (can_delete_recipes not granted), but it succeeded');
+  if (deleteErr.code !== '42501') throw new Error(`Expected 42501 for DELETE_RECIPE, got ${deleteErr.code}: ${deleteErr.message}`);
+  console.log('✓ ABAC: can_edit_recipes does not imply can_delete_recipes — DELETE_RECIPE still rejected (42501)');
+
+  // A cook (even with both flags) cannot call reset_snapshot or set_member_permissions — chef-only.
+  const { error: resetErr } = await member.rpc('reset_snapshot', {
+    p_restaurant_id: restaurantId,
+    p_snapshot: { schemaVersion: 4 },
+    p_schema_version: 4,
+  });
+  if (!resetErr) throw new Error('Expected reset_snapshot to be rejected for a cook, but it succeeded');
+  if (resetErr.code !== '42501') throw new Error(`Expected 42501 for reset_snapshot, got ${resetErr.code}: ${resetErr.message}`);
+  console.log('✓ ABAC: a cook cannot call reset_snapshot (chef-only), rejected with 42501');
+
+  const { error: setPermErr } = await member.rpc('set_member_permissions', {
+    p_user_id: memberUserId,
+    p_role: 'chef',
+    p_can_edit_recipes: true,
+    p_can_delete_recipes: true,
+  });
+  if (!setPermErr) throw new Error('Expected set_member_permissions to be rejected for a cook, but it succeeded');
+  if (setPermErr.code !== '42501') throw new Error(`Expected 42501 for set_member_permissions, got ${setPermErr.code}: ${setPermErr.message}`);
+  console.log('✓ ABAC: a cook cannot call set_member_permissions (chef-only), rejected with 42501');
+
+  // The chef (owner) passes every restricted action unconditionally, flags or not.
+  const chefAppend = await must(
+    'append_ops (chef, DELETE_RECIPE — always permitted)',
+    owner.rpc('append_ops', {
+      p_restaurant_id: restaurantId,
+      p_client_id: 'verify-owner-device',
+      p_ops: [{ op_id: crypto.randomUUID(), action: { type: 'DELETE_RECIPE', id: 'recipe-verify-abac' } }],
+    }),
+  );
+  if (chefAppend.length !== 1) throw new Error(`Expected 1 row appended, got ${chefAppend.length}`);
+  console.log('  chef DELETE_RECIPE succeeded with no flags needed');
 
   console.log('\nAll checks passed. ✅');
   console.log(`\n(Test rows left in the DB under restaurant_id=${restaurantId}; harmless demo data — delete manually if you'd like.)`);

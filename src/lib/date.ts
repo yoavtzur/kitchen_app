@@ -35,6 +35,12 @@ export function dayShortLabel(weekday: Weekday): string {
   return HE_DAY_SHORT[weekday];
 }
 
+/** Composite key for a dated OrderLine — covers React keys and map lookups without a stored
+ * id field that could drift from its own (ingredientId, date) components. */
+export function orderLineKey(ingredientId: string, date: string): string {
+  return `${ingredientId}__${date}`;
+}
+
 /** Returns the 7 date strings of the week containing dateStr, starting on weekStartsOn (0=Sun,1=Mon). */
 export function weekDates(dateStr: string, weekStartsOn: 0 | 1): string[] {
   const [y, m, d] = dateStr.split('-').map(Number);

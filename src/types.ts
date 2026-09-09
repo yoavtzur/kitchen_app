@@ -73,6 +73,9 @@ export type Task = {
   date: string; // YYYY-MM-DD
   recipeId?: string; // absent for a free-text task not tied to a recipe (e.g. "clean shelves")
   title?: string; // display title when recipeId is absent
+  /** Station for a free-text task (recipeId absent) — a recipe-backed task's station always
+   * comes from its recipe's own category instead. */
+  categoryOverride?: RecipeCategory;
   multiplier: number;
   priority: Priority;
   priorityManual?: boolean;
@@ -118,15 +121,28 @@ export type DayPlan = {
   entries: DayPlanEntry[];
 };
 
+/** Per-account, server-authoritative membership attributes — deliberately kept out of AppState:
+ * they describe who may do what, not restaurant data, and aren't part of the synced blob. */
+export type MemberRole = 'chef' | 'cook';
+
+export type MemberPermissions = {
+  canEditRecipes: boolean;
+  canDeleteRecipes: boolean;
+};
+
 export type Cook = {
   id: string;
   name: string;
   color: string;
 };
 
-/** One row of the persistent supply order sheet, keyed by ingredient. */
+/** One row of the dated supply order sheet, keyed by (ingredientId, date) — see
+ * `orderLineKey` in lib/date.ts. There's no synthetic id: ops carry reducer actions (not rows),
+ * and ops.op_id is already its own UUID, so a stored id here would only be a value that could
+ * drift from its own key components. */
 export type OrderLine = {
   ingredientId: string;
+  date: string; // YYYY-MM-DD
   /** Manual quantity typed by the user; when absent the suggested quantity is used. */
   qtyOverride?: number;
   ordered: boolean;

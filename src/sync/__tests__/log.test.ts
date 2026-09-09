@@ -20,13 +20,15 @@ function baseState(overrides: Partial<AppState> = {}): AppState {
   };
 }
 
+const date = '2026-09-05';
+
 function receiveOp(seq: number, qty: number, opId = `op-${seq}`, ingredientId = 'ing-egg'): OpRow {
-  return { seq, opId, action: { type: 'RECEIVE_ORDER', receipts: [{ ingredientId, qty }] } };
+  return { seq, opId, action: { type: 'RECEIVE_ORDER', date, receipts: [{ ingredientId, qty }] } };
 }
 
 describe('applyOps', () => {
   it('applies ops in the given order and is deterministic', () => {
-    const state = baseState({ orderLines: [{ ingredientId: 'ing-egg', ordered: true }] });
+    const state = baseState({ orderLines: [{ ingredientId: 'ing-egg', date, ordered: true }] });
     const ops = [receiveOp(1, 5)];
     const once = applyOps(state, ops);
     const again = applyOps(state, ops);
@@ -84,8 +86,8 @@ describe('foldContiguous', () => {
         { id: 'ing-flour', name: 'קמח', unit: 'kg', currentQty: 5, dailyUsage: 2, weeklyUsage: 14 },
       ],
       orderLines: [
-        { ingredientId: 'ing-egg', ordered: true },
-        { ingredientId: 'ing-flour', ordered: true },
+        { ingredientId: 'ing-egg', date, ordered: true },
+        { ingredientId: 'ing-flour', date, ordered: true },
       ],
     });
     const result = foldContiguous(state, 0, [receiveOp(1, 5), receiveOp(2, 3, 'op-2', 'ing-flour')]);
@@ -97,7 +99,7 @@ describe('foldContiguous', () => {
   });
 
   it('flags a gap and only applies up to it', () => {
-    const state = baseState({ orderLines: [{ ingredientId: 'ing-egg', ordered: true }] });
+    const state = baseState({ orderLines: [{ ingredientId: 'ing-egg', date, ordered: true }] });
     const result = foldContiguous(state, 0, [receiveOp(1, 5), receiveOp(3, 3)]); // seq 2 missing
     expect(result.state.ingredients[0].currentQty).toBe(65); // only seq 1 applied
     expect(result.toSeq).toBe(1);

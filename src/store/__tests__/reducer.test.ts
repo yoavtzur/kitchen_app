@@ -90,7 +90,7 @@ describe('SET_INGREDIENT_UNIT', () => {
   it('converts a matching order-line override in the same family', () => {
     const state = baseState({
       ingredients: [tomatoes],
-      orderLines: [{ ingredientId: 'ing-tomato', qtyOverride: 2, ordered: false }],
+      orderLines: [{ ingredientId: 'ing-tomato', date, qtyOverride: 2, ordered: false }],
     });
     const next = reducer(state, { type: 'SET_INGREDIENT_UNIT', id: 'ing-tomato', unit: 'g' });
     expect(next.orderLines[0].qtyOverride).toBe(2000);
@@ -99,7 +99,7 @@ describe('SET_INGREDIENT_UNIT', () => {
   it('leaves an unrelated ingredient’s order line untouched', () => {
     const state = baseState({
       ingredients: [tomatoes],
-      orderLines: [{ ingredientId: 'ing-egg', qtyOverride: 30, ordered: false }],
+      orderLines: [{ ingredientId: 'ing-egg', date, qtyOverride: 30, ordered: false }],
     });
     const next = reducer(state, { type: 'SET_INGREDIENT_UNIT', id: 'ing-tomato', unit: 'g' });
     expect(next.orderLines[0].qtyOverride).toBe(30);
@@ -382,7 +382,7 @@ describe('deletes cascade through the whole state', () => {
       recipes: [
         { ...recipe, items: [{ refType: 'ingredient', refId: 'ing-egg', qty: 6, unit: 'unit' }] },
       ],
-      orderLines: [{ ingredientId: 'ing-egg', ordered: true }],
+      orderLines: [{ ingredientId: 'ing-egg', date, ordered: true }],
     });
     const next = reducer(state, { type: 'DELETE_INGREDIENT', id: 'ing-egg' });
 
@@ -392,26 +392,49 @@ describe('deletes cascade through the whole state', () => {
   });
 });
 
+describe('SET_TASK_ASSIGNEE', () => {
+  it('assigns a manual task to a cook, and null unassigns', () => {
+    const task = {
+      id: 'task-manual-1',
+      date,
+      title: 'לנקות מדפים',
+      categoryOverride: 'taboon' as const,
+      multiplier: 1,
+      priority: 'yellow' as const,
+      done: false,
+      source: 'manual' as const,
+    };
+    const state = baseState({ tasks: [task] });
+    const assigned = reducer(state, { type: 'SET_TASK_ASSIGNEE', id: task.id, assigneeId: 'cook-1' });
+    expect(assigned.tasks[0].assigneeId).toBe('cook-1');
+    const unassigned = reducer(assigned, { type: 'SET_TASK_ASSIGNEE', id: task.id, assigneeId: null });
+    expect(unassigned.tasks[0].assigneeId).toBeUndefined();
+  });
+});
+
 describe('order sheet', () => {
   it('persists a typed quantity and the ordered flag per ingredient', () => {
     const withQty = reducer(baseState(), {
       type: 'SET_ORDER_LINE_QTY',
       ingredientId: 'ing-egg',
+      date,
       qtyOverride: 120,
     });
     const withFlag = reducer(withQty, {
       type: 'SET_ORDER_LINE_ORDERED',
       ingredientId: 'ing-egg',
+      date,
       ordered: true,
     });
 
-    expect(withFlag.orderLines).toEqual([{ ingredientId: 'ing-egg', qtyOverride: 120, ordered: true }]);
+    expect(withFlag.orderLines).toEqual([{ ingredientId: 'ing-egg', date, qtyOverride: 120, ordered: true }]);
   });
 
   it('RECEIVE_ORDER adds exactly what arrived and clears those rows', () => {
-    const state = baseState({ orderLines: [{ ingredientId: 'ing-egg', qtyOverride: 120, ordered: true }] });
+    const state = baseState({ orderLines: [{ ingredientId: 'ing-egg', date, qtyOverride: 120, ordered: true }] });
     const next = reducer(state, {
       type: 'RECEIVE_ORDER',
+      date,
       receipts: [{ ingredientId: 'ing-egg', qty: 120 }],
     });
 
@@ -426,29 +449,32 @@ describe('order sheet', () => {
         { id: 'ing-flour', name: 'קמח', unit: 'kg', currentQty: 5, dailyUsage: 2, weeklyUsage: 14 },
       ],
       orderLines: [
-        { ingredientId: 'ing-egg', ordered: true },
-        { ingredientId: 'ing-flour', ordered: false },
+        { ingredientId: 'ing-egg', date, ordered: true },
+        { ingredientId: 'ing-flour', date, ordered: false },
       ],
     });
     const next = reducer(state, {
       type: 'RECEIVE_ORDER',
+      date,
       receipts: [{ ingredientId: 'ing-egg', qty: 30 }],
     });
 
     expect(next.ingredients.find((i) => i.id === 'ing-flour')?.currentQty).toBe(5);
-    expect(next.orderLines).toEqual([{ ingredientId: 'ing-flour', ordered: false }]);
+    expect(next.orderLines).toEqual([{ ingredientId: 'ing-flour', date, ordered: false }]);
   });
 
   it('RECEIVE_ORDER is idempotent: a duplicate/retried receipt does not add stock twice', () => {
-    const state = baseState({ orderLines: [{ ingredientId: 'ing-egg', qtyOverride: 120, ordered: true }] });
+    const state = baseState({ orderLines: [{ ingredientId: 'ing-egg', date, qtyOverride: 120, ordered: true }] });
     const once = reducer(state, {
       type: 'RECEIVE_ORDER',
+      date,
       receipts: [{ ingredientId: 'ing-egg', qty: 120 }],
     });
     // The same op replayed (or two cooks tapping "קבלת סחורה" at once) after the line is
     // already gone must be a no-op, not a second addition to stock.
     const twice = reducer(once, {
       type: 'RECEIVE_ORDER',
+      date,
       receipts: [{ ingredientId: 'ing-egg', qty: 120 }],
     });
     expect(twice.ingredients[0].currentQty).toBe(180);
@@ -459,14 +485,36 @@ describe('order sheet', () => {
     const once = reducer(baseState(), {
       type: 'SET_ORDER_LINE_ORDERED',
       ingredientId: 'ing-egg',
+      date,
       ordered: true,
     });
     const twice = reducer(once, {
       type: 'SET_ORDER_LINE_ORDERED',
       ingredientId: 'ing-egg',
+      date,
       ordered: true,
     });
-    expect(twice.orderLines).toEqual([{ ingredientId: 'ing-egg', ordered: true }]);
+    expect(twice.orderLines).toEqual([{ ingredientId: 'ing-egg', date, ordered: true }]);
+  });
+
+  it('SUBMIT_ORDER absolutely sets qtyOverride and ordered for every submitted line', () => {
+    const next = reducer(baseState(), {
+      type: 'SUBMIT_ORDER',
+      date,
+      lines: [{ ingredientId: 'ing-egg', qty: 45 }],
+    });
+    expect(next.orderLines).toEqual([{ ingredientId: 'ing-egg', date, qtyOverride: 45, ordered: true }]);
+  });
+
+  it('CLEAR_ORDER_SHEET only clears the given date, leaving other dates untouched', () => {
+    const state = baseState({
+      orderLines: [
+        { ingredientId: 'ing-egg', date, ordered: true },
+        { ingredientId: 'ing-egg', date: '2026-09-12', ordered: true },
+      ],
+    });
+    const next = reducer(state, { type: 'CLEAR_ORDER_SHEET', date });
+    expect(next.orderLines).toEqual([{ ingredientId: 'ing-egg', date: '2026-09-12', ordered: true }]);
   });
 });
 
@@ -584,11 +632,13 @@ describe('null clears a field; undefined/omitted leaves it untouched', () => {
     const withOverride = reducer(baseState(), {
       type: 'SET_ORDER_LINE_QTY',
       ingredientId: 'ing-egg',
+      date,
       qtyOverride: 120,
     });
     const cleared = reducer(withOverride, {
       type: 'SET_ORDER_LINE_QTY',
       ingredientId: 'ing-egg',
+      date,
       qtyOverride: null,
     });
     expect(cleared.orderLines[0].qtyOverride).toBeUndefined();
@@ -639,8 +689,8 @@ describe('actions survive a JSON round trip', () => {
     },
     {
       name: 'SET_ORDER_LINE_QTY clearing qtyOverride',
-      state: baseState({ orderLines: [{ ingredientId: 'ing-egg', qtyOverride: 120, ordered: false }] }),
-      action: { type: 'SET_ORDER_LINE_QTY', ingredientId: 'ing-egg', qtyOverride: null },
+      state: baseState({ orderLines: [{ ingredientId: 'ing-egg', date, qtyOverride: 120, ordered: false }] }),
+      action: { type: 'SET_ORDER_LINE_QTY', ingredientId: 'ing-egg', date, qtyOverride: null },
     },
     {
       name: 'SET_AUTO_TASK_ASSIGNEE clearing assigneeId',

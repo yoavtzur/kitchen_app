@@ -1,6 +1,6 @@
 import type { AppState } from '../types';
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export function createSeedState(): AppState {
   return {

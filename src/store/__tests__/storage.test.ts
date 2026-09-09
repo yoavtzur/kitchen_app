@@ -53,7 +53,7 @@ describe('migrating v2 data to v3', () => {
   it('repairs a one-sided link so the recipe finally drives the main screen', () => {
     const state = parseImportedState(v2Json());
 
-    expect(state.schemaVersion).toBe(3);
+    expect(state.schemaVersion).toBe(4);
     expect(state.products[0].recipeId).toBe('recipe-cream');
     expect(state.recipes[0].producesProductId).toBe('prod-cream');
 
@@ -124,10 +124,44 @@ describe('migrating v2 data to v3', () => {
 
     const state = parseImportedState(JSON.stringify(json));
 
-    expect(state.schemaVersion).toBe(3);
+    expect(state.schemaVersion).toBe(4);
     expect(state.ingredients).toHaveLength(1);
     expect(state.recipes).toHaveLength(1);
     expect(state.products[0].recipeId).toBe('recipe-cream');
     expect(state.tasks.map((t) => t.id)).toEqual(['t-manual']);
+  });
+});
+
+describe('migrating v3 data to v4', () => {
+  function v3Json(overrides: Record<string, unknown> = {}): string {
+    return JSON.stringify({
+      schemaVersion: 3,
+      settings: { defaultCoverageDays: 1, weekStartsOn: 0, roundMultiplierTo: 0.25 },
+      cooks: [],
+      ingredients: [
+        { id: 'ing-egg', name: 'ביצים', unit: 'unit', currentQty: 60, dailyUsage: 20, weeklyUsage: 140 },
+      ],
+      products: [],
+      recipes: [],
+      tasks: [],
+      taskOverrides: [],
+      specialEvents: [],
+      dayPlans: [],
+      orderLines: [{ ingredientId: 'ing-egg', qtyOverride: 30, ordered: true }],
+      ...overrides,
+    });
+  }
+
+  it('stamps every pre-existing order line with today so the in-progress sheet survives', () => {
+    const state = parseImportedState(v3Json());
+    expect(state.schemaVersion).toBe(4);
+    expect(state.orderLines).toEqual([
+      { ingredientId: 'ing-egg', date: todayStr(), qtyOverride: 30, ordered: true },
+    ]);
+  });
+
+  it('an already-empty order sheet stays empty', () => {
+    const state = parseImportedState(v3Json({ orderLines: [] }));
+    expect(state.orderLines).toEqual([]);
   });
 });

@@ -87,7 +87,7 @@ function baseState(overrides: Partial<AppState> = {}): AppState {
       { id: 'ev-1', name: 'אירוע', date: '2026-09-06', extras: [{ productId: 'prod-dough', extraQty: 20 }] },
     ],
     dayPlans: [{ date: '2026-09-05', entries: [{ productId: 'prod-dough', prepOverride: 30 }] }],
-    orderLines: [{ ingredientId: 'ing-flour', ordered: true }],
+    orderLines: [{ ingredientId: 'ing-flour', date: '2026-09-05', ordered: true }],
     ...overrides,
   };
 }

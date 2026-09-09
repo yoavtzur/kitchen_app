@@ -1,12 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
 import { useApp, useSync } from '../store/AppContext';
 import { useAuth } from '../auth/AuthContext';
+import { usePermissions } from '../auth/usePermissions';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { exportStateAsJson, parseImportedState } from '../store/storage';
 import { SCHEMA_VERSION } from '../data/seed';
 import { newId } from '../lib/ids';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import type { Cook, RoundTo } from '../types';
+import { CookPill } from '../components/CookPill';
+import type { Cook, MemberRole, RoundTo } from '../types';
+
+type MemberRow = {
+  userId: string;
+  cookId: string | null;
+  role: MemberRole;
+  canEditRecipes: boolean;
+  canDeleteRecipes: boolean;
+};
 
 const ROUND_OPTIONS: { value: string; label: string }[] = [
   { value: 'none', label: 'ללא עיגול' },
@@ -26,15 +36,39 @@ const SYNC_STATUS_LABEL: Record<string, string> = {
 
 export function Settings() {
   const { state, dispatch } = useApp();
-  const { session, membership, signOut } = useAuth();
+  const { session, membership, signOut, setMemberPermissions } = useAuth();
+  const { isChef } = usePermissions();
   const sync = useSync();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [newCookName, setNewCookName] = useState('');
   const [importError, setImportError] = useState('');
   const [restaurant, setRestaurant] = useState<{ name: string; joinCode: string } | null>(null);
-  const [boundCookIds, setBoundCookIds] = useState<Set<string>>(new Set());
+  const [members, setMembers] = useState<MemberRow[]>([]);
+  const [permError, setPermError] = useState('');
   const [copied, setCopied] = useState(false);
   const [deleteCandidate, setDeleteCandidate] = useState<Cook | null>(null);
+
+  const boundCookIds = new Set(members.map((m) => m.cookId).filter((id): id is string => !!id));
+
+  function reloadMembers() {
+    if (!isSupabaseConfigured || !supabase || !membership) return;
+    supabase
+      .from('memberships')
+      .select('user_id, cook_id, role, can_edit_recipes, can_delete_recipes')
+      .eq('restaurant_id', membership.restaurantId)
+      .then(({ data }) => {
+        if (!data) return;
+        setMembers(
+          data.map((row) => ({
+            userId: row.user_id as string,
+            cookId: row.cook_id as string | null,
+            role: row.role as MemberRole,
+            canEditRecipes: Boolean(row.can_edit_recipes),
+            canDeleteRecipes: Boolean(row.can_delete_recipes),
+          })),
+        );
+      });
+  }
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase || !membership) return;
@@ -47,19 +81,23 @@ export function Settings() {
       .then(({ data }) => {
         if (!cancelled && data) setRestaurant({ name: data.name as string, joinCode: data.join_code as string });
       });
-    supabase
-      .from('memberships')
-      .select('cook_id')
-      .eq('restaurant_id', membership.restaurantId)
-      .then(({ data }) => {
-        if (!cancelled && data) {
-          setBoundCookIds(new Set(data.map((row) => row.cook_id as string | null).filter((id): id is string => !!id)));
-        }
-      });
+    reloadMembers();
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [membership]);
+
+  async function updatePermissions(row: MemberRow, patch: Partial<Pick<MemberRow, 'canEditRecipes' | 'canDeleteRecipes'>>) {
+    setPermError('');
+    const next = { ...row, ...patch };
+    const { error } = await setMemberPermissions(row.userId, next.role, next.canEditRecipes, next.canDeleteRecipes);
+    if (error) {
+      setPermError(error);
+      return;
+    }
+    reloadMembers();
+  }
 
   function handleExport() {
     const json = exportStateAsJson(state);
@@ -173,6 +211,51 @@ export function Settings() {
         </>
       )}
 
+      {isSupabaseConfigured && isChef && (
+        <>
+          <h2 className="section-title">הרשאות צוות</h2>
+          <div className="card stack-gap-2">
+            {permError && <p style={{ color: 'var(--color-red)' }}>{permError}</p>}
+            {members.map((row) => {
+              const cook = row.cookId ? state.cooks.find((c) => c.id === row.cookId) : undefined;
+              return (
+                <div key={row.userId} className="row-item" style={{ alignItems: 'center' }}>
+                  <div className="row" style={{ gap: 8, width: 'auto' }}>
+                    {cook ? <CookPill cook={cook} /> : <span className="muted">טבח לא משויך</span>}
+                  </div>
+                  {row.role === 'chef' ? (
+                    <span className="pill">שף</span>
+                  ) : cook ? (
+                    <div className="row" style={{ gap: 12, width: 'auto' }}>
+                      <label className="row" style={{ gap: 4, width: 'auto' }}>
+                        <input
+                          type="checkbox"
+                          checked={row.canEditRecipes}
+                          onChange={(e) => updatePermissions(row, { canEditRecipes: e.target.checked })}
+                          style={{ width: 'auto' }}
+                        />
+                        עריכת מתכונים
+                      </label>
+                      <label className="row" style={{ gap: 4, width: 'auto' }}>
+                        <input
+                          type="checkbox"
+                          checked={row.canDeleteRecipes}
+                          onChange={(e) => updatePermissions(row, { canDeleteRecipes: e.target.checked })}
+                          style={{ width: 'auto' }}
+                        />
+                        מחיקת מתכונים
+                      </label>
+                    </div>
+                  ) : (
+                    <span className="muted">צריך להתחבר לפני שאפשר להגדיר הרשאות</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
       <h2 className="section-title">חישוב</h2>
       <div className="card stack-gap-3">
         <div className="field" style={{ marginBottom: 0 }}>
@@ -210,9 +293,7 @@ export function Settings() {
         <div className="stack-gap-2" style={{ marginBottom: 'var(--space-3)' }}>
           {state.cooks.map((cook) => (
             <div key={cook.id} className="row-item">
-              <span className="pill" style={{ background: cook.color + '22', color: cook.color }}>
-                {cook.name}
-              </span>
+              <CookPill cook={cook} />
               <button type="button" className="btn btn-icon" onClick={() => requestDeleteCook(cook)}>
                 ✕
               </button>

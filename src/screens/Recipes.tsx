@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { createWorker } from 'tesseract.js';
 import { useApp } from '../store/AppContext';
+import { usePermissions } from '../auth/usePermissions';
 import { CategoryTabs } from '../components/CategoryTabs';
 import { BottomSheet } from '../components/BottomSheet';
 import { EmptyState } from '../components/EmptyState';
@@ -10,24 +11,12 @@ import { RecipeEditor } from './RecipeEditor';
 import { multiplierForProduct, toPrepare } from '../lib/calc';
 import { todayStr } from '../lib/date';
 import { formatQty, unitLabel } from '../lib/units';
+import { CATEGORY_TABS, RECIPE_CATEGORIES, type CategoryFilter } from '../lib/recipeCategories';
 import type { Recipe, RecipeCategory } from '../types';
-
-const CATEGORIES: { value: RecipeCategory; label: string }[] = [
-  { value: 'cold', label: 'פס קר' },
-  { value: 'hot', label: 'פס חם' },
-  { value: 'taboon', label: 'טאבון' },
-  { value: 'dessert', label: 'קינוחים' },
-  { value: 'general', label: 'כללי' },
-];
-
-type CategoryFilter = RecipeCategory | 'all';
-
-// "הכל" leads the row so browsing everything at once is the default, not a tab you have to
-// find — the individual stations stay right beside it for narrowing down.
-const TABS: { value: CategoryFilter; label: string }[] = [{ value: 'all', label: 'הכל' }, ...CATEGORIES];
 
 function RecipeRow({ recipe }: { recipe: Recipe }) {
   const { state } = useApp();
+  const { canEditRecipes } = usePermissions();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
 
@@ -114,9 +103,11 @@ function RecipeRow({ recipe }: { recipe: Recipe }) {
               <li key={i}>{step}</li>
             ))}
           </ol>
-          <button type="button" className="btn" style={{ marginTop: 'var(--space-3)' }} onClick={() => setEditing(true)}>
-            ערוך פריט
-          </button>
+          {canEditRecipes && (
+            <button type="button" className="btn" style={{ marginTop: 'var(--space-3)' }} onClick={() => setEditing(true)}>
+              ערוך פריט
+            </button>
+          )}
         </div>
       )}
 
@@ -274,6 +265,7 @@ function RecipeScanSheet({ onClose }: { onClose: () => void }) {
 
 export function Recipes() {
   const { state } = useApp();
+  const { canEditRecipes } = usePermissions();
   const [category, setCategory] = useState<CategoryFilter>('all');
   const [query, setQuery] = useState('');
   const [adding, setAdding] = useState(false);
@@ -287,7 +279,7 @@ export function Recipes() {
   const groups: { label?: string; recipes: Recipe[] }[] = searching
     ? [{ recipes: state.recipes.filter((r) => matchesQuery(query, r.name)) }]
     : category === 'all'
-      ? CATEGORIES.map((c) => ({
+      ? RECIPE_CATEGORIES.map((c) => ({
           label: c.label,
           recipes: state.recipes.filter((r) => r.category === c.value),
         })).filter((g) => g.recipes.length > 0)
@@ -308,18 +300,22 @@ export function Recipes() {
       <div className="screen-header">
         <h1 className="screen-title">מתכונים</h1>
         <div className="row" style={{ gap: 8, width: 'auto' }}>
-          <button type="button" className="btn btn-icon" onClick={() => setScanning(true)} aria-label="סרוק מתכון">
-            <CameraIcon />
-          </button>
-          <button type="button" className="btn btn-icon btn-primary" onClick={() => setAdding(true)} aria-label="הוסף פריט">
-            +
-          </button>
+          {canEditRecipes && (
+            <>
+              <button type="button" className="btn btn-icon" onClick={() => setScanning(true)} aria-label="סרוק מתכון">
+                <CameraIcon />
+              </button>
+              <button type="button" className="btn btn-icon btn-primary" onClick={() => setAdding(true)} aria-label="הוסף פריט">
+                +
+              </button>
+            </>
+          )}
         </div>
       </div>
 
       <SearchInput value={query} onChange={setQuery} placeholder="חיפוש מתכון..." />
 
-      {!searching && <CategoryTabs tabs={TABS} value={category} onChange={setCategory} />}
+      {!searching && <CategoryTabs tabs={CATEGORY_TABS} value={category} onChange={setCategory} />}
 
       {isEmpty ? (
         <EmptyState text={emptyText} />

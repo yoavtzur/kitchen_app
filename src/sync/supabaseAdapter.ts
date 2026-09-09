@@ -16,6 +16,21 @@ function describeError(error: { message: string; code?: string }): string {
   return error.code ? `${error.message} (${error.code})` : error.message;
 }
 
+/** Postgres 42501 = insufficient_privilege. append_ops raises exactly this code for a
+ * forbidden_action or not_a_member rejection — neither is fixable by retrying, so it's flagged
+ * `permanent` for engine.ts's APPEND_ERR handling to drain the op instead of retrying forever. */
+function isPermissionError(error: { code?: string }): boolean {
+  return error.code === '42501';
+}
+
+class AppendError extends Error {
+  permanent?: boolean;
+  constructor(message: string, permanent?: boolean) {
+    super(message);
+    this.permanent = permanent;
+  }
+}
+
 export function createSupabaseAdapter(restaurantId: string, clientId: string): SyncAdapter {
   if (!supabase) throw new Error('Supabase is not configured');
   const client = supabase;
@@ -53,7 +68,7 @@ export function createSupabaseAdapter(restaurantId: string, clientId: string): S
         p_client_id: clientId,
         p_ops: ops.map((op) => ({ op_id: op.opId, action: op.action })),
       });
-      if (error) throw new Error(describeError(error));
+      if (error) throw new AppendError(describeError(error), isPermissionError(error));
       return ((data ?? []) as OpRowDb[]).map(toOpRow);
     },
 

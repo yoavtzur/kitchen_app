@@ -21,6 +21,12 @@ type AuthContextValue = {
   createRestaurant(name: string, snapshot: unknown, schemaVersion: number): Promise<ActionResult>;
   joinRestaurant(code: string): Promise<ActionResult>;
   setMyCook(cookId: string): Promise<ActionResult>;
+  setMemberPermissions(
+    userId: string,
+    role: 'chef' | 'cook',
+    canEditRecipes: boolean,
+    canDeleteRecipes: boolean,
+  ): Promise<ActionResult>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -36,7 +42,9 @@ function mapAuthError(message: string): string {
 function mapRpcError(err: { code?: string; message: string }): string {
   if (err.code === 'P0002') return 'קוד לא נמצא';
   if (err.code === '23505') return 'החשבון כבר משויך למטבח';
-  if (err.code === '42501') return 'אין הרשאה לפעולה הזו';
+  if (err.code === '42501') {
+    return err.message.includes('last_chef') ? 'לא ניתן להוריד את השף האחרון מתפקידו' : 'אין הרשאה לפעולה הזו';
+  }
   return err.message;
 }
 
@@ -75,7 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setMembershipLoading(true);
     supabase
       .from('memberships')
-      .select('restaurant_id, cook_id, role')
+      .select('restaurant_id, cook_id, role, can_edit_recipes, can_delete_recipes')
       .eq('user_id', session.user.id)
       .maybeSingle()
       .then(({ data, error }) => {
@@ -83,7 +91,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setMembershipLoading(false);
         if (error) return; // offline/transient: keep whatever was cached rather than bounce out
         const next: Membership | null = data
-          ? { restaurantId: data.restaurant_id, cookId: data.cook_id, role: data.role as Membership['role'] }
+          ? {
+              restaurantId: data.restaurant_id,
+              cookId: data.cook_id,
+              role: data.role as Membership['role'],
+              canEditRecipes: Boolean(data.can_edit_recipes),
+              canDeleteRecipes: Boolean(data.can_delete_recipes),
+            }
           : null;
         setMembership(next);
         writeCachedMembership(next);
@@ -120,7 +134,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) return { error: mapRpcError(error) };
     const row = data?.[0];
     if (row) {
-      const next: Membership = { restaurantId: row.restaurant_id, cookId: null, role: 'owner' };
+      const next: Membership = {
+        restaurantId: row.restaurant_id,
+        cookId: null,
+        role: 'chef',
+        canEditRecipes: false,
+        canDeleteRecipes: false,
+      };
       setMembership(next);
       writeCachedMembership(next);
     }
@@ -133,7 +153,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) return { error: mapRpcError(error) };
     const row = data?.[0];
     if (row) {
-      const next: Membership = { restaurantId: row.restaurant_id, cookId: null, role: 'member' };
+      const next: Membership = {
+        restaurantId: row.restaurant_id,
+        cookId: null,
+        role: 'cook',
+        canEditRecipes: false,
+        canDeleteRecipes: false,
+      };
+      setMembership(next);
+      writeCachedMembership(next);
+    }
+    return { error: null };
+  }
+
+  async function setMemberPermissions(
+    userId: string,
+    role: 'chef' | 'cook',
+    canEditRecipes: boolean,
+    canDeleteRecipes: boolean,
+  ): Promise<ActionResult> {
+    if (!supabase) return { error: 'Supabase אינו מוגדר' };
+    const { error } = await supabase.rpc('set_member_permissions', {
+      p_user_id: userId,
+      p_role: role,
+      p_can_edit_recipes: canEditRecipes,
+      p_can_delete_recipes: canDeleteRecipes,
+    });
+    if (error) return { error: mapRpcError(error) };
+    // If the chef edited their own row, reflect it locally right away rather than waiting on
+    // the membership refetch effect (which only fires on a session change).
+    if (membership && userId === session?.user.id) {
+      const next: Membership = { ...membership, role, canEditRecipes, canDeleteRecipes };
       setMembership(next);
       writeCachedMembership(next);
     }
@@ -166,6 +216,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         createRestaurant,
         joinRestaurant,
         setMyCook,
+        setMemberPermissions,
       }}
     >
       {children}

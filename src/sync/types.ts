@@ -57,7 +57,9 @@ export type SyncEvent =
   | { type: 'DISPATCH'; opId: string; action: Action }
   | { type: 'OPS_IN'; rows: OpRow[] }
   | { type: 'APPEND_OK'; rows: OpRow[] }
-  | { type: 'APPEND_ERR'; opIds: string[]; message: string }
+  // `permanent` marks an error that retrying can never fix (e.g. the server rejected the op as
+  // forbidden) — see engine.ts's APPEND_ERR handling, which drops the op instead of retrying it.
+  | { type: 'APPEND_ERR'; opIds: string[]; message: string; permanent?: boolean }
   | { type: 'RETRY' }
   | { type: 'SNAPSHOT_MOVED' }
   | { type: 'ONLINE' }

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useApp } from '../store/AppContext';
 import { useAuth } from '../auth/AuthContext';
 import { newId } from '../lib/ids';
+import { CookPill } from '../components/CookPill';
 import type { Cook } from '../types';
 
 /** Shown once per account, right after joining/creating a restaurant, until the account is bound
@@ -55,9 +56,7 @@ export function PickCook() {
               disabled={busy}
               onClick={() => pick(cook.id)}
             >
-              <span className="pill" style={{ background: cook.color + '22', color: cook.color }}>
-                {cook.name}
-              </span>
+              <CookPill cook={cook} />
               <span className="muted">זה אני ←</span>
             </button>
           ))}

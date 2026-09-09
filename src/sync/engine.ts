@@ -136,6 +136,21 @@ export function syncReduce(state: SyncState, event: SyncEvent): [SyncState, Sync
     case 'APPEND_ERR': {
       const failedIds = new Set(event.opIds);
       const inFlight = state.inFlight ? state.inFlight.filter((id) => !failedIds.has(id)) : null;
+      // A permanent error (e.g. the server rejected the op as forbidden) can never be fixed by
+      // retrying — keeping it in `pending` forever would jam the queue behind it, silently
+      // blocking every op dispatched afterward. Drop it and recompute `display` so the UI stops
+      // reflecting the rejected change, instead of scheduling a RETRY_IN.
+      if (event.permanent) {
+        const pending = state.pending.filter((p) => !failedIds.has(p.opId));
+        const dropped: SyncState = {
+          ...state,
+          pending,
+          inFlight: inFlight && inFlight.length > 0 ? inFlight : null,
+          status: 'error',
+          lastError: event.message,
+        };
+        return settle(dropped);
+      }
       const retryAttempt = state.retryAttempt + 1;
       const next: SyncState = {
         ...state,

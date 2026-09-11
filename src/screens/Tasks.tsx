@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type Dispatch } from 'react';
 import { useApp } from '../store/AppContext';
 import { weightedRecipeItems } from '../lib/calc';
 import { getDisplayTasks, ingredientDeltasFor, type DisplayTask } from '../lib/tasks';
@@ -8,13 +8,14 @@ import { formatQty } from '../lib/units';
 import { PriorityDot, PriorityPill } from '../components/PriorityDot';
 import { NumberEditor } from '../components/NumberEditor';
 import { BottomSheet } from '../components/BottomSheet';
-import { ConfirmDialog } from '../components/ConfirmDialog';
 import { EmptyState } from '../components/EmptyState';
 import { SearchInput } from '../components/SearchInput';
 import { CategoryTabs } from '../components/CategoryTabs';
+import { SwipeToComplete } from '../components/SwipeToComplete';
 import { matchesQuery } from '../lib/search';
 import { CATEGORY_TABS, RECIPE_CATEGORIES, type CategoryFilter } from '../lib/recipeCategories';
-import type { Priority, RecipeCategory, Task } from '../types';
+import type { Action } from '../store/reducer';
+import type { AppState, Priority, Recipe, RecipeCategory, Task } from '../types';
 
 const PRIORITY_CYCLE: Priority[] = ['red', 'yellow', 'green'];
 
@@ -47,7 +48,7 @@ function TaskDetailSheet({ task, onClose }: { task: DisplayTask; onClose: () => 
     <BottomSheet title={`${recipe.name} — מתכון ×${task.multiplier}`} onClose={onClose}>
       <div className="field">
         <label>כפולת מתכון</label>
-        <NumberEditor value={task.multiplier} label="כפולת מתכון" step={0.25} onChange={setMultiplier} />
+        <NumberEditor value={task.multiplier} label="כפולת מתכון" step={0.25} variant="stepper" onChange={setMultiplier} />
       </div>
       <table className="data-table" style={{ marginBottom: 'var(--space-3)' }}>
         <thead>
@@ -78,69 +79,39 @@ function TaskDetailSheet({ task, onClose }: { task: DisplayTask; onClose: () => 
   );
 }
 
-function CompleteTaskDialog({ task, onClose }: { task: DisplayTask; onClose: () => void }) {
-  const { state, dispatch } = useApp();
-  const recipe = state.recipes.find((r) => r.id === task.recipeId);
-  const [multiplier, setMultiplier] = useState(task.multiplier);
-  if (!recipe) return null;
+/** Applies a task's completion: computes ingredient/product deltas at the given multiplier and
+ * dispatches the right absolute-completion action for the task's source. Free-text tasks (no
+ * recipe) pass empty deltas, same as before. */
+function completeTask(
+  task: DisplayTask,
+  recipe: Recipe | undefined,
+  multiplier: number,
+  state: AppState,
+  dispatch: Dispatch<Action>,
+) {
+  const ingredientDeltas = recipe ? ingredientDeltasFor(recipe, multiplier, state) : [];
+  const producedProductId = recipe?.producesProductId;
+  const producedQty = recipe && producedProductId ? recipe.yieldQty * multiplier : undefined;
 
-  const lines = weightedRecipeItems(recipe, multiplier, state);
-  const producedQty = recipe.yieldQty * multiplier;
-
-  function confirm() {
-    const ingredientDeltas = ingredientDeltasFor(recipe!, multiplier, state);
-    const producedProductId = recipe!.producesProductId;
-    const producedQtyToApply = producedProductId ? producedQty : undefined;
-
-    if (task.source === 'manual') {
-      dispatch({
-        type: 'CONFIRM_TASK_COMPLETION',
-        taskId: task.id,
-        ingredientDeltas,
-        producedProductId,
-        producedQty: producedQtyToApply,
-      });
-    } else {
-      dispatch({
-        type: 'CONFIRM_AUTO_TASK_COMPLETION',
-        id: task.id,
-        productId: task.productId!,
-        date: task.date,
-        ingredientDeltas,
-        producedProductId,
-        producedQty: producedQtyToApply,
-      });
-    }
-    onClose();
+  if (task.source === 'manual') {
+    dispatch({
+      type: 'CONFIRM_TASK_COMPLETION',
+      taskId: task.id,
+      ingredientDeltas,
+      producedProductId,
+      producedQty,
+    });
+  } else {
+    dispatch({
+      type: 'CONFIRM_AUTO_TASK_COMPLETION',
+      id: task.id,
+      productId: task.productId!,
+      date: task.date,
+      ingredientDeltas,
+      producedProductId,
+      producedQty,
+    });
   }
-
-  return (
-    <ConfirmDialog title="אישור ביצוע משימה" onClose={onClose} onConfirm={confirm} confirmLabel="אשר וסיים">
-      <div className="field">
-        <label>כפולת מתכון בפועל</label>
-        <input
-          type="number"
-          inputMode="decimal"
-          value={multiplier}
-          onChange={(e) => setMultiplier(parseFloat(e.target.value) || 0)}
-        />
-      </div>
-      <p className="muted">המצרכים הבאים יורדו מהמלאי:</p>
-      {lines
-        .filter((l) => l.refType === 'ingredient')
-        .map((l, i) => (
-          <p key={i}>
-            {l.name}: −{formatQty(l.qty, l.unit)}
-          </p>
-        ))}
-      {recipe.producesProductId && (
-        <p className="muted" style={{ marginTop: 'var(--space-2)' }}>
-          יתווסף למלאי: {state.products.find((p) => p.id === recipe.producesProductId)?.name} +
-          {formatQty(producedQty, recipe.yieldUnit)}
-        </p>
-      )}
-    </ConfirmDialog>
-  );
 }
 
 const FREE_TEXT_OPTION = '__free__';
@@ -242,18 +213,12 @@ function AddManualTaskSheet({ date, onClose }: { date: string; onClose: () => vo
 function TaskRow({ task }: { task: DisplayTask }) {
   const { state, dispatch } = useApp();
   const [detailOpen, setDetailOpen] = useState(false);
-  const [completing, setCompleting] = useState(false);
   const recipe = state.recipes.find((r) => r.id === task.recipeId);
 
   const isAuto = task.source === 'auto';
 
   function markDone() {
-    if (recipe) {
-      setCompleting(true);
-    } else {
-      // Free-text task: nothing to confirm about inventory, just mark it done.
-      dispatch({ type: 'CONFIRM_TASK_COMPLETION', taskId: task.id, ingredientDeltas: [] });
-    }
+    completeTask(task, recipe, task.multiplier, state, dispatch);
   }
 
   function cyclePriority() {
@@ -305,66 +270,65 @@ function TaskRow({ task }: { task: DisplayTask }) {
     : task.title ?? 'משימה';
 
   return (
-    <div className="card">
-      <div className="row">
-        <div className="row" style={{ gap: 10 }}>
-          <PriorityDot priority={task.priority} onClick={cyclePriority} />
-          <PriorityPill priority={task.priority} />
+    <SwipeToComplete
+      onComplete={task.done ? undoDone : markDone}
+      label={task.done ? '↩ בטל בוצע' : '✓ בוצע'}
+    >
+      <div className="card">
+        <div className="row">
+          <div className="row" style={{ gap: 10 }}>
+            <PriorityDot priority={task.priority} onClick={cyclePriority} />
+            <PriorityPill priority={task.priority} />
+            <button
+              type="button"
+              onClick={() => recipe && setDetailOpen(true)}
+              style={{
+                background: 'none',
+                border: 'none',
+                padding: 0,
+                textAlign: 'start',
+                textDecoration: task.done ? 'line-through' : 'none',
+                opacity: task.done ? 0.5 : 1,
+                fontWeight: 600,
+                cursor: recipe ? 'pointer' : 'default',
+              }}
+            >
+              {title}
+            </button>
+          </div>
           <button
             type="button"
-            onClick={() => recipe && setDetailOpen(true)}
-            style={{
-              background: 'none',
-              border: 'none',
-              padding: 0,
-              textAlign: 'start',
-              textDecoration: task.done ? 'line-through' : 'none',
-              opacity: task.done ? 0.5 : 1,
-              fontWeight: 600,
-              cursor: recipe ? 'pointer' : 'default',
-            }}
+            className="btn btn-icon"
+            style={{ minHeight: 48, minWidth: 48 }}
+            onClick={deleteTask}
+            aria-label="מחק משימה"
           >
-            {title}
-          </button>
-        </div>
-        <div className="row" style={{ gap: 6 }}>
-          {task.done ? (
-            <button type="button" className="btn" onClick={undoDone}>
-              בטל בוצע
-            </button>
-          ) : (
-            <button type="button" className="btn" onClick={markDone}>
-              בוצע
-            </button>
-          )}
-          <button type="button" className="btn btn-icon" onClick={deleteTask} aria-label="מחק משימה">
             ✕
           </button>
         </div>
+        {task.unitMismatch && (
+          <p className="pill red" style={{ marginTop: 'var(--space-2)' }}>
+            יחידת המלאי לא תואמת ליחידת המתכון — צריך לתקן בעריכת הפריט
+          </p>
+        )}
+        <div className="row" style={{ marginTop: 'var(--space-2)', gap: 8 }}>
+          <select
+            value={task.assigneeId ?? ''}
+            onChange={(e) => setAssignee(e.target.value)}
+            aria-label="שיוך לטבח"
+            style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '6px', width: 'auto' }}
+          >
+            <option value="">— ללא —</option>
+            {state.cooks.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        {detailOpen && <TaskDetailSheet task={task} onClose={() => setDetailOpen(false)} />}
       </div>
-      {task.unitMismatch && (
-        <p className="pill red" style={{ marginTop: 'var(--space-2)' }}>
-          יחידת המלאי לא תואמת ליחידת המתכון — צריך לתקן בעריכת הפריט
-        </p>
-      )}
-      <div className="row" style={{ marginTop: 'var(--space-2)', gap: 8 }}>
-        <select
-          value={task.assigneeId ?? ''}
-          onChange={(e) => setAssignee(e.target.value)}
-          aria-label="שיוך לטבח"
-          style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '6px', width: 'auto' }}
-        >
-          <option value="">— ללא —</option>
-          {state.cooks.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      {detailOpen && <TaskDetailSheet task={task} onClose={() => setDetailOpen(false)} />}
-      {completing && <CompleteTaskDialog task={task} onClose={() => setCompleting(false)} />}
-    </div>
+    </SwipeToComplete>
   );
 }
 

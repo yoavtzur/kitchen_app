@@ -12,6 +12,11 @@ type Props = {
 };
 
 export function PriorityDot({ priority, onClick }: Props) {
+  // Read-only display (no onClick, e.g. inside another interactive element like a card-button)
+  // must not be a <button> — a nested button is invalid HTML and breaks accessibility trees.
+  if (!onClick) {
+    return <span className={`priority-dot ${priority}`} role="img" aria-label={LABELS[priority]} title={LABELS[priority]} />;
+  }
   return (
     <button
       type="button"
@@ -19,7 +24,6 @@ export function PriorityDot({ priority, onClick }: Props) {
       onClick={onClick}
       aria-label={LABELS[priority]}
       title={LABELS[priority]}
-      disabled={!onClick}
     />
   );
 }

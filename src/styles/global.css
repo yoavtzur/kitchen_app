@@ -472,6 +472,80 @@ textarea {
   padding: 4px;
 }
 
+.search-input.stepper {
+  padding: 0 var(--space-4);
+}
+
+.search-input.stepper input {
+  font-size: 18px;
+  padding: 16px 0;
+}
+
+.search-input.stepper button {
+  min-width: 48px;
+  min-height: 48px;
+  font-size: 20px;
+}
+
+/* Oversized numeric stepper — no text field, for gloved or wet hands mid-service. */
+.stepper-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+}
+
+.stepper-btn {
+  min-width: 48px;
+  min-height: 48px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 700;
+  border: none;
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  touch-action: manipulation;
+}
+
+.stepper-btn:active {
+  transform: translateY(1px);
+}
+
+.stepper-value {
+  min-width: 64px;
+  text-align: center;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+/* Swipe-to-complete */
+.swipe-wrap {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-m);
+}
+
+.swipe-action {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-green-bg);
+  color: var(--color-green);
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.swipe-surface {
+  position: relative;
+  touch-action: pan-y;
+  user-select: none;
+}
+
 /* Home dashboard */
 .stat-grid {
   display: grid;

@@ -1,11 +1,10 @@
-import { HashRouter, Route, Routes } from 'react-router-dom';
+import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './auth/AuthContext';
 import { AuthGate, MembershipGate, CookGate } from './components/Gate';
 import { AppProvider } from './store/AppContext';
 import { BottomNav } from './components/BottomNav';
 import { SyncBadge } from './components/SyncBadge';
 import { Home } from './screens/Home';
-import { Ingredients } from './screens/Ingredients';
 import { Recipes } from './screens/Recipes';
 import { Consumption } from './screens/Consumption';
 import { Tasks } from './screens/Tasks';
@@ -27,7 +26,7 @@ export default function App() {
                     <SyncBadge />
                     <Routes>
                       <Route path="/" element={<Home />} />
-                      <Route path="/ingredients" element={<Ingredients />} />
+                      <Route path="/ingredients" element={<Navigate to="/count" replace />} />
                       <Route path="/recipes" element={<Recipes />} />
                       <Route path="/consumption" element={<Consumption />} />
                       <Route path="/tasks" element={<Tasks />} />

@@ -273,3 +273,10 @@ export function daysOfSupply(
   if (daily <= 0) return Infinity;
   return ing.currentQty / daily;
 }
+
+/** Coverage pill color for a days-of-supply figure: under a day is urgent, under 3 is a heads-up. */
+export function coverageColor(days: number): 'red' | 'yellow' | 'green' {
+  if (days < 1) return 'red';
+  if (days < 3) return 'yellow';
+  return 'green';
+}

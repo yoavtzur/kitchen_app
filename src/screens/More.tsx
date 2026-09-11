@@ -7,9 +7,6 @@ export function More() {
         <h1 className="screen-title">עוד</h1>
       </div>
       <div className="card-list">
-        <Link to="/count" className="card" style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
-          ספירת מלאי
-        </Link>
         <Link to="/orders" className="card" style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
           הזמנת אספקה
         </Link>

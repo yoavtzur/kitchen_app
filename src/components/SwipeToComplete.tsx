@@ -4,15 +4,17 @@ import { resolveAxis, shouldComplete, type SwipeAxis } from '../lib/swipe';
 type Props = {
   onComplete: () => void;
   disabled?: boolean;
+  /** Text shown on the reveal panel behind the card as it's dragged aside. */
+  label?: string;
   children: React.ReactNode;
 };
 
 /**
- * Wraps a card so a horizontal drag either way completes it. Vertical drags are abandoned
- * immediately so the page's native scroll takes over — see the `.swipe-surface` touch-action
- * rule, which is what actually guarantees scrolling can never be blocked.
+ * Wraps a card so a horizontal drag either way triggers `onComplete`. Vertical drags are
+ * abandoned immediately so the page's native scroll takes over — see the `.swipe-surface`
+ * touch-action rule, which is what actually guarantees scrolling can never be blocked.
  */
-export function SwipeToComplete({ onComplete, disabled, children }: Props) {
+export function SwipeToComplete({ onComplete, disabled, label = '✓ בוצע', children }: Props) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const startRef = useRef<{ x: number; y: number } | null>(null);
   const axisRef = useRef<SwipeAxis>('undecided');
@@ -91,7 +93,7 @@ export function SwipeToComplete({ onComplete, disabled, children }: Props) {
   return (
     <div className="swipe-wrap">
       <div className="swipe-action" aria-hidden="true">
-        ✓ בוצע
+        {label}
       </div>
       <div
         ref={surfaceRef}

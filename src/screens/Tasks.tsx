@@ -270,7 +270,10 @@ function TaskRow({ task }: { task: DisplayTask }) {
     : task.title ?? 'משימה';
 
   return (
-    <SwipeToComplete onComplete={markDone} disabled={task.done}>
+    <SwipeToComplete
+      onComplete={task.done ? undoDone : markDone}
+      label={task.done ? '↩ בטל בוצע' : '✓ בוצע'}
+    >
       <div className="card">
         <div className="row">
           <div className="row" style={{ gap: 10 }}>
@@ -293,36 +296,15 @@ function TaskRow({ task }: { task: DisplayTask }) {
               {title}
             </button>
           </div>
-          <div className="row" style={{ gap: 6 }}>
-            {task.done ? (
-              <button
-                type="button"
-                className="btn"
-                style={{ minHeight: 48, minWidth: 48 }}
-                onClick={undoDone}
-              >
-                בטל בוצע
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="btn"
-                style={{ minHeight: 48, minWidth: 48 }}
-                onClick={markDone}
-              >
-                בוצע
-              </button>
-            )}
-            <button
-              type="button"
-              className="btn btn-icon"
-              style={{ minHeight: 48, minWidth: 48 }}
-              onClick={deleteTask}
-              aria-label="מחק משימה"
-            >
-              ✕
-            </button>
-          </div>
+          <button
+            type="button"
+            className="btn btn-icon"
+            style={{ minHeight: 48, minWidth: 48 }}
+            onClick={deleteTask}
+            aria-label="מחק משימה"
+          >
+            ✕
+          </button>
         </div>
         {task.unitMismatch && (
           <p className="pill red" style={{ marginTop: 'var(--space-2)' }}>

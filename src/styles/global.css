@@ -678,3 +678,62 @@ textarea {
     transform: rotate(3deg);
   }
 }
+
+/* Toast */
+.toast-wrap {
+  position: fixed;
+  inset-inline: 0;
+  bottom: calc(var(--nav-height) + var(--space-3));
+  display: flex;
+  justify-content: center;
+  padding: 0 var(--space-4);
+  z-index: 30;
+  pointer-events: none;
+}
+
+.toast {
+  max-width: 720px;
+  width: 100%;
+  background: var(--color-green-bg);
+  color: var(--color-text);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-pop);
+  padding: var(--space-3) var(--space-4);
+  text-align: center;
+  font-weight: 600;
+  pointer-events: auto;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.toast-visible {
+  animation: toast-in 0.25s ease-out;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.toast-hidden {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Week strip stock-shortfall warning badge */
+.week-day-warning {
+  position: absolute;
+  top: -4px;
+  inset-inline-end: -4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-red-bright);
+}

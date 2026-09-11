@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   daysOfSupply,
   explodeIngredients,
+  hasIngredientShortfall,
   multiplierForProduct,
   orderQtyForIngredient,
   priorityFor,
   recipeMultiplier,
+  requiredIngredientsForDate,
   requiredQty,
   toPrepare,
   weekdayValue,
@@ -404,6 +406,67 @@ describe('requiredQty honours a per-weekday dailyUsage override', () => {
     const busyFriday: Product = { ...cremeBrulee, dailyUsageByWeekday: { 5: 40 } };
     const events = [{ id: 'ev', name: 'x', date: '2026-09-04', extras: [{ productId: cremeBrulee.id, extraQty: 5 }] }];
     expect(requiredQty(busyFriday, '2026-09-04', [], events)).toBe(45);
+  });
+});
+
+describe('requiredIngredientsForDate / hasIngredientShortfall', () => {
+  const recipeWithTomato: Recipe = {
+    id: 'recipe-creme-brulee',
+    name: 'קרם ברולה',
+    category: 'cold',
+    yieldQty: 1,
+    yieldUnit: 'unit',
+    items: [{ refType: 'ingredient', refId: 'ing-tomato', qty: 1, unit: 'kg' }],
+    steps: [],
+  };
+
+  it('flags a shortfall when today\'s prep needs more of an ingredient than is in stock', () => {
+    // toPrepare = 15*1 - 3 = 12 -> 12x multiplier -> needs 12kg tomato vs 4kg on hand
+    const state = baseState({ products: [cremeBrulee], recipes: [recipeWithTomato] });
+    expect(requiredIngredientsForDate('2026-09-05', state).get('ing-tomato')).toBe(12);
+    expect(hasIngredientShortfall('2026-09-05', state)).toBe(true);
+  });
+
+  it('is false when stock comfortably covers the day\'s need', () => {
+    const state = baseState({
+      ingredients: [{ id: 'ing-tomato', name: 'עגבניות', unit: 'kg', currentQty: 100, dailyUsage: 1, weeklyUsage: 0 }],
+      products: [cremeBrulee],
+      recipes: [recipeWithTomato],
+    });
+    expect(hasIngredientShortfall('2026-09-05', state)).toBe(false);
+  });
+
+  it('skips a product with no recipe entirely, without throwing', () => {
+    const noRecipeProduct: Product = { ...cremeBrulee, recipeId: undefined };
+    const state = baseState({ products: [noRecipeProduct] });
+    expect(requiredIngredientsForDate('2026-09-05', state).size).toBe(0);
+    expect(hasIngredientShortfall('2026-09-05', state)).toBe(false);
+  });
+
+  it('skips a recipe line referencing a missing ingredient, without throwing', () => {
+    const recipeMissingIngredient: Recipe = {
+      ...recipeWithTomato,
+      items: [{ refType: 'ingredient', refId: 'ing-does-not-exist', qty: 1, unit: 'kg' }],
+    };
+    const state = baseState({ products: [cremeBrulee], recipes: [recipeMissingIngredient] });
+    expect(() => requiredIngredientsForDate('2026-09-05', state)).not.toThrow();
+    expect(requiredIngredientsForDate('2026-09-05', state).size).toBe(0);
+  });
+
+  it('skips a recipe line whose unit cannot convert to the ingredient\'s stock unit', () => {
+    const recipeUnitMismatch: Recipe = {
+      ...recipeWithTomato,
+      items: [{ refType: 'ingredient', refId: 'ing-tomato', qty: 1, unit: 'unit' }],
+    };
+    const state = baseState({ products: [cremeBrulee], recipes: [recipeUnitMismatch] });
+    expect(requiredIngredientsForDate('2026-09-05', state).size).toBe(0);
+    expect(hasIngredientShortfall('2026-09-05', state)).toBe(false);
+  });
+
+  it('excludes a product entirely when toPrepare is 0 for that date', () => {
+    const wellStocked: Product = { ...cremeBrulee, currentQty: 30 };
+    const state = baseState({ products: [wellStocked], recipes: [recipeWithTomato] });
+    expect(requiredIngredientsForDate('2026-09-05', state).size).toBe(0);
   });
 });
 

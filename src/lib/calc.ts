@@ -262,6 +262,56 @@ export function orderQtyForIngredient(
 }
 
 /**
+ * Ingredient totals required to cover today's product prep for `date`, in each ingredient's
+ * own stock unit. For every product with a recipe, takes `toPrepare(product, date, state)` as
+ * the product qty needed today, converts it into the recipe's yield unit (unrounded — NOT
+ * `multiplierForProduct`, which rounds up to `settings.roundMultiplierTo` and would overstate
+ * the need), derives a recipe multiplier, and explodes it into ingredient lines via
+ * `explodeIngredients`. Lines that don't unit-convert, or reference a missing ingredient, are
+ * skipped rather than guessed — same convention as `weeklyNeedForIngredient` above. Returns a
+ * map of only the ingredients actually needed (qty > 0).
+ */
+export function requiredIngredientsForDate(
+  date: string,
+  state: Pick<AppState, 'products' | 'recipes' | 'ingredients' | 'dayPlans' | 'specialEvents' | 'settings'>,
+): Map<string, number> {
+  const totals = new Map<string, number>();
+  for (const product of state.products) {
+    if (!product.recipeId) continue;
+    const qtyNeeded = toPrepare(product, date, state);
+    if (qtyNeeded <= 0) continue;
+    const recipe = state.recipes.find((r) => r.id === product.recipeId);
+    if (!recipe || recipe.yieldQty <= 0) continue;
+    const inYieldUnit = convert(qtyNeeded, product.unit, recipe.yieldUnit);
+    if (inYieldUnit === null) continue;
+    const multiplier = inYieldUnit / recipe.yieldQty;
+    for (const line of explodeIngredients(recipe, multiplier, state)) {
+      if (line.refType !== 'ingredient') continue;
+      const ing = state.ingredients.find((i) => i.id === line.refId);
+      if (!ing) continue;
+      const converted = convert(line.qty, line.unit, ing.unit);
+      if (converted === null) continue;
+      totals.set(ing.id, (totals.get(ing.id) ?? 0) + converted);
+    }
+  }
+  return totals;
+}
+
+/** True if today's product prep for `date` needs more of any ingredient than is currently in stock. */
+export function hasIngredientShortfall(
+  date: string,
+  state: Pick<AppState, 'products' | 'recipes' | 'ingredients' | 'dayPlans' | 'specialEvents' | 'settings'>,
+): boolean {
+  const needed = requiredIngredientsForDate(date, state);
+  for (const [ingredientId, qty] of needed) {
+    const ing = state.ingredients.find((i) => i.id === ingredientId);
+    if (!ing) continue;
+    if (qty > ing.currentQty) return true;
+  }
+  return false;
+}
+
+/**
  * Days of stock remaining. Pass `date` to resolve that day's weekday-specific usage
  * (e.g. tomatoes run out faster on a Friday); omitted, it falls back to the base dailyUsage.
  */

@@ -7,12 +7,18 @@ import { EmptyState } from '../components/EmptyState';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { SearchInput } from '../components/SearchInput';
 import { CategoryTabs } from '../components/CategoryTabs';
+import { Toast } from '../components/Toast';
 import { matchesQuery } from '../lib/search';
 import type { AppState, Ingredient } from '../types';
 
 const NO_SUPPLIER = 'ללא ספק';
 
-/** Quantity to order today: the user's typed override if there is one, else the suggestion. */
+/**
+ * Quantity to order today: the user's typed override if there is one, else the auto-suggested
+ * top-up. The stock-vs-par/weekly-need cross-reference itself lives in `orderQtyForIngredient`
+ * (which in turn calls `weeklyNeedForIngredient`) in `lib/calc.ts` — see those for the actual
+ * algorithm; this just layers the per-day manual override on top.
+ */
 function orderQtyFor(ingredient: Ingredient, date: string, state: AppState): number {
   const line = state.orderLines.find((l) => l.ingredientId === ingredient.id && l.date === date);
   if (line?.qtyOverride !== undefined) return line.qtyOverride;
@@ -79,6 +85,7 @@ function CurrentOrder() {
   const [receiving, setReceiving] = useState(false);
   const [copied, setCopied] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   const groups = useMemo(() => {
     const filtered = state.ingredients.filter((ing) => matchesQuery(query, ing.name, ing.supplier));
@@ -111,6 +118,8 @@ function CurrentOrder() {
     window.open(`https://wa.me/?text=${encodeURIComponent(buildOrderText(date, state))}`, '_blank');
   }
 
+  // "Approve All": every ingredient with a positive suggested/overridden qty is submitted and
+  // marked ordered in one SUBMIT_ORDER dispatch — there's no separate per-line approval step.
   function submitOrder() {
     const lines = state.ingredients
       .map((ing) => ({ ingredientId: ing.id, qty: orderQtyFor(ing, date, state) }))
@@ -119,6 +128,7 @@ function CurrentOrder() {
     dispatch({ type: 'SUBMIT_ORDER', date, lines });
     setSubmitted(true);
     setTimeout(() => setSubmitted(false), 2000);
+    setToastMsg('ההזמנה נשלחה בהצלחה');
   }
 
   return (
@@ -249,6 +259,7 @@ function CurrentOrder() {
       )}
 
       {receiving && <ReceiveDialog date={date} onClose={() => setReceiving(false)} />}
+      {toastMsg && <Toast message={toastMsg} onDismiss={() => setToastMsg(null)} />}
     </div>
   );
 }

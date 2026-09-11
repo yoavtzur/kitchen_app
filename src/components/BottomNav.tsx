@@ -69,7 +69,7 @@ function MoreIcon() {
 const ITEMS = [
   { to: '/', Icon: HomeIcon, label: 'בית', end: true },
   { to: '/tasks', Icon: TasksIcon, label: 'משימות' },
-  { to: '/ingredients', Icon: IngredientsIcon, label: 'מצרכים' },
+  { to: '/count', Icon: IngredientsIcon, label: 'מצרכים' },
   { to: '/recipes', Icon: RecipesIcon, label: 'מתכונים' },
   { to: '/consumption', Icon: ConsumptionIcon, label: 'צריכה' },
   { to: '/more', Icon: MoreIcon, label: 'עוד' },

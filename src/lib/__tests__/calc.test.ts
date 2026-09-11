@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  coverageColor,
   daysOfSupply,
   explodeIngredients,
   multiplierForProduct,
@@ -224,6 +225,21 @@ describe('daysOfSupply', () => {
 
   it('divides current by daily usage', () => {
     expect(daysOfSupply({ currentQty: 10, dailyUsage: 4 })).toBe(2.5);
+  });
+});
+
+describe('coverageColor', () => {
+  it('is red under 1 day', () => {
+    expect(coverageColor(0.9)).toBe('red');
+  });
+
+  it('is yellow from 1 up to (not including) 3 days', () => {
+    expect(coverageColor(1)).toBe('yellow');
+    expect(coverageColor(2.9)).toBe('yellow');
+  });
+
+  it('is green at 3 days and above', () => {
+    expect(coverageColor(3)).toBe('green');
   });
 });
 

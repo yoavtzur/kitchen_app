@@ -44,6 +44,17 @@ connected (see below), that merge is also what triggers the real production depl
 and "ship it" become the same action, which is the whole point of doing this instead of the ad hoc
 `npx vercel --prod` this project used before.
 
+**Every change goes through a preview before `main`:** never push a code change directly
+to `main`. Do the work on a feature branch (new or existing), commit, and push it — this
+alone makes Vercel build a Preview deployment automatically (no manual command needed).
+Share that branch's stable preview link in chat: `https://app-git-<branch-name-with-slashes-as-dashes>-yoav16.vercel.app`
+(e.g. branch `claude/foo-bar` → `https://app-git-claude-foo-bar-yoav16.vercel.app`) —
+this URL is deterministic from the branch name alone and always points at that branch's
+latest deployment, so there's no need to query Vercel to find it. Wait for the user's
+explicit approval in chat before doing anything to `main`. On approval, merge the PR
+(Vercel's Git integration then deploys to production automatically). On rejection, close
+the PR and delete the branch (local and remote) rather than leaving it dangling.
+
 **Vercel deployment:** production URL is **https://app-zeta-lovat-92.vercel.app** (Vercel project
 `yoav16/app`). Since 2026-09-07 this deploys automatically via Vercel's Git integration — connected
 to `yoavtzur/kitchen_app`, verified live end to end: a push to a feature branch produced its own
@@ -198,11 +209,21 @@ screens included, for consistent styling) → `AuthGate` → `MembershipGate` �
 has passed. Screens live flat in `src/screens/` (app screens plus `Auth.tsx`/`Onboarding.tsx`);
 shared UI (bottom sheets, number editors, priority dots, sync/gate chrome, etc.) lives in
 `src/components/`. `BottomNav` is the primary navigation — Home, Tasks, Ingredients, Recipes,
-Consumption each have a dedicated icon; anything else (Orders, Settings) is under "עוד" (More).
+Consumption each have a dedicated icon; anything else (Orders, Settings) is under "עוד" (More). The
+Ingredients slot routes to `/count` — `StockCount.tsx` is both the ingredient database and the
+stock-count walk-through (see below); there is no separate `/ingredients` screen.
 
 Editing UI follows one recurring pattern: tap a value to open a `BottomSheet` containing a `NumberEditor`
-or form, dispatch on save. Look at `src/screens/Ingredients.tsx` or `Consumption.tsx` before inventing a
+or form, dispatch on save. Look at `src/screens/StockCount.tsx` or `Consumption.tsx` before inventing a
 new editing pattern.
+
+`StockCount.tsx` mixes two commit models on one screen, deliberately: the ספירה column is a draft,
+batched across every ingredient and product and committed as one `BULK_UPDATE_QUANTITIES` from the
+save bar, while everything inside an ingredient's detail sheet (name, supplier, usage, par, unit,
+delete) dispatches immediately. Tapping an ingredient's name flushes that one row's pending draft as
+a single-item `BULK_UPDATE_QUANTITIES` before opening the sheet, so the sheet always shows committed
+truth — otherwise a unit change made inside the sheet would silently reinterpret a draft quantity
+still typed in the old unit.
 
 ### RTL / Hebrew
 
@@ -347,6 +368,16 @@ above, none of which needed a new table:
 Both SQL migrations (`0003`, `0004`) need to be applied by hand to the live Supabase project —
 nothing in the build does this. Until `0004` runs there, every synced client sits at
 `upgrade-required` and refuses to append (the expected signal that it hasn't been applied yet).
+
+**Also done — merged ingredient management into the stock-count screen (2026-09-11):**
+`src/screens/Ingredients.tsx` is gone; `/ingredients` now redirects to `/count`, and the "מצרכים"
+nav slot routes there directly. `StockCount.tsx` absorbed the ingredient database UI (add, rename,
+edit usage/par/unit/supplier, delete) into the counting walk-through's ingredient table, plus a
+live "מספיק ל-" coverage column computed from whatever is currently typed in that row (not the
+stored quantity), so a cook sees the consequence of a count before saving it. No reducer or schema
+change — `UPDATE_INGREDIENT` (unused since it was added) now has its first caller, for the sheet's
+name/supplier fields. See the "Screens and navigation" section above for the two-commit-model design
+this required.
 
 **Not started — Phase 7 (optional):**
 

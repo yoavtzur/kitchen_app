@@ -671,6 +671,62 @@ textarea {
   background: var(--color-yellow-bg);
 }
 
+/* Ingredient count rows: the name opens the item's detail sheet, the box next to it takes
+   today's count. Two different affordances on one row, so a mis-tap can't be ambiguous. */
+.count-name-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-2) 0;
+  background: none;
+  border: none;
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.count-name-btn > span {
+  flex: 1;
+}
+
+/* Chevron toward the inline end. The app is hard-coded dir="rtl" (index.html), so this points
+   left; flip the borders here if an LTR mode is ever added. */
+.count-name-btn::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-left: 2px solid var(--color-text-muted);
+  border-bottom: 2px solid var(--color-text-muted);
+  transform: rotate(45deg);
+}
+
+.count-name-btn:active > span {
+  opacity: 0.6;
+}
+
+.count-qty-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.count-input {
+  width: 80px;
+  min-height: 40px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-s);
+  padding: 6px 8px;
+  font-size: 15px;
+  text-align: center;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
 /* Home hero decoration */
 .home-hero {
   position: relative;

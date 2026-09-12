@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../store/AppContext';
+import { useAuth } from '../auth/AuthContext';
 import { getDisplayTasks, type DisplayTask } from '../lib/tasks';
 import { dayName, todayStr } from '../lib/date';
 import { PriorityDot, PriorityPill } from '../components/PriorityDot';
@@ -40,7 +41,9 @@ function TaskCard({ task, recipeName }: { task: DisplayTask; recipeName?: string
 
 export function Home() {
   const { state } = useApp();
+  const { membership } = useAuth();
   const today = todayStr();
+  const title = membership?.restaurantName?.trim() || 'ניהול מטבח';
 
   // Always read tasks through getDisplayTasks: auto tasks are computed live and are not in
   // state.tasks, so counting state.tasks alone would miss almost everything.
@@ -56,7 +59,7 @@ export function Home() {
         <span className="home-blob home-blob-b" aria-hidden="true" />
         <div className="screen-header">
           <div>
-            <h1 className="screen-title">ניהול מטבח</h1>
+            <h1 className="screen-title">{title}</h1>
             <p className="muted">{formatToday(today)} &middot; המטבח מחכה לך</p>
           </div>
           <div className="home-mascot" aria-hidden="true">

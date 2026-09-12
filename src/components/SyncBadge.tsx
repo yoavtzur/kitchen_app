@@ -1,12 +1,28 @@
+import { useEffect, useState } from 'react';
 import { useSync } from '../store/AppContext';
 import { isSupabaseConfigured } from '../lib/supabase';
 
-/** A small always-visible indicator of sync state, so a cook on a bad kitchen wifi knows whether
- * their last change actually reached the team. Renders nothing in local mode — there's no
- * restaurant to sync with, so any sync chrome there would just be confusing noise. */
+/** A small indicator of sync state, so a cook on a bad kitchen wifi knows whether their last
+ * change actually reached the team. Renders nothing in local mode — there's no restaurant to
+ * sync with, so any sync chrome there would just be confusing noise. It's also silent while
+ * everything is healthy: a permanently-on "מסונכרן" pill is noise, not signal, so it only
+ * appears (debounced by 1s, to avoid flashing during routine reconnects) once there's something
+ * a cook would actually want to know about. */
 export function SyncBadge() {
   const { status, pendingCount, stalePendingMinutes } = useSync();
-  if (!isSupabaseConfigured) return null;
+  const quiet = status === 'live' && pendingCount === 0 && stalePendingMinutes === undefined;
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (quiet) {
+      setVisible(false);
+      return;
+    }
+    const t = setTimeout(() => setVisible(true), 1000);
+    return () => clearTimeout(t);
+  }, [quiet]);
+
+  if (!isSupabaseConfigured || !visible) return null;
 
   let label: string;
   let tone: 'red' | 'yellow' | 'green';
@@ -38,12 +54,5 @@ export function SyncBadge() {
     tone = 'yellow';
   }
 
-  return (
-    <div
-      className={`pill ${tone}`}
-      style={{ position: 'fixed', top: 8, insetInlineStart: 8, zIndex: 20, opacity: 0.92 }}
-    >
-      {label}
-    </div>
-  );
+  return <div className={`pill ${tone} sync-badge`}>{label}</div>;
 }

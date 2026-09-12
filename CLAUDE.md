@@ -365,9 +365,42 @@ above, none of which needed a new table:
   time), and `SET_TASK_ASSIGNEE` (manual tasks) plus the already-existing but previously-unused
   `SET_AUTO_TASK_ASSIGNEE` back a `<select>` on every task row.
 
-Both SQL migrations (`0003`, `0004`) need to be applied by hand to the live Supabase project —
-nothing in the build does this. Until `0004` runs there, every synced client sits at
-`upgrade-required` and refuses to append (the expected signal that it hasn't been applied yet).
+All three SQL migrations (`0003`, `0004`, `0005`) have been applied by hand to the live Supabase
+project — nothing in the build does this automatically, so any *future* migration needs the same
+manual step before synced clients can use it (until then they sit at `upgrade-required` and refuse
+to append, which is the expected signal that it hasn't landed yet).
+
+**Also done — quiet sync badge, restaurant name in the Home header, task priority/done styling,
+chef removes a teammate (2026-09-12):**
+
+- **SyncBadge is quiet when healthy.** It now renders nothing while `status === 'live'` with no
+  pending ops and no stale-pending warning, and any non-quiet state is debounced 1s before
+  appearing (`src/components/SyncBadge.tsx`) so a routine reconnect never flashes. Repositioned
+  from `position: fixed` over the header (where it overlapped Home's title) to a `.sync-badge`
+  class fixed just above the bottom nav (`src/styles/global.css`).
+- **Home shows the real restaurant name.** `CachedMembership` (`src/auth/authCache.ts`) gained an
+  optional `restaurantName`, populated from the embedded `restaurants(name)` join on the
+  membership fetch and from `createRestaurant`/`join_restaurant`'s own inputs/returns
+  (`src/auth/AuthContext.tsx`). `Home.tsx` renders `membership?.restaurantName?.trim() || 'ניהול
+  מטבח'` — local mode (no membership) keeps the old fallback exactly.
+- **Task cards get priority borders and an unambiguous done state.** `Tasks.tsx`'s `TaskRow` now
+  reuses the `.priority-card` convention from Home, and `.priority-card.done` (green background,
+  strikethrough title) overrides the priority border once a task is marked done. Low priority
+  (`green`) was changed to a muted border in `global.css` so green unambiguously means "done"
+  app-wide, not "low priority" — this also softens Home's low-priority cards.
+- **A chef can remove a teammate.** New `remove_member(p_user_id)` RPC
+  (`supabase/migrations/0005_remove_member.sql`, chef-only, can't remove self) — just a
+  `memberships` delete, since neither `ops` nor any task table references a membership row.
+  `AuthContext.removeMember` calls it; the reducer's new `REMOVE_COOK` action (alongside the
+  existing `DELETE_COOK`) unassigns that cook from open tasks/overrides while leaving completed
+  ones' `assigneeId` untouched, preserving "who did it" history. `Settings.tsx`'s "הרשאות צוות"
+  section gained a remove button per non-chef row behind a destructive `ConfirmDialog`
+  (`ConfirmDialog` gained a `destructive` prop rendering `.btn-danger`). `0005_remove_member.sql`
+  is applied to the live project and verified end to end both at the RPC level
+  (`scripts/verify-remove-member.mjs` — chef-only, can't-remove-self, no-such-member, and a
+  removed cook's own membership read coming back empty) and live through the actual Settings UI
+  (a chef account removing a bound cook correctly cleared both the membership row and the local
+  `Cook`, live against the real project).
 
 **Also done — merged ingredient management into the stock-count screen (2026-09-11):**
 `src/screens/Ingredients.tsx` is gone; `/ingredients` now redirects to `/count`, and the "מצרכים"
@@ -393,7 +426,7 @@ with `compact_snapshot` if the `ops` table is growing large enough to matter, ot
 **Environment reminder:** this dev machine already has a working `.env.local` — running
 `npm run dev` here exercises real Supabase auth, not local mode. Use
 `localStorage.setItem('kitchen-force-local','1')` in the browser to get local-only behavior back
-for a quick check. `scripts/{verify-supabase,check-ops,second-device-test}.mjs` are throwaway
+for a quick check. `scripts/{verify-supabase,check-ops,second-device-test,verify-remove-member}.mjs` are throwaway
 manual verification tools (`node scripts/<name>.mjs`) — not part of the build, safe to delete or
 extend as needed. A few demo accounts/restaurants exist in the live project from this testing
 (e.g. `browser-test-1@example.com`) — the user has said to leave that data as-is.

@@ -8,6 +8,7 @@ import type { MemberPermissions, MemberRole } from '../types';
 
 export type CachedMembership = {
   restaurantId: string;
+  restaurantName?: string;
   cookId: string | null;
   role: MemberRole;
 } & MemberPermissions;
@@ -25,6 +26,7 @@ function normalize(raw: unknown): CachedMembership | null {
   const role: MemberRole = legacyRole === 'chef' || legacyRole === 'owner' ? 'chef' : 'cook';
   return {
     restaurantId: r.restaurantId,
+    restaurantName: typeof r.restaurantName === 'string' ? r.restaurantName : undefined,
     cookId: typeof r.cookId === 'string' ? r.cookId : null,
     role,
     canEditRecipes: Boolean(r.canEditRecipes),

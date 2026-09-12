@@ -36,7 +36,7 @@ const SYNC_STATUS_LABEL: Record<string, string> = {
 
 export function Settings() {
   const { state, dispatch } = useApp();
-  const { session, membership, signOut, setMemberPermissions } = useAuth();
+  const { session, membership, signOut, setMemberPermissions, removeMember } = useAuth();
   const { isChef } = usePermissions();
   const sync = useSync();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -47,6 +47,8 @@ export function Settings() {
   const [permError, setPermError] = useState('');
   const [copied, setCopied] = useState(false);
   const [deleteCandidate, setDeleteCandidate] = useState<Cook | null>(null);
+  const [removeCandidate, setRemoveCandidate] = useState<MemberRow | null>(null);
+  const [removedMessage, setRemovedMessage] = useState('');
 
   const boundCookIds = new Set(members.map((m) => m.cookId).filter((id): id is string => !!id));
 
@@ -97,6 +99,22 @@ export function Settings() {
       return;
     }
     reloadMembers();
+  }
+
+  async function confirmRemoveMember() {
+    if (!removeCandidate) return;
+    setPermError('');
+    const { error } = await removeMember(removeCandidate.userId);
+    if (error) {
+      setPermError(error);
+      setRemoveCandidate(null);
+      return;
+    }
+    if (removeCandidate.cookId) dispatch({ type: 'REMOVE_COOK', id: removeCandidate.cookId });
+    reloadMembers();
+    setRemoveCandidate(null);
+    setRemovedMessage('הוסר!');
+    setTimeout(() => setRemovedMessage(''), 1500);
   }
 
   function handleExport() {
@@ -216,6 +234,7 @@ export function Settings() {
           <h2 className="section-title">הרשאות צוות</h2>
           <div className="card stack-gap-2">
             {permError && <p style={{ color: 'var(--color-red)' }}>{permError}</p>}
+            {removedMessage && <p style={{ color: 'var(--color-green)' }}>{removedMessage}</p>}
             {members.map((row) => {
               const cook = row.cookId ? state.cooks.find((c) => c.id === row.cookId) : undefined;
               return (
@@ -245,9 +264,27 @@ export function Settings() {
                         />
                         מחיקת מתכונים
                       </label>
+                      <button
+                        type="button"
+                        className="btn btn-icon"
+                        aria-label="הסר טבח"
+                        onClick={() => setRemoveCandidate(row)}
+                      >
+                        ✕
+                      </button>
                     </div>
                   ) : (
-                    <span className="muted">צריך להתחבר לפני שאפשר להגדיר הרשאות</span>
+                    <div className="row" style={{ gap: 12, width: 'auto' }}>
+                      <span className="muted">צריך להתחבר לפני שאפשר להגדיר הרשאות</span>
+                      <button
+                        type="button"
+                        className="btn btn-icon"
+                        aria-label="הסר טבח"
+                        onClick={() => setRemoveCandidate(row)}
+                      >
+                        ✕
+                      </button>
+                    </div>
                   )}
                 </div>
               );
@@ -355,6 +392,22 @@ export function Settings() {
           <p>
             "{deleteCandidate.name}" משויך לחשבון פעיל של אחד המשתמשים. מחיקתו לא תסיר את החשבון, אבל הוא ייאלץ לבחור
             את עצמו מחדש.
+          </p>
+        </ConfirmDialog>
+      )}
+
+      {removeCandidate && (
+        <ConfirmDialog
+          title="הסרת טבח מהמסעדה"
+          confirmLabel="הסר לצמיתות"
+          destructive
+          onClose={() => setRemoveCandidate(null)}
+          onConfirm={confirmRemoveMember}
+        >
+          <p>
+            האם אתה בטוח שברצונך להסיר את{' '}
+            {removeCandidate.cookId ? state.cooks.find((c) => c.id === removeCandidate.cookId)?.name : 'טבח לא משויך'}?
+            הפעולה תמחק את הגישה שלו למסעדה לצמיתות, אך היסטוריית המשימות שבוצעו תישמר.
           </p>
         </ConfirmDialog>
       )}

@@ -88,6 +88,7 @@ export type Action =
   | { type: 'DELETE_SPECIAL_EVENT'; id: string }
   | { type: 'ADD_COOK'; cook: Cook }
   | { type: 'DELETE_COOK'; id: string }
+  | { type: 'REMOVE_COOK'; id: string }
   | { type: 'SET_ORDER_LINE_QTY'; ingredientId: string; date: string; qtyOverride?: number | null }
   | { type: 'SET_ORDER_LINE_ORDERED'; ingredientId: string; date: string; ordered: boolean }
   | { type: 'RECEIVE_ORDER'; date: string; receipts: { ingredientId: string; qty: number }[] }
@@ -623,6 +624,21 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, cooks: [...state.cooks, action.cook] };
     case 'DELETE_COOK':
       return { ...state, cooks: state.cooks.filter((c) => c.id !== action.id) };
+
+    // A chef removed a teammate's access to the restaurant. Unassign that cook from any *open*
+    // task/override so it doesn't sit stuck on someone who can no longer act on it, but leave
+    // completed ones untouched — that's the history of who actually did the work.
+    case 'REMOVE_COOK':
+      return {
+        ...state,
+        cooks: state.cooks.filter((c) => c.id !== action.id),
+        tasks: state.tasks.map((t) =>
+          t.assigneeId === action.id && !t.done ? { ...t, assigneeId: undefined } : t,
+        ),
+        taskOverrides: state.taskOverrides.map((o) =>
+          o.assigneeId === action.id && !o.done ? { ...o, assigneeId: undefined } : o,
+        ),
+      };
 
     case 'SET_ORDER_LINE_QTY':
       return upsertOrderLine(state, action.ingredientId, action.date, {

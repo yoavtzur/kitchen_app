@@ -274,21 +274,20 @@ function TaskRow({ task }: { task: DisplayTask }) {
       onComplete={task.done ? undoDone : markDone}
       label={task.done ? '↩ בטל בוצע' : '✓ בוצע'}
     >
-      <div className="card">
+      <div className={`card priority-card ${task.priority}${task.done ? ' done' : ''}`}>
         <div className="row">
           <div className="row" style={{ gap: 10 }}>
             <PriorityDot priority={task.priority} onClick={cyclePriority} />
             <PriorityPill priority={task.priority} />
             <button
               type="button"
+              className="task-title"
               onClick={() => recipe && setDetailOpen(true)}
               style={{
                 background: 'none',
                 border: 'none',
                 padding: 0,
                 textAlign: 'start',
-                textDecoration: task.done ? 'line-through' : 'none',
-                opacity: task.done ? 0.5 : 1,
                 fontWeight: 600,
                 cursor: recipe ? 'pointer' : 'default',
               }}

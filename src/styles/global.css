@@ -111,6 +111,11 @@ p {
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.14);
 }
 
+.btn-danger {
+  background: var(--color-red);
+  color: #fff;
+}
+
 .btn-icon {
   width: 40px;
   height: 40px;
@@ -164,7 +169,16 @@ p {
   border-color: var(--color-yellow-bright);
 }
 .priority-card.green {
+  border-color: var(--color-border);
+}
+.priority-card.done {
   border-color: var(--color-green-bright);
+  background: var(--color-green-bg);
+  box-shadow: none;
+}
+.priority-card.done .task-title {
+  text-decoration: line-through;
+  opacity: 0.55;
 }
 
 .pill {
@@ -186,6 +200,14 @@ p {
 .pill.green {
   background: var(--color-green-bg);
   color: var(--color-green);
+}
+
+.sync-badge {
+  position: fixed;
+  bottom: calc(var(--nav-height) + var(--space-2));
+  inset-inline-start: var(--space-3);
+  z-index: 20;
+  opacity: 0.92;
 }
 
 .bottom-nav {

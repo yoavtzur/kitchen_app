@@ -412,6 +412,53 @@ describe('SET_TASK_ASSIGNEE', () => {
   });
 });
 
+describe('REMOVE_COOK', () => {
+  const openTask = {
+    id: 'task-manual-open',
+    date,
+    title: 'לנקות מדפים',
+    categoryOverride: 'taboon' as const,
+    multiplier: 1,
+    priority: 'yellow' as const,
+    assigneeId: 'cook-1',
+    done: false,
+    source: 'manual' as const,
+  };
+  const doneTask = {
+    ...openTask,
+    id: 'task-manual-done',
+    done: true,
+  };
+  const openOverride = {
+    id: autoTaskId(cremeBrulee.id, date),
+    productId: cremeBrulee.id,
+    date,
+    assigneeId: 'cook-1',
+    done: false,
+  };
+  const doneOverride = {
+    ...openOverride,
+    id: autoTaskId(cremeBrulee.id, '2026-09-06'),
+    date: '2026-09-06',
+    done: true,
+  };
+
+  it('removes the cook and unassigns open tasks/overrides but keeps completed ones', () => {
+    const state = baseState({
+      cooks: [{ id: 'cook-1', name: 'דני', color: '#fff' }],
+      products: [cremeBrulee],
+      tasks: [openTask, doneTask],
+      taskOverrides: [openOverride, doneOverride],
+    });
+    const next = reducer(state, { type: 'REMOVE_COOK', id: 'cook-1' });
+    expect(next.cooks).toHaveLength(0);
+    expect(next.tasks.find((t) => t.id === openTask.id)?.assigneeId).toBeUndefined();
+    expect(next.tasks.find((t) => t.id === doneTask.id)?.assigneeId).toBe('cook-1');
+    expect(next.taskOverrides.find((o) => o.id === openOverride.id)?.assigneeId).toBeUndefined();
+    expect(next.taskOverrides.find((o) => o.id === doneOverride.id)?.assigneeId).toBe('cook-1');
+  });
+});
+
 describe('order sheet', () => {
   it('persists a typed quantity and the ordered flag per ingredient', () => {
     const withQty = reducer(baseState(), {
@@ -727,6 +774,25 @@ describe('actions survive a JSON round trip', () => {
         date,
         ingredientDeltas: [{ id: 'ing-egg', delta: 9 }],
       },
+    },
+    {
+      name: 'REMOVE_COOK unassigning open tasks',
+      state: baseState({
+        cooks: [{ id: 'cook-1', name: 'דני', color: '#fff' }],
+        tasks: [
+          {
+            id: 'task-manual-open',
+            date,
+            title: 'לנקות מדפים',
+            multiplier: 1,
+            priority: 'yellow',
+            assigneeId: 'cook-1',
+            done: false,
+            source: 'manual',
+          },
+        ],
+      }),
+      action: { type: 'REMOVE_COOK', id: 'cook-1' },
     },
   ];
 

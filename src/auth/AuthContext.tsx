@@ -27,6 +27,7 @@ type AuthContextValue = {
     canEditRecipes: boolean,
     canDeleteRecipes: boolean,
   ): Promise<ActionResult>;
+  removeMember(userId: string): Promise<ActionResult>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -43,7 +44,9 @@ function mapRpcError(err: { code?: string; message: string }): string {
   if (err.code === 'P0002') return 'קוד לא נמצא';
   if (err.code === '23505') return 'החשבון כבר משויך למטבח';
   if (err.code === '42501') {
-    return err.message.includes('last_chef') ? 'לא ניתן להוריד את השף האחרון מתפקידו' : 'אין הרשאה לפעולה הזו';
+    if (err.message.includes('last_chef')) return 'לא ניתן להוריד את השף האחרון מתפקידו';
+    if (err.message.includes('cannot_remove_self')) return 'לא ניתן להסיר את עצמך';
+    return 'אין הרשאה לפעולה הזו';
   }
   return err.message;
 }
@@ -83,16 +86,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setMembershipLoading(true);
     supabase
       .from('memberships')
-      .select('restaurant_id, cook_id, role, can_edit_recipes, can_delete_recipes')
+      .select('restaurant_id, cook_id, role, can_edit_recipes, can_delete_recipes, restaurants(name)')
       .eq('user_id', session.user.id)
       .maybeSingle()
       .then(({ data, error }) => {
         if (cancelled) return;
         setMembershipLoading(false);
         if (error) return; // offline/transient: keep whatever was cached rather than bounce out
+        const restaurant = data?.restaurants as { name?: string } | { name?: string }[] | null | undefined;
+        const restaurantName = Array.isArray(restaurant) ? restaurant[0]?.name : restaurant?.name;
         const next: Membership | null = data
           ? {
               restaurantId: data.restaurant_id,
+              restaurantName,
               cookId: data.cook_id,
               role: data.role as Membership['role'],
               canEditRecipes: Boolean(data.can_edit_recipes),
@@ -136,6 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (row) {
       const next: Membership = {
         restaurantId: row.restaurant_id,
+        restaurantName: name,
         cookId: null,
         role: 'chef',
         canEditRecipes: false,
@@ -155,6 +162,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (row) {
       const next: Membership = {
         restaurantId: row.restaurant_id,
+        restaurantName: row.name,
         cookId: null,
         role: 'cook',
         canEditRecipes: false,
@@ -190,6 +198,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: null };
   }
 
+  async function removeMember(userId: string): Promise<ActionResult> {
+    if (!supabase) return { error: 'Supabase אינו מוגדר' };
+    const { error } = await supabase.rpc('remove_member', { p_user_id: userId });
+    if (error) return { error: mapRpcError(error) };
+    return { error: null };
+  }
+
   async function setMyCook(cookId: string): Promise<ActionResult> {
     if (!supabase || !membership) return { error: 'לא ניתן כרגע' };
     const { error } = await supabase.rpc('set_my_cook', {
@@ -217,6 +232,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         joinRestaurant,
         setMyCook,
         setMemberPermissions,
+        removeMember,
       }}
     >
       {children}

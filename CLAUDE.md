@@ -344,9 +344,36 @@ above, none of which needed a new table:
   time), and `SET_TASK_ASSIGNEE` (manual tasks) plus the already-existing but previously-unused
   `SET_AUTO_TASK_ASSIGNEE` back a `<select>` on every task row.
 
-Both SQL migrations (`0003`, `0004`) need to be applied by hand to the live Supabase project —
-nothing in the build does this. Until `0004` runs there, every synced client sits at
+All three SQL migrations (`0003`, `0004`, `0005`) need to be applied by hand to the live Supabase
+project — nothing in the build does this. Until `0004` runs there, every synced client sits at
 `upgrade-required` and refuses to append (the expected signal that it hasn't been applied yet).
+
+**Also done — quiet sync badge, restaurant name in the Home header, task priority/done styling,
+chef removes a teammate (2026-09-12):**
+
+- **SyncBadge is quiet when healthy.** It now renders nothing while `status === 'live'` with no
+  pending ops and no stale-pending warning, and any non-quiet state is debounced 1s before
+  appearing (`src/components/SyncBadge.tsx`) so a routine reconnect never flashes. Repositioned
+  from `position: fixed` over the header (where it overlapped Home's title) to a `.sync-badge`
+  class fixed just above the bottom nav (`src/styles/global.css`).
+- **Home shows the real restaurant name.** `CachedMembership` (`src/auth/authCache.ts`) gained an
+  optional `restaurantName`, populated from the embedded `restaurants(name)` join on the
+  membership fetch and from `createRestaurant`/`join_restaurant`'s own inputs/returns
+  (`src/auth/AuthContext.tsx`). `Home.tsx` renders `membership?.restaurantName?.trim() || 'ניהול
+  מטבח'` — local mode (no membership) keeps the old fallback exactly.
+- **Task cards get priority borders and an unambiguous done state.** `Tasks.tsx`'s `TaskRow` now
+  reuses the `.priority-card` convention from Home, and `.priority-card.done` (green background,
+  strikethrough title) overrides the priority border once a task is marked done. Low priority
+  (`green`) was changed to a muted border in `global.css` so green unambiguously means "done"
+  app-wide, not "low priority" — this also softens Home's low-priority cards.
+- **A chef can remove a teammate.** New `remove_member(p_user_id)` RPC
+  (`supabase/migrations/0005_remove_member.sql`, chef-only, can't remove self) — just a
+  `memberships` delete, since neither `ops` nor any task table references a membership row.
+  `AuthContext.removeMember` calls it; the reducer's new `REMOVE_COOK` action (alongside the
+  existing `DELETE_COOK`) unassigns that cook from open tasks/overrides while leaving completed
+  ones' `assigneeId` untouched, preserving "who did it" history. `Settings.tsx`'s "הרשאות צוות"
+  section gained a remove button per non-chef row behind a destructive `ConfirmDialog`
+  (`ConfirmDialog` gained a `destructive` prop rendering `.btn-danger`).
 
 **Not started — Phase 7 (optional):**
 

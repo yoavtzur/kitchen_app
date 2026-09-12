@@ -6,7 +6,7 @@ import { dayName, todayStr } from '../lib/date';
 import { PriorityDot, PriorityPill } from '../components/PriorityDot';
 import { EmptyState } from '../components/EmptyState';
 import { CookPill } from '../components/CookPill';
-import { RECIPE_CATEGORIES } from '../lib/recipeCategories';
+import { stationOptions } from '../lib/recipeCategories';
 import type { Priority } from '../types';
 
 const PRIORITY_ORDER: Record<Priority, number> = { red: 0, yellow: 1, green: 2 };
@@ -56,7 +56,7 @@ export function Home() {
 
   // Grouped by station (RecipeCategory) in the same order Tasks.tsx's own category tabs use,
   // skipping any station with nothing open right now.
-  const stationGroups = RECIPE_CATEGORIES.map((cat) => ({
+  const stationGroups = stationOptions(state.stations).map((cat) => ({
     ...cat,
     tasks: openTasks.filter((t) => t.category === cat.value),
   })).filter((group) => group.tasks.length > 0);

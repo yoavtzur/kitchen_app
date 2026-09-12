@@ -13,7 +13,7 @@ import { SearchInput } from '../components/SearchInput';
 import { CategoryTabs } from '../components/CategoryTabs';
 import { SwipeToComplete } from '../components/SwipeToComplete';
 import { matchesQuery } from '../lib/search';
-import { CATEGORY_TABS, RECIPE_CATEGORIES, type CategoryFilter } from '../lib/recipeCategories';
+import { categoryTabs, stationOptions, type CategoryFilter } from '../lib/recipeCategories';
 import type { Action } from '../store/reducer';
 import type { AppState, Priority, Recipe, RecipeCategory, Task } from '../types';
 
@@ -168,7 +168,7 @@ function AddManualTaskSheet({ date, onClose }: { date: string; onClose: () => vo
           <div className="field">
             <label>עמדה</label>
             <select value={category} onChange={(e) => setCategory(e.target.value as RecipeCategory)}>
-              {RECIPE_CATEGORIES.map((c) => (
+              {stationOptions(state.stations).map((c) => (
                 <option key={c.value} value={c.value}>
                   {c.label}
                 </option>
@@ -363,7 +363,9 @@ export function Tasks() {
 
       <SearchInput value={query} onChange={setQuery} placeholder="חיפוש משימה או טבח..." />
 
-      {!searching && <CategoryTabs tabs={CATEGORY_TABS} value={category} onChange={setCategory} />}
+      {!searching && (
+        <CategoryTabs tabs={categoryTabs(state.stations)} value={category} onChange={setCategory} />
+      )}
 
       {dayTasks.length === 0 ? (
         <EmptyState text={query ? 'לא נמצאו משימות.' : 'אין משימות ליום זה — הכל במלאי.'} />

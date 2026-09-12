@@ -10,6 +10,7 @@ import type {
   Recipe,
   Settings,
   SpecialEvent,
+  Station,
   Task,
   TaskCompletion,
   Unit,
@@ -89,6 +90,7 @@ export type Action =
   | { type: 'ADD_COOK'; cook: Cook }
   | { type: 'DELETE_COOK'; id: string }
   | { type: 'REMOVE_COOK'; id: string }
+  | { type: 'ADD_STATION'; station: Station }
   | { type: 'SET_ORDER_LINE_QTY'; ingredientId: string; date: string; qtyOverride?: number | null }
   | { type: 'SET_ORDER_LINE_ORDERED'; ingredientId: string; date: string; ordered: boolean }
   | { type: 'RECEIVE_ORDER'; date: string; receipts: { ingredientId: string; qty: number }[] }
@@ -624,6 +626,17 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, cooks: [...state.cooks, action.cook] };
     case 'DELETE_COOK':
       return { ...state, cooks: state.cooks.filter((c) => c.id !== action.id) };
+
+    // Invalid input (empty name) or a name that already exists (case-insensitive) is a silent
+    // no-op rather than a thrown error: this op replays deterministically on every device, and a
+    // reducer that throws would break replay everywhere, not just for whoever made the mistake.
+    case 'ADD_STATION': {
+      const name = action.station.name.trim();
+      if (!name) return state;
+      const exists = state.stations.some((s) => s.name.trim().toLowerCase() === name.toLowerCase());
+      if (exists) return state;
+      return { ...state, stations: [...state.stations, { ...action.station, name }] };
+    }
 
     // A chef removed a teammate's access to the restaurant. Unassign that cook from any *open*
     // task/override so it doesn't sit stuck on someone who can no longer act on it, but leave

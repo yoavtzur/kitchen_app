@@ -202,7 +202,12 @@ export function Settings() {
                 <button
                   type="button"
                   className="pill"
-                  style={{ letterSpacing: 2, border: 'none', cursor: 'pointer' }}
+                  style={{
+                    letterSpacing: 2,
+                    background: 'transparent',
+                    border: '1px solid var(--color-border)',
+                    cursor: 'pointer',
+                  }}
                   onClick={copyJoinCode}
                 >
                   {copied ? 'הועתק!' : restaurant.joinCode}

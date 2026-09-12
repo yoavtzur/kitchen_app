@@ -9,6 +9,7 @@ function baseState(overrides: Partial<AppState> = {}): AppState {
     schemaVersion: 2,
     settings: { defaultCoverageDays: 1, weekStartsOn: 0, roundMultiplierTo: 0.25 },
     cooks: [],
+    stations: [],
     ingredients: [{ id: 'ing-egg', name: 'ביצים', unit: 'unit', currentQty: 60, dailyUsage: 20, weeklyUsage: 140 }],
     products: [],
     recipes: [],
@@ -456,6 +457,36 @@ describe('REMOVE_COOK', () => {
     expect(next.tasks.find((t) => t.id === doneTask.id)?.assigneeId).toBe('cook-1');
     expect(next.taskOverrides.find((o) => o.id === openOverride.id)?.assigneeId).toBeUndefined();
     expect(next.taskOverrides.find((o) => o.id === doneOverride.id)?.assigneeId).toBe('cook-1');
+  });
+});
+
+describe('ADD_STATION', () => {
+  it('adds a valid station to an empty list', () => {
+    const state = baseState();
+    const next = reducer(state, {
+      type: 'ADD_STATION',
+      station: { id: 'station-1', name: 'פס חם', createdAt: date },
+    });
+    expect(next.stations).toEqual([{ id: 'station-1', name: 'פס חם', createdAt: date }]);
+  });
+
+  it('ignores a duplicate station name, case- and whitespace-insensitively', () => {
+    const state = baseState({ stations: [{ id: 'station-1', name: 'פס חם', createdAt: date }] });
+    const next = reducer(state, {
+      type: 'ADD_STATION',
+      station: { id: 'station-2', name: '  פס חם  ', createdAt: date },
+    });
+    expect(next.stations).toHaveLength(1);
+    expect(next.stations[0].id).toBe('station-1');
+  });
+
+  it('ignores an empty or whitespace-only station name', () => {
+    const state = baseState();
+    const next = reducer(state, {
+      type: 'ADD_STATION',
+      station: { id: 'station-1', name: '   ', createdAt: date },
+    });
+    expect(next.stations).toHaveLength(0);
   });
 });
 

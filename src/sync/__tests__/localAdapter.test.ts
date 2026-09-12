@@ -7,6 +7,7 @@ function baseState(overrides: Partial<AppState> = {}): AppState {
     schemaVersion: 3,
     settings: { defaultCoverageDays: 1, weekStartsOn: 0, roundMultiplierTo: 0.25 },
     cooks: [],
+    stations: [],
     ingredients: [{ id: 'ing-egg', name: 'ביצים', unit: 'unit', currentQty: 10, dailyUsage: 20, weeklyUsage: 140 }],
     products: [],
     recipes: [],

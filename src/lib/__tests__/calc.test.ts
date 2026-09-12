@@ -19,6 +19,7 @@ function baseState(overrides: Partial<AppState> = {}): AppState {
     schemaVersion: 1,
     settings: { defaultCoverageDays: 1, weekStartsOn: 0, roundMultiplierTo: 0.25 },
     cooks: [],
+    stations: [],
     ingredients: [
       { id: 'ing-tomato', name: 'עגבניות', unit: 'kg', currentQty: 4, dailyUsage: 1, weeklyUsage: 0 },
     ],

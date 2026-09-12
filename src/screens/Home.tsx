@@ -6,6 +6,7 @@ import { dayName, todayStr } from '../lib/date';
 import { PriorityDot, PriorityPill } from '../components/PriorityDot';
 import { EmptyState } from '../components/EmptyState';
 import { CookPill } from '../components/CookPill';
+import { PrintStationButton } from '../components/PrintStationButton';
 import { stationOptions } from '../lib/recipeCategories';
 import type { Priority } from '../types';
 
@@ -18,7 +19,7 @@ function formatToday(date: string): string {
 
 /** Read-only card for "what to cook today" — tapping it goes to the Tasks screen, where the
  * actual work (complete, adjust, dismiss) happens. */
-function TaskCard({ task, recipeName }: { task: DisplayTask; recipeName?: string }) {
+function TaskCard({ task, recipeName, assigneeName }: { task: DisplayTask; recipeName?: string; assigneeName?: string }) {
   const navigate = useNavigate();
   const title = recipeName ?? task.title ?? 'משימה';
 
@@ -30,11 +31,13 @@ function TaskCard({ task, recipeName }: { task: DisplayTask; recipeName?: string
       onClick={() => navigate('/tasks')}
     >
       <div className="row" style={{ gap: 10 }}>
+        <span className="print-check" aria-hidden="true" />
         <PriorityDot priority={task.priority} />
         <span style={{ fontWeight: 600, flex: 1, minWidth: 0 }}>
           {title}
           {recipeName && !task.unitMismatch && ` — מתכון ×${task.multiplier}`}
         </span>
+        <span className="print-only muted">{assigneeName ?? ''}</span>
         <PriorityPill priority={task.priority} />
       </div>
     </button>
@@ -80,14 +83,22 @@ export function Home() {
             <h1 className="screen-title">{title}</h1>
             <p className="muted">{formatToday(today)} &middot; המטבח מחכה לך</p>
           </div>
-          <div className="home-mascot" aria-hidden="true">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4 10h16v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-6z" />
-              <path d="M4 10a8 8 0 0 1 16 0" />
-              <circle cx="12" cy="5" r="1.6" fill="#FFFFFF" stroke="none" />
-            </svg>
+          <div className="row no-print" style={{ gap: 8 }}>
+            <PrintStationButton label="הדפס רשימת הכנות" />
+            <div className="home-mascot" aria-hidden="true">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 10h16v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-6z" />
+                <path d="M4 10a8 8 0 0 1 16 0" />
+                <circle cx="12" cy="5" r="1.6" fill="#FFFFFF" stroke="none" />
+              </svg>
+            </div>
           </div>
         </div>
+      </div>
+
+      <div className="print-only print-banner">
+        <p style={{ fontWeight: 700 }}>{title} — רשימת הכנות</p>
+        <p>{formatToday(today)} &middot; הודפס ב-{new Date().toLocaleString('he-IL')}</p>
       </div>
 
       {state.products.length === 0 ? (
@@ -100,7 +111,12 @@ export function Home() {
             <h2 className="section-title">{group.label}</h2>
             <div className="card-list">
               {group.tasks.map((t) => (
-                <TaskCard key={t.id} task={t} recipeName={state.recipes.find((r) => r.id === t.recipeId)?.name} />
+                <TaskCard
+                  key={t.id}
+                  task={t}
+                  recipeName={state.recipes.find((r) => r.id === t.recipeId)?.name}
+                  assigneeName={state.cooks.find((c) => c.id === t.assigneeId)?.name}
+                />
               ))}
             </div>
           </div>

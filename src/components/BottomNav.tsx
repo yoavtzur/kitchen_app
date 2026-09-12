@@ -47,11 +47,12 @@ function RecipesIcon() {
   );
 }
 
-function ConsumptionIcon() {
+function MorningIcon() {
   return (
     <svg {...ICON_PROPS}>
-      <rect x="3.5" y="5" width="17" height="15.5" rx="3" />
-      <path d="M3.5 9.5h17M8 3v4M16 3v4" />
+      <path d="M3 18h18" />
+      <path d="M6 18a6 6 0 0 1 12 0" />
+      <path d="M12 4v3M4.5 8.5l2 2M19.5 8.5l-2 2" />
     </svg>
   );
 }
@@ -71,7 +72,7 @@ const ITEMS = [
   { to: '/tasks', Icon: TasksIcon, label: 'משימות' },
   { to: '/count', Icon: IngredientsIcon, label: 'מצרכים' },
   { to: '/recipes', Icon: RecipesIcon, label: 'מתכונים' },
-  { to: '/consumption', Icon: ConsumptionIcon, label: 'צריכה' },
+  { to: '/morning', Icon: MorningIcon, label: 'בוקר' },
   { to: '/more', Icon: MoreIcon, label: 'עוד' },
 ];
 

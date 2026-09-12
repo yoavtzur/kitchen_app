@@ -19,6 +19,9 @@ export type Ingredient = {
   /** Per-weekday overrides of dailyUsage (e.g. Friday needs more tomatoes than Monday). */
   dailyUsageByWeekday?: WeekdayUsage;
   supplier?: string;
+  /** Kitchen grouping like "ירקות"/"מוצרי חלב" — distinct from RecipeCategory/Station, which are
+   * prep stations for recipes and tasks, not a way to group ingredients themselves. */
+  category?: string;
   note?: string;
 };
 

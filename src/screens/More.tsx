@@ -7,6 +7,9 @@ export function More() {
         <h1 className="screen-title">עוד</h1>
       </div>
       <div className="card-list">
+        <Link to="/consumption" className="card" style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
+          צריכה
+        </Link>
         <Link to="/orders" className="card" style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
           הזמנת אספקה
         </Link>

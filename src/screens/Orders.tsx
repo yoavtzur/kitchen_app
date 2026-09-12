@@ -168,7 +168,12 @@ function CurrentOrder() {
                     const qty = orderQtyFor(ing, date, state);
                     return (
                       <tr key={ing.id}>
-                        <td>{ing.name}</td>
+                        <td>
+                          <div>{ing.name}</div>
+                          {ing.category && (
+                            <div className="muted" style={{ fontSize: 11 }}>{ing.category}</div>
+                          )}
+                        </td>
                         <td>{formatQty(ing.currentQty, ing.unit)}</td>
                         <td>
                           <input

@@ -5,6 +5,8 @@ import { getDisplayTasks, type DisplayTask } from '../lib/tasks';
 import { dayName, todayStr } from '../lib/date';
 import { PriorityDot, PriorityPill } from '../components/PriorityDot';
 import { EmptyState } from '../components/EmptyState';
+import { CookPill } from '../components/CookPill';
+import { RECIPE_CATEGORIES } from '../lib/recipeCategories';
 import type { Priority } from '../types';
 
 const PRIORITY_ORDER: Record<Priority, number> = { red: 0, yellow: 1, green: 2 };
@@ -52,6 +54,22 @@ export function Home() {
     .filter((t) => !t.done)
     .sort((a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority]);
 
+  // Grouped by station (RecipeCategory) in the same order Tasks.tsx's own category tabs use,
+  // skipping any station with nothing open right now.
+  const stationGroups = RECIPE_CATEGORIES.map((cat) => ({
+    ...cat,
+    tasks: openTasks.filter((t) => t.category === cat.value),
+  })).filter((group) => group.tasks.length > 0);
+
+  // Completed-today count per cook, sorted highest first — a quick "who did what" readout for
+  // the whole shift, distinct from any single station's own progress.
+  const cookCompletionCounts = state.cooks
+    .map((cook) => ({
+      cook,
+      count: todayTasks.filter((t) => t.done && t.assigneeId === cook.id).length,
+    }))
+    .sort((a, b) => b.count - a.count);
+
   return (
     <div>
       <div className="home-hero">
@@ -77,11 +95,30 @@ export function Home() {
       ) : openTasks.length === 0 ? (
         <EmptyState text="הכל במלאי — אין מה להכין היום." />
       ) : (
-        <div className="card-list">
-          {openTasks.map((t) => (
-            <TaskCard key={t.id} task={t} recipeName={state.recipes.find((r) => r.id === t.recipeId)?.name} />
-          ))}
-        </div>
+        stationGroups.map((group) => (
+          <div key={group.value}>
+            <h2 className="section-title">{group.label}</h2>
+            <div className="card-list">
+              {group.tasks.map((t) => (
+                <TaskCard key={t.id} task={t} recipeName={state.recipes.find((r) => r.id === t.recipeId)?.name} />
+              ))}
+            </div>
+          </div>
+        ))
+      )}
+
+      {state.cooks.length > 0 && (
+        <>
+          <h2 className="section-title">משימות שהושלמו לפי טבח</h2>
+          <div className="card">
+            {cookCompletionCounts.map(({ cook, count }) => (
+              <div key={cook.id} className="row-item">
+                <CookPill cook={cook} />
+                <span className="pill green">{count}</span>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );

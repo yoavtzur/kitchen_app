@@ -20,6 +20,7 @@ body {
 
 button {
   font-family: inherit;
+  color: inherit;
   cursor: pointer;
 }
 
@@ -148,25 +149,28 @@ p {
 
 @keyframes dot-ping {
   0% {
-    box-shadow: 0 0 0 0 rgba(255, 92, 122, 0.5);
+    box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.5);
   }
   70% {
-    box-shadow: 0 0 0 8px rgba(255, 92, 122, 0);
+    box-shadow: 0 0 0 8px rgba(255, 59, 48, 0);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(255, 92, 122, 0);
+    box-shadow: 0 0 0 0 rgba(255, 59, 48, 0);
   }
 }
 
 .priority-card {
   border: 3px solid transparent;
 }
+/* Each priority gets its own glow instead of sharing --shadow-pop (which is now a
+   green glow reserved for .home-mascot) — an urgent red card shouldn't glow green. */
 .priority-card.red {
   border-color: var(--color-red-bright);
-  box-shadow: var(--shadow-pop);
+  box-shadow: 0 0 16px -4px rgba(255, 59, 48, 0.6);
 }
 .priority-card.yellow {
   border-color: var(--color-yellow-bright);
+  box-shadow: 0 0 14px -4px rgba(255, 170, 0, 0.45);
 }
 .priority-card.green {
   border-color: var(--color-border);
@@ -174,7 +178,7 @@ p {
 .priority-card.done {
   border-color: var(--color-green-bright);
   background: var(--color-green-bg);
-  box-shadow: none;
+  box-shadow: 0 0 16px -4px rgba(0, 255, 135, 0.5);
 }
 .priority-card.done .task-title {
   text-decoration: line-through;
@@ -302,7 +306,7 @@ p {
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(20, 16, 10, 0.4);
+  background: rgba(0, 0, 0, 0.6);
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -626,12 +630,12 @@ textarea {
 }
 
 .stat-card.neutral {
-  background: #ede6ff;
-  border-color: #b7a4f2;
+  background: #1f1b2e;
+  border-color: #4a3f73;
 }
 .stat-card.neutral .stat-value,
 .stat-card.neutral .stat-label {
-  color: #6b4fc9;
+  color: #9f8ce8;
 }
 
 .supplier-group {
@@ -782,7 +786,7 @@ textarea {
   width: 14px;
   height: 14px;
   border-radius: 5px;
-  background: #4fc3e8;
+  background: #3bb6ff;
   bottom: -6px;
   inset-inline-start: 40px;
   animation: float-b 3.8s ease-in-out infinite;

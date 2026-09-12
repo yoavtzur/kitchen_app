@@ -1,25 +1,30 @@
 :root {
-  --color-bg: #fff3de;
-  --color-surface: #ffffff;
-  --color-surface-2: #ffead1;
-  --color-border: #f5dfc0;
-  --color-text: #3a2e52;
-  --color-text-muted: #8a7fa8;
-  --color-primary: #ff5c7a;
-  --color-primary-dark: #e8446a;
-  --color-primary-contrast: #ffffff;
+  /* "Michelin Cockpit" OLED-dark palette — replaces the original warm-cream theme.
+     See design/kitchen-directions/Direction-MichelinCockpit.html for the prototype
+     this was migrated from. */
+  --color-bg: #090a0f;
+  --color-surface: #12141c;
+  --color-surface-2: #181b26;
+  --color-border: #242838;
+  --color-text: #e7eaf3;
+  --color-text-muted: #8891a8;
+  --color-primary: #00ff87;
+  --color-primary-dark: #00cc6c;
+  /* Near-black, not white: white text on a bright acid-green background fails contrast. */
+  --color-primary-contrast: #06121f;
 
-  /* Readable text/dot tone + its pale pill background; "-bright" is the punchier accent
-     used for thick card borders and the urgent pulse, where contrast isn't the concern. */
-  --color-red: #c6386a;
-  --color-red-bg: #ffd9e2;
-  --color-red-bright: #ff5c7a;
-  --color-yellow: #8a6a0e;
-  --color-yellow-bg: #fff0c2;
-  --color-yellow-bright: #ffc93c;
-  --color-green: #1c8a6c;
-  --color-green-bg: #d6f5ea;
-  --color-green-bright: #2ecfa6;
+  /* On a dark surface the "readable text" and "bright accent" tones can be the same value —
+     unlike the old light theme, where a pale pill needed a separate muted-but-legible text
+     color from the punchier border/pulse accent. */
+  --color-red: #ff3b30;
+  --color-red-bg: #2a1512;
+  --color-red-bright: #ff3b30;
+  --color-yellow: #ffaa00;
+  --color-yellow-bg: #2a2210;
+  --color-yellow-bright: #ffaa00;
+  --color-green: #00ff87;
+  --color-green-bg: #10291f;
+  --color-green-bright: #00ff87;
 
   --radius-s: 12px;
   --radius-m: 20px;
@@ -34,7 +39,9 @@
 
   --font-family: 'Rubik', system-ui, -apple-system, 'Segoe UI', sans-serif;
 
-  --shadow-card: 0 3px 0 rgba(58, 46, 82, 0.08);
-  --shadow-pop: 0 6px 0 rgba(58, 46, 82, 0.12);
+  --shadow-card: 0 3px 10px rgba(0, 0, 0, 0.45);
+  /* Only consumer is .home-mascot (global.css) — a green glow, not a colorless "pop" shadow,
+     since that element already sits on --color-primary. */
+  --shadow-pop: 0 0 20px -4px rgba(0, 255, 135, 0.4), 0 6px 16px rgba(0, 0, 0, 0.5);
   --nav-height: 64px;
 }

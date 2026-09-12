@@ -72,7 +72,6 @@ function ForecastRow({ ingredient }: { ingredient: Ingredient }) {
           value={ingredient.parLevel ?? 0}
           label={`מלאי מינימום — ${ingredient.name}`}
           suffix={unitLabel(ingredient.unit)}
-          variant="stepper"
           onChange={(parLevel) => dispatch({ type: 'SET_INGREDIENT_PAR', id: ingredient.id, parLevel })}
         />
       </div>

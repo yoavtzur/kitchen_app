@@ -13,9 +13,9 @@ import { SearchInput } from '../components/SearchInput';
 import { CategoryTabs } from '../components/CategoryTabs';
 import { SwipeToComplete } from '../components/SwipeToComplete';
 import { matchesQuery } from '../lib/search';
-import { CATEGORY_TABS, RECIPE_CATEGORIES, type CategoryFilter } from '../lib/recipeCategories';
+import { categoryTabs, stationOptions, UNASSIGNED_CATEGORY, type CategoryFilter } from '../lib/recipeCategories';
 import type { Action } from '../store/reducer';
-import type { AppState, Priority, Recipe, RecipeCategory, Task } from '../types';
+import type { AppState, Priority, Recipe, RecipeCategory, Station, Task } from '../types';
 
 const PRIORITY_CYCLE: Priority[] = ['red', 'yellow', 'green'];
 
@@ -116,6 +116,10 @@ function completeTask(
 
 const FREE_TEXT_OPTION = '__free__';
 
+// Sentinel station value picked from the dropdown to reveal the "new station" text field —
+// same pattern as RecipeEditor.tsx's own station picker.
+const NEW_STATION_ID = '__new_station__';
+
 function AddManualTaskSheet({ date, onClose }: { date: string; onClose: () => void }) {
   const { state, dispatch } = useApp();
   const [recipeId, setRecipeId] = useState(state.recipes[0]?.id ?? FREE_TEXT_OPTION);
@@ -124,8 +128,40 @@ function AddManualTaskSheet({ date, onClose }: { date: string; onClose: () => vo
   const [priority, setPriority] = useState<Priority>('yellow');
   const [assigneeId, setAssigneeId] = useState('');
   const [category, setCategory] = useState<RecipeCategory>('general');
+  const [newStationName, setNewStationName] = useState('');
+  const [addingStation, setAddingStation] = useState(state.stations.length === 0);
 
   const isFreeText = recipeId === FREE_TEXT_OPTION;
+  const selectedRecipe = state.recipes.find((r) => r.id === recipeId);
+
+  // A free-text task keeps its own `category` state; a recipe-backed task's station lives on
+  // the recipe itself (Task.category always reads from there — see lib/tasks.ts), so picking a
+  // station for it dispatches UPDATE_RECIPE immediately instead of touching local state.
+  function assignStation(stationId: string) {
+    if (isFreeText) {
+      setCategory(stationId);
+    } else if (selectedRecipe) {
+      dispatch({ type: 'UPDATE_RECIPE', recipe: { ...selectedRecipe, category: stationId } });
+    }
+  }
+
+  // Creates (or, if a same-name station already exists, just selects) a station immediately —
+  // the reducer's own case-insensitive duplicate guard is a second line of defense against two
+  // devices racing to create the same station, not the primary check.
+  function createStation() {
+    const trimmed = newStationName.trim();
+    if (!trimmed) return;
+    const existing = state.stations.find((s) => s.name.trim().toLowerCase() === trimmed.toLowerCase());
+    if (existing) {
+      assignStation(existing.id);
+    } else {
+      const station: Station = { id: newId('station'), name: trimmed, createdAt: new Date().toISOString() };
+      dispatch({ type: 'ADD_STATION', station });
+      assignStation(station.id);
+    }
+    setNewStationName('');
+    setAddingStation(false);
+  }
 
   function save() {
     if (isFreeText && !title.trim()) return;
@@ -150,7 +186,14 @@ function AddManualTaskSheet({ date, onClose }: { date: string; onClose: () => vo
     <BottomSheet title="הוספת משימה" onClose={onClose}>
       <div className="field">
         <label>מתכון</label>
-        <select value={recipeId} onChange={(e) => setRecipeId(e.target.value)}>
+        <select
+          value={recipeId}
+          onChange={(e) => {
+            setRecipeId(e.target.value);
+            setAddingStation(false);
+            setNewStationName('');
+          }}
+        >
           <option value={FREE_TEXT_OPTION}>✎ משימה חופשית (בלי מתכון)</option>
           {state.recipes.map((r) => (
             <option key={r.id} value={r.id}>
@@ -159,24 +202,67 @@ function AddManualTaskSheet({ date, onClose }: { date: string; onClose: () => vo
           ))}
         </select>
       </div>
-      {isFreeText ? (
-        <>
-          <div className="field">
-            <label>כותרת המשימה</label>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="לדוגמה: לנקות מדפים" autoFocus />
+      {isFreeText && (
+        <div className="field">
+          <label>כותרת המשימה</label>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="לדוגמה: לנקות מדפים" autoFocus />
+        </div>
+      )}
+      <div className="field">
+        <label>עמדה</label>
+        {addingStation ? (
+          <div className="row" style={{ gap: 6 }}>
+            <input
+              value={newStationName}
+              onChange={(e) => setNewStationName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  createStation();
+                }
+              }}
+              placeholder="עמדה חדשה (למשל: פס חם)..."
+              autoFocus
+              style={{ flex: 1, border: '1px solid var(--color-border)', borderRadius: 8, padding: '8px' }}
+            />
+            <button type="button" className="btn" onClick={createStation}>
+              + הוספה
+            </button>
+            {state.stations.length > 0 && (
+              <button
+                type="button"
+                className="btn btn-icon"
+                onClick={() => {
+                  setAddingStation(false);
+                  setNewStationName('');
+                }}
+                aria-label="ביטול"
+              >
+                ✕
+              </button>
+            )}
           </div>
-          <div className="field">
-            <label>עמדה</label>
-            <select value={category} onChange={(e) => setCategory(e.target.value as RecipeCategory)}>
-              {RECIPE_CATEGORIES.map((c) => (
-                <option key={c.value} value={c.value}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </>
-      ) : (
+        ) : (
+          <select
+            value={isFreeText ? category : (selectedRecipe?.category ?? UNASSIGNED_CATEGORY)}
+            onChange={(e) => {
+              if (e.target.value === NEW_STATION_ID) {
+                setAddingStation(true);
+                return;
+              }
+              assignStation(e.target.value);
+            }}
+          >
+            {stationOptions(state.stations).map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+            <option value={NEW_STATION_ID}>+ הוסף עמדה חדשה</option>
+          </select>
+        )}
+      </div>
+      {!isFreeText && (
         <div className="field">
           <label>כפולת מתכון</label>
           <input type="number" inputMode="decimal" value={multiplier} onChange={(e) => setMultiplier(e.target.value)} />
@@ -363,7 +449,9 @@ export function Tasks() {
 
       <SearchInput value={query} onChange={setQuery} placeholder="חיפוש משימה או טבח..." />
 
-      {!searching && <CategoryTabs tabs={CATEGORY_TABS} value={category} onChange={setCategory} />}
+      {!searching && (
+        <CategoryTabs tabs={categoryTabs(state.stations)} value={category} onChange={setCategory} />
+      )}
 
       {dayTasks.length === 0 ? (
         <EmptyState text={query ? 'לא נמצאו משימות.' : 'אין משימות ליום זה — הכל במלאי.'} />

@@ -38,7 +38,19 @@ export type Product = {
   coverageDaysOverride?: number;
 };
 
-export type RecipeCategory = 'cold' | 'hot' | 'taboon' | 'dessert' | 'general';
+/** A station's id (see `Station`), or the built-in `'general'` ("כללי") fallback for
+ * anything with no station assigned. Free-form rather than a closed union — stations are a
+ * per-kitchen list a chef creates, not a fixed preset. */
+export type RecipeCategory = string;
+
+/** A prep station a chef created for their kitchen (e.g. "פס חם"). Not scoped by a kitchen/
+ * restaurant id: `AppState` itself is already one kitchen's worth of data — see the Supabase
+ * restaurant/snapshot split — so a station never needs to say which kitchen it belongs to. */
+export type Station = {
+  id: string;
+  name: string;
+  createdAt: string;
+};
 
 export type RecipeItemRefType = 'ingredient' | 'product';
 
@@ -167,5 +179,6 @@ export type AppState = {
   dayPlans: DayPlan[];
   orderLines: OrderLine[];
   cooks: Cook[];
+  stations: Station[];
   settings: Settings;
 };

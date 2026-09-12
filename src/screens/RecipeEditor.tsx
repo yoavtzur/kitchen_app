@@ -6,8 +6,8 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { describeImpact, impactOfDeletingRecipe } from '../lib/integrity';
 import { newId } from '../lib/ids';
 import { WeekdayUsageEditor } from '../components/WeekdayUsageEditor';
-import { RECIPE_CATEGORIES as CATEGORY_OPTIONS } from '../lib/recipeCategories';
-import type { Ingredient, Product, ProductKind, Recipe, RecipeCategory, RecipeItem, Unit, Weekday, WeekdayUsage } from '../types';
+import { stationOptions } from '../lib/recipeCategories';
+import type { Ingredient, Product, ProductKind, Recipe, RecipeCategory, RecipeItem, Station, Unit, Weekday, WeekdayUsage } from '../types';
 
 const KIND_OPTIONS: { value: ProductKind; label: string }[] = [
   { value: 'menu', label: 'מנה בתפריט' },
@@ -27,6 +27,12 @@ type ItemDraft = RecipeItem & { key: string; newIngredientName?: string };
 // Sentinel refId marking a recipe item that names a not-yet-created ingredient — resolved
 // into a real ingredient (via ADD_INGREDIENT) at save time.
 const NEW_INGREDIENT_ID = '__new__';
+
+// Sentinel station value picked from the dropdown to reveal the "new station" text field.
+// Unlike NEW_INGREDIENT_ID, a station is created immediately (ADD_STATION dispatched as soon as
+// the chef confirms the name) rather than deferred to the recipe's own save — a station is a
+// lightweight, kitchen-wide reference entity like a Cook, not part of this one recipe's draft.
+const NEW_STATION_ID = '__new_station__';
 
 /**
  * Picking a recipe item is one tap here instead of "add a default row, then open its select
@@ -113,6 +119,8 @@ export function RecipeEditor({ recipe, defaultCategory, onClose }: Props) {
 
   const [name, setName] = useState(recipe?.name ?? '');
   const [category, setCategory] = useState<RecipeCategory>(recipe?.category ?? defaultCategory);
+  const [newStationName, setNewStationName] = useState('');
+  const [addingStation, setAddingStation] = useState(state.stations.length === 0);
   const [kind, setKind] = useState<ProductKind>(linkedProduct?.kind ?? 'component');
   // One unit drives both the product's stock and the recipe's yield, so the two can never
   // disagree and produce a silently wrong multiplier.
@@ -179,6 +187,24 @@ export function RecipeEditor({ recipe, defaultCategory, onClose }: Props) {
       else next[weekday] = value;
       return next;
     });
+  }
+
+  // Creates (or, if a same-name station already exists, just selects) a station immediately —
+  // the reducer's own case-insensitive duplicate guard is a second line of defense against two
+  // devices racing to create the same station, not the primary check.
+  function createStation() {
+    const trimmed = newStationName.trim();
+    if (!trimmed) return;
+    const existing = state.stations.find((s) => s.name.trim().toLowerCase() === trimmed.toLowerCase());
+    if (existing) {
+      setCategory(existing.id);
+    } else {
+      const station: Station = { id: newId('station'), name: trimmed, createdAt: new Date().toISOString() };
+      dispatch({ type: 'ADD_STATION', station });
+      setCategory(station.id);
+    }
+    setNewStationName('');
+    setAddingStation(false);
   }
 
   function save() {
@@ -264,14 +290,58 @@ export function RecipeEditor({ recipe, defaultCategory, onClose }: Props) {
 
       <div className="row" style={{ gap: 8, alignItems: 'flex-start' }}>
         <div className="field" style={{ flex: 1 }}>
-          <label>קטגוריה</label>
-          <select value={category} onChange={(e) => setCategory(e.target.value as RecipeCategory)}>
-            {CATEGORY_OPTIONS.map((c) => (
-              <option key={c.value} value={c.value}>
-                {c.label}
-              </option>
-            ))}
-          </select>
+          <label>עמדה</label>
+          {state.stations.length > 0 && !addingStation ? (
+            <select
+              value={category}
+              onChange={(e) => {
+                if (e.target.value === NEW_STATION_ID) {
+                  setAddingStation(true);
+                  return;
+                }
+                setCategory(e.target.value);
+              }}
+            >
+              {stationOptions(state.stations).map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+              <option value={NEW_STATION_ID}>+ הוסף עמדה חדשה</option>
+            </select>
+          ) : (
+            <div className="row" style={{ gap: 6 }}>
+              <input
+                value={newStationName}
+                onChange={(e) => setNewStationName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    createStation();
+                  }
+                }}
+                placeholder="עמדה חדשה (למשל: פס חם)..."
+                autoFocus
+                style={{ flex: 1, border: '1px solid var(--color-border)', borderRadius: 8, padding: '8px' }}
+              />
+              <button type="button" className="btn" onClick={createStation}>
+                + הוספה
+              </button>
+              {state.stations.length > 0 && (
+                <button
+                  type="button"
+                  className="btn btn-icon"
+                  onClick={() => {
+                    setAddingStation(false);
+                    setNewStationName('');
+                  }}
+                  aria-label="ביטול"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          )}
         </div>
         <div className="field" style={{ flex: 1 }}>
           <label>יחידת מידה</label>

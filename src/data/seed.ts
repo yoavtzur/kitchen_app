@@ -1,6 +1,6 @@
 import type { AppState } from '../types';
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export function createSeedState(): AppState {
   return {
@@ -14,6 +14,7 @@ export function createSeedState(): AppState {
       { id: 'cook-1', name: 'דני', color: '#4f9d69' },
       { id: 'cook-2', name: 'מאיה', color: '#c77b3b' },
     ],
+    stations: [],
     ingredients: [
       { id: 'ing-tomato', name: 'עגבניות', unit: 'kg', currentQty: 4, dailyUsage: 1.5, weeklyUsage: 10, parLevel: 12, supplier: 'ירקן השכונה' },
       { id: 'ing-egg', name: 'ביצים', unit: 'unit', currentQty: 60, dailyUsage: 20, weeklyUsage: 140, parLevel: 180, supplier: 'לול הגליל' },
@@ -38,7 +39,7 @@ export function createSeedState(): AppState {
       {
         id: 'recipe-creme-brulee',
         name: 'קרם ברולה',
-        category: 'dessert',
+        category: 'general',
         yieldQty: 8,
         yieldUnit: 'unit',
         producesProductId: 'prod-creme-brulee',
@@ -58,7 +59,7 @@ export function createSeedState(): AppState {
       {
         id: 'recipe-pizza-dough',
         name: 'בצק לפיצות',
-        category: 'taboon',
+        category: 'general',
         yieldQty: 6,
         yieldUnit: 'unit',
         producesProductId: 'prod-pizza-dough',
@@ -78,7 +79,7 @@ export function createSeedState(): AppState {
       {
         id: 'recipe-arancini',
         name: "ארנצ'יני",
-        category: 'hot',
+        category: 'general',
         yieldQty: 20,
         yieldUnit: 'unit',
         producesProductId: 'prod-arancini',
@@ -96,7 +97,7 @@ export function createSeedState(): AppState {
       {
         id: 'recipe-tomato-salsa',
         name: 'סלסת עגבניות',
-        category: 'cold',
+        category: 'general',
         yieldQty: 1,
         yieldUnit: 'l',
         producesProductId: 'prod-tomato-salsa',
@@ -113,7 +114,7 @@ export function createSeedState(): AppState {
       {
         id: 'recipe-egg-salad',
         name: 'סלט ביצים',
-        category: 'cold',
+        category: 'general',
         yieldQty: 1,
         yieldUnit: 'l',
         producesProductId: 'prod-egg-salad',
@@ -130,7 +131,7 @@ export function createSeedState(): AppState {
       {
         id: 'recipe-zucchini-cream',
         name: 'קרם זוקיני',
-        category: 'cold',
+        category: 'general',
         yieldQty: 1,
         yieldUnit: 'l',
         producesProductId: 'prod-zucchini-cream',

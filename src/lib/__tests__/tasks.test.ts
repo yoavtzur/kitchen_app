@@ -7,6 +7,7 @@ function baseState(overrides: Partial<AppState> = {}): AppState {
     schemaVersion: 2,
     settings: { defaultCoverageDays: 1, weekStartsOn: 0, roundMultiplierTo: 0.25 },
     cooks: [],
+    stations: [],
     ingredients: [],
     products: [],
     recipes: [],

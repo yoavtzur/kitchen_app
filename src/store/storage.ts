@@ -1,14 +1,50 @@
-import type { AppState, OrderLine } from '../types';
+import type { AppState, OrderLine, Station } from '../types';
 import { createSeedState, SCHEMA_VERSION } from '../data/seed';
 import { todayStr } from '../lib/date';
 
+/** A v4 state: everything the current AppState has except the station list. */
+type V4State = Omit<AppState, 'stations'>;
+
+/** Hebrew labels for the categories the old hardcoded 5-value preset used to offer, so a
+ * kitchen that already has recipes/tasks tagged with one of them keeps a real, correctly
+ * labeled station instead of an orphaned string once the preset list is gone. */
+const LEGACY_CATEGORY_LABELS: Record<string, string> = {
+  cold: 'פס קר',
+  hot: 'פס חם',
+  taboon: 'טאבון',
+  dessert: 'קינוחים',
+};
+
+/** v5 replaces the fixed 5-category preset with a per-kitchen `stations` list a chef builds by
+ * hand. A brand-new kitchen starts empty (see `createSeedState`), but an existing kitchen's data
+ * already carries category values from the old preset — back those into real `Station` rows
+ * (reusing the category string itself as the station id) so nothing already tagged 'hot'/'cold'/
+ * etc. loses its station, and no data needs rewriting. `'general'` is never backed by a Station
+ * row — it's the permanent built-in "no station" fallback (see `lib/recipeCategories.ts`). */
+function migrateV4toV5(old: V4State): AppState {
+  const used = new Set<string>();
+  for (const r of old.recipes ?? []) {
+    if (r.category && r.category !== 'general') used.add(r.category);
+  }
+  for (const t of old.tasks ?? []) {
+    if (t.categoryOverride && t.categoryOverride !== 'general') used.add(t.categoryOverride);
+  }
+  const now = new Date().toISOString();
+  const stations: Station[] = [...used].map((id) => ({
+    id,
+    name: LEGACY_CATEGORY_LABELS[id] ?? id,
+    createdAt: now,
+  }));
+  return { ...old, schemaVersion: 5, stations };
+}
+
 /** A v3 state: everything the current AppState has except dates on order lines. */
-type V3State = Omit<AppState, 'orderLines'> & { orderLines: Omit<OrderLine, 'date'>[] };
+type V3State = Omit<V4State, 'orderLines'> & { orderLines: Omit<OrderLine, 'date'>[] };
 
 /** v4 adds a date to every order line so the order sheet becomes a history instead of one
  * static snapshot. Every pre-existing line (the sheet in progress) is stamped with today, so it
  * survives the migration and becomes the first day of history rather than being silently lost. */
-function migrateV3toV4(old: V3State): AppState {
+function migrateV3toV4(old: V3State): V4State {
   const today = todayStr();
   return {
     ...old,
@@ -19,8 +55,8 @@ function migrateV3toV4(old: V3State): AppState {
 
 const STORAGE_KEY = 'kitchen-app-state';
 
-/** A v2 state: everything the current AppState has except the order sheet. */
-type V2State = Omit<AppState, 'orderLines'>;
+/** A v2 state: everything the current AppState has except the order sheet and station list. */
+type V2State = Omit<V4State, 'orderLines'>;
 
 /** v1 had no taskOverrides and Task.source could be 'auto'; v2 drops frozen auto-tasks
  * in favor of live computation, keeping only the manual tasks the user actually created. */
@@ -141,10 +177,15 @@ export function loadState(): AppState {
     if (!raw) return createSeedState();
     const parsed = JSON.parse(raw) as AppState;
     if (parsed.schemaVersion === SCHEMA_VERSION) return parsed;
-    if (parsed.schemaVersion === 3) return migrateV3toV4(parsed as unknown as V3State);
-    if (parsed.schemaVersion === 2) return migrateV3toV4(migrateV2toV3(parsed as unknown as V2State));
+    if (parsed.schemaVersion === 4) return migrateV4toV5(parsed as unknown as V4State);
+    if (parsed.schemaVersion === 3) return migrateV4toV5(migrateV3toV4(parsed as unknown as V3State));
+    if (parsed.schemaVersion === 2) {
+      return migrateV4toV5(migrateV3toV4(migrateV2toV3(parsed as unknown as V2State)));
+    }
     if (parsed.schemaVersion === 1) {
-      return migrateV3toV4(migrateV2toV3(migrateV1toV2(parsed as unknown as Record<string, unknown>)));
+      return migrateV4toV5(
+        migrateV3toV4(migrateV2toV3(migrateV1toV2(parsed as unknown as Record<string, unknown>))),
+      );
     }
     return createSeedState();
   } catch {
@@ -169,10 +210,15 @@ export function parseImportedState(json: string): AppState {
   if (typeof parsed !== 'object' || parsed === null || !('schemaVersion' in parsed)) {
     throw new Error('קובץ לא תקין');
   }
-  if (parsed.schemaVersion === 3) return migrateV3toV4(parsed as unknown as V3State);
-  if (parsed.schemaVersion === 2) return migrateV3toV4(migrateV2toV3(parsed as unknown as V2State));
+  if (parsed.schemaVersion === 4) return migrateV4toV5(parsed as unknown as V4State);
+  if (parsed.schemaVersion === 3) return migrateV4toV5(migrateV3toV4(parsed as unknown as V3State));
+  if (parsed.schemaVersion === 2) {
+    return migrateV4toV5(migrateV3toV4(migrateV2toV3(parsed as unknown as V2State)));
+  }
   if (parsed.schemaVersion === 1) {
-    return migrateV3toV4(migrateV2toV3(migrateV1toV2(parsed as unknown as Record<string, unknown>)));
+    return migrateV4toV5(
+      migrateV3toV4(migrateV2toV3(migrateV1toV2(parsed as unknown as Record<string, unknown>))),
+    );
   }
   return parsed;
 }

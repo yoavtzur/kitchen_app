@@ -11,7 +11,7 @@ import { RecipeEditor } from './RecipeEditor';
 import { multiplierForProduct, toPrepare } from '../lib/calc';
 import { todayStr } from '../lib/date';
 import { formatQty, unitLabel } from '../lib/units';
-import { CATEGORY_TABS, RECIPE_CATEGORIES, type CategoryFilter } from '../lib/recipeCategories';
+import { categoryTabs, stationOptions, UNASSIGNED_CATEGORY, type CategoryFilter } from '../lib/recipeCategories';
 import type { Recipe, RecipeCategory } from '../types';
 
 function RecipeRow({ recipe }: { recipe: Recipe }) {
@@ -279,10 +279,12 @@ export function Recipes() {
   const groups: { label?: string; recipes: Recipe[] }[] = searching
     ? [{ recipes: state.recipes.filter((r) => matchesQuery(query, r.name)) }]
     : category === 'all'
-      ? RECIPE_CATEGORIES.map((c) => ({
-          label: c.label,
-          recipes: state.recipes.filter((r) => r.category === c.value),
-        })).filter((g) => g.recipes.length > 0)
+      ? stationOptions(state.stations)
+          .map((c) => ({
+            label: c.label,
+            recipes: state.recipes.filter((r) => r.category === c.value),
+          }))
+          .filter((g) => g.recipes.length > 0)
       : [{ recipes: state.recipes.filter((r) => r.category === category) }];
 
   const isEmpty = groups.every((g) => g.recipes.length === 0);
@@ -292,8 +294,9 @@ export function Recipes() {
       ? 'אין עדיין מתכונים. הוסף מתכון ראשון.'
       : 'אין מתכונים בקטגוריה הזו עדיין.';
 
-  // Adding a recipe while "הכל" is selected still needs one real station to start from.
-  const addDefaultCategory: RecipeCategory = category === 'all' ? 'cold' : category;
+  // Adding a recipe while "הכל" is selected falls back to "כללי" — a kitchen may not have any
+  // real station yet, so this can't assume one exists.
+  const addDefaultCategory: RecipeCategory = category === 'all' ? UNASSIGNED_CATEGORY : category;
 
   return (
     <div>
@@ -315,7 +318,9 @@ export function Recipes() {
 
       <SearchInput value={query} onChange={setQuery} placeholder="חיפוש מתכון..." />
 
-      {!searching && <CategoryTabs tabs={CATEGORY_TABS} value={category} onChange={setCategory} />}
+      {!searching && (
+        <CategoryTabs tabs={categoryTabs(state.stations)} value={category} onChange={setCategory} />
+      )}
 
       {isEmpty ? (
         <EmptyState text={emptyText} />

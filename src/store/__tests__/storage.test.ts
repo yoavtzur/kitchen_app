@@ -53,9 +53,11 @@ describe('migrating v2 data to v3', () => {
   it('repairs a one-sided link so the recipe finally drives the main screen', () => {
     const state = parseImportedState(v2Json());
 
-    expect(state.schemaVersion).toBe(4);
+    expect(state.schemaVersion).toBe(5);
     expect(state.products[0].recipeId).toBe('recipe-cream');
     expect(state.recipes[0].producesProductId).toBe('prod-cream');
+    // The old preset's 'cold' category becomes a real, correctly labeled station.
+    expect(state.stations).toEqual([{ id: 'cold', name: 'פס קר', createdAt: expect.any(String) }]);
 
     // The whole point: this state previously produced no task at all.
     const tasks = getDisplayTasks(todayStr(), state);
@@ -124,7 +126,7 @@ describe('migrating v2 data to v3', () => {
 
     const state = parseImportedState(JSON.stringify(json));
 
-    expect(state.schemaVersion).toBe(4);
+    expect(state.schemaVersion).toBe(5);
     expect(state.ingredients).toHaveLength(1);
     expect(state.recipes).toHaveLength(1);
     expect(state.products[0].recipeId).toBe('recipe-cream');
@@ -154,7 +156,7 @@ describe('migrating v3 data to v4', () => {
 
   it('stamps every pre-existing order line with today so the in-progress sheet survives', () => {
     const state = parseImportedState(v3Json());
-    expect(state.schemaVersion).toBe(4);
+    expect(state.schemaVersion).toBe(5);
     expect(state.orderLines).toEqual([
       { ingredientId: 'ing-egg', date: todayStr(), qtyOverride: 30, ordered: true },
     ]);
@@ -163,5 +165,47 @@ describe('migrating v3 data to v4', () => {
   it('an already-empty order sheet stays empty', () => {
     const state = parseImportedState(v3Json({ orderLines: [] }));
     expect(state.orderLines).toEqual([]);
+  });
+});
+
+describe('migrating v4 data to v5', () => {
+  function v4Json(overrides: Record<string, unknown> = {}): string {
+    return JSON.stringify({
+      schemaVersion: 4,
+      settings: { defaultCoverageDays: 1, weekStartsOn: 0, roundMultiplierTo: 0.25 },
+      cooks: [],
+      ingredients: [],
+      products: [],
+      recipes: [
+        { id: 'recipe-1', name: 'א', category: 'hot', yieldQty: 1, yieldUnit: 'unit', items: [], steps: [] },
+        { id: 'recipe-2', name: 'ב', category: 'hot', yieldQty: 1, yieldUnit: 'unit', items: [], steps: [] },
+        { id: 'recipe-3', name: 'ג', category: 'general', yieldQty: 1, yieldUnit: 'unit', items: [], steps: [] },
+      ],
+      tasks: [
+        { id: 't-1', date: '2026-09-05', title: 'ד', categoryOverride: 'taboon', multiplier: 1, priority: 'red', done: false, source: 'manual' },
+      ],
+      taskOverrides: [],
+      specialEvents: [],
+      dayPlans: [],
+      orderLines: [],
+      ...overrides,
+    });
+  }
+
+  it('backs the categories actually in use with real, deduplicated stations — but never "general"', () => {
+    const state = parseImportedState(v4Json());
+    expect(state.schemaVersion).toBe(5);
+    expect(state.stations).toEqual(
+      expect.arrayContaining([
+        { id: 'hot', name: 'פס חם', createdAt: expect.any(String) },
+        { id: 'taboon', name: 'טאבון', createdAt: expect.any(String) },
+      ]),
+    );
+    expect(state.stations).toHaveLength(2);
+  });
+
+  it('a kitchen with nothing but general-category data gets an empty station list', () => {
+    const state = parseImportedState(v4Json({ recipes: [], tasks: [] }));
+    expect(state.stations).toEqual([]);
   });
 });

@@ -434,6 +434,19 @@ table.data-table th {
   font-weight: 700;
 }
 
+.week-day.alert {
+  border: 2px solid var(--color-red);
+  position: relative;
+}
+
+.week-day.alert .pill {
+  display: block;
+  margin: 4px auto 0;
+  width: fit-content;
+  padding: 1px 8px;
+  font-size: 10px;
+}
+
 .stack-gap-2 > * + * {
   margin-top: var(--space-2);
 }
@@ -833,4 +846,57 @@ textarea {
   50% {
     transform: rotate(3deg);
   }
+}
+
+/* Print — prep lists leaving the phone onto paper for a station with no screen. Everything
+   in the app renders with the OLED-dark tokens above, so without this override a printout
+   would come out near-black; the rules below force a plain black-on-white page instead. */
+@media print {
+  .bottom-nav,
+  .sync-badge,
+  .search-input,
+  .tabs,
+  .overlay,
+  .sheet,
+  .count-save-bar,
+  .btn,
+  .home-blob,
+  .swipe-action,
+  .no-print {
+    display: none !important;
+  }
+
+  body,
+  .card {
+    background: #fff !important;
+    color: #000 !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    font-family: monospace, system-ui;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .card {
+    page-break-inside: avoid;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .print-banner {
+    page-break-after: avoid;
+  }
+
+  .print-check {
+    display: inline-block;
+    border: 2px solid #000;
+    width: 18px;
+    height: 18px;
+  }
+}
+
+.print-only,
+.print-check {
+  display: none;
 }

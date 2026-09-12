@@ -12,8 +12,9 @@ import { EmptyState } from '../components/EmptyState';
 import { SearchInput } from '../components/SearchInput';
 import { CategoryTabs } from '../components/CategoryTabs';
 import { SwipeToComplete } from '../components/SwipeToComplete';
+import { PrintStationButton } from '../components/PrintStationButton';
 import { matchesQuery } from '../lib/search';
-import { categoryTabs, stationOptions, UNASSIGNED_CATEGORY, type CategoryFilter } from '../lib/recipeCategories';
+import { categoryTabs, stationOptions, UNASSIGNED_CATEGORY, UNASSIGNED_LABEL, type CategoryFilter } from '../lib/recipeCategories';
 import type { Action } from '../store/reducer';
 import type { AppState, Priority, Recipe, RecipeCategory, Station, Task } from '../types';
 
@@ -363,6 +364,7 @@ function TaskRow({ task }: { task: DisplayTask }) {
       <div className={`card priority-card ${task.priority}${task.done ? ' done' : ''}`}>
         <div className="row">
           <div className="row" style={{ gap: 10 }}>
+            <span className="print-check" aria-hidden="true" />
             <PriorityDot priority={task.priority} onClick={cyclePriority} />
             <PriorityPill priority={task.priority} />
             <button
@@ -434,17 +436,30 @@ export function Tasks() {
     return true;
   });
 
+  const stationName =
+    category === 'all'
+      ? 'כל העמדות'
+      : category === UNASSIGNED_CATEGORY
+        ? UNASSIGNED_LABEL
+        : (state.stations.find((s) => s.id === category)?.name ?? UNASSIGNED_LABEL);
+
   return (
     <div>
       <div className="screen-header">
         <h1 className="screen-title">משימות יומיות</h1>
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '8px' }} />
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="no-print" style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '8px' }} />
+      </div>
+
+      <div className="print-only print-banner">
+        <p style={{ fontWeight: 700 }}>רשימת עמדה — {stationName}</p>
+        <p>{date} &middot; הודפס ב-{new Date().toLocaleString('he-IL')}</p>
       </div>
 
       <div className="row" style={{ gap: 8, marginBottom: 'var(--space-4)' }}>
-        <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={() => setAddingManual(true)}>
+        <button type="button" className="btn btn-primary no-print" style={{ flex: 1 }} onClick={() => setAddingManual(true)}>
           + משימה
         </button>
+        <PrintStationButton label="הדפס רשימת עמדה" />
       </div>
 
       <SearchInput value={query} onChange={setQuery} placeholder="חיפוש משימה או טבח..." />

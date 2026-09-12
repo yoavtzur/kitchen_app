@@ -11,8 +11,8 @@ import { NumberEditor } from '../components/NumberEditor';
 import { matchesQuery } from '../lib/search';
 import type { AppState, Ingredient } from '../types';
 
-const NO_SUPPLIER = 'ללא ספק';
-const ALL_SUPPLIERS = 'all';
+const NO_CATEGORY = 'ללא קטגוריה';
+const ALL_CATEGORIES = 'all';
 
 type Draft = Record<string, string>;
 
@@ -102,7 +102,7 @@ function IngredientCard({
       <div className="row" style={{ marginBottom: 'var(--space-2)' }}>
         <div>
           <p style={{ fontWeight: 600 }}>{ingredient.name}</p>
-          <p className="muted">{ingredient.supplier?.trim() || NO_SUPPLIER}</p>
+          <p className="muted">{ingredient.category?.trim() || NO_CATEGORY}</p>
         </div>
         {Number.isFinite(days) ? (
           <span className={`pill ${coverageColor(days)}`}>{Math.round(days * 10) / 10} ימים</span>
@@ -144,26 +144,26 @@ export function MorningDashboard() {
   const { state, dispatch } = useApp();
   const { membership } = useAuth();
   const [query, setQuery] = useState('');
-  const [supplier, setSupplier] = useState(ALL_SUPPLIERS);
+  const [category, setCategory] = useState(ALL_CATEGORIES);
   const [drafts, setDrafts] = useState<Draft>({});
   const [submitted, setSubmitted] = useState(false);
 
   const today = todayStr();
   const title = membership?.restaurantName?.trim() || 'בוקר במטבח';
 
-  const supplierTabs = useMemo(() => {
-    const suppliers = new Set<string>();
-    for (const ing of state.ingredients) suppliers.add(ing.supplier?.trim() || NO_SUPPLIER);
-    const rest = [...suppliers].filter((s) => s !== NO_SUPPLIER).sort((a, b) => a.localeCompare(b, 'he'));
-    const tabs = [{ value: ALL_SUPPLIERS, label: 'הכל' }, ...rest.map((s) => ({ value: s, label: s }))];
-    if (suppliers.has(NO_SUPPLIER)) tabs.push({ value: NO_SUPPLIER, label: NO_SUPPLIER });
+  const ingredientCategoryTabs = useMemo(() => {
+    const categories = new Set<string>();
+    for (const ing of state.ingredients) categories.add(ing.category?.trim() || NO_CATEGORY);
+    const rest = [...categories].filter((c) => c !== NO_CATEGORY).sort((a, b) => a.localeCompare(b, 'he'));
+    const tabs = [{ value: ALL_CATEGORIES, label: 'הכל' }, ...rest.map((c) => ({ value: c, label: c }))];
+    if (categories.has(NO_CATEGORY)) tabs.push({ value: NO_CATEGORY, label: NO_CATEGORY });
     return tabs;
   }, [state.ingredients]);
 
   const filtered = state.ingredients.filter((ing) => {
-    if (!matchesQuery(query, ing.name, ing.supplier)) return false;
-    if (supplier === ALL_SUPPLIERS) return true;
-    return (ing.supplier?.trim() || NO_SUPPLIER) === supplier;
+    if (!matchesQuery(query, ing.name, ing.category)) return false;
+    if (category === ALL_CATEGORIES) return true;
+    return (ing.category?.trim() || NO_CATEGORY) === category;
   });
 
   const changedCounts = useMemo(() => collectChanges(state.ingredients, drafts), [state.ingredients, drafts]);
@@ -200,9 +200,9 @@ export function MorningDashboard() {
         </div>
       </div>
 
-      <CategoryTabs tabs={supplierTabs} value={supplier} onChange={setSupplier} />
+      <CategoryTabs tabs={ingredientCategoryTabs} value={category} onChange={setCategory} />
 
-      <SearchInput value={query} onChange={setQuery} placeholder="חיפוש מצרך או ספק..." variant="stepper" />
+      <SearchInput value={query} onChange={setQuery} placeholder="חיפוש מצרך או קטגוריה..." variant="stepper" />
 
       {filtered.length === 0 ? (
         <EmptyState text={query ? 'לא נמצאו מצרכים.' : 'אין מצרכים.'} />

@@ -206,6 +206,7 @@ function IngredientDetailSheet({ ingredient, onClose }: { ingredient: Ingredient
   const [pendingUnit, setPendingUnit] = useState<Unit | null>(null);
   const [nameDraft, setNameDraft] = useState(ingredient.name);
   const [supplierDraft, setSupplierDraft] = useState(ingredient.supplier ?? '');
+  const [categoryDraft, setCategoryDraft] = useState(ingredient.category ?? '');
 
   function handlePickUnit(unit: Unit) {
     setPickingUnit(false);
@@ -235,6 +236,14 @@ function IngredientDetailSheet({ ingredient, onClose }: { ingredient: Ingredient
     dispatch({ type: 'UPDATE_INGREDIENT', ingredient: { ...ingredient, supplier } });
   }
 
+  function commitCategory() {
+    const category = categoryDraft.trim() || undefined;
+    if (category === ingredient.category) return;
+    // Same undefined-key reasoning as commitSupplier above — an empty category clears the key
+    // entirely rather than storing "null".
+    dispatch({ type: 'UPDATE_INGREDIENT', ingredient: { ...ingredient, category } });
+  }
+
   return (
     <BottomSheet title={ingredient.name} onClose={onClose}>
       <div className="field">
@@ -244,6 +253,10 @@ function IngredientDetailSheet({ ingredient, onClose }: { ingredient: Ingredient
       <div className="field">
         <label>ספק (לא חובה)</label>
         <input value={supplierDraft} onChange={(e) => setSupplierDraft(e.target.value)} onBlur={commitSupplier} />
+      </div>
+      <div className="field">
+        <label>קטגוריה (לא חובה)</label>
+        <input value={categoryDraft} onChange={(e) => setCategoryDraft(e.target.value)} onBlur={commitCategory} />
       </div>
       <div className="row-item">
         <span>כמות במלאי</span>
@@ -360,6 +373,7 @@ function AddIngredientSheet({ onClose }: { onClose: () => void }) {
   const [weeklyUsage, setWeeklyUsage] = useState('0');
   const [parLevel, setParLevel] = useState('');
   const [supplier, setSupplier] = useState('');
+  const [category, setCategory] = useState('');
 
   function save() {
     if (!name.trim()) return;
@@ -375,6 +389,7 @@ function AddIngredientSheet({ onClose }: { onClose: () => void }) {
         weeklyUsage: parseFloat(weeklyUsage) || 0,
         parLevel: Number.isNaN(parsedPar) ? undefined : parsedPar,
         supplier: supplier.trim() || undefined,
+        category: category.trim() || undefined,
       },
     });
     onClose();
@@ -415,6 +430,10 @@ function AddIngredientSheet({ onClose }: { onClose: () => void }) {
       <div className="field">
         <label>ספק (לא חובה)</label>
         <input value={supplier} onChange={(e) => setSupplier(e.target.value)} />
+      </div>
+      <div className="field">
+        <label>קטגוריה (לא חובה)</label>
+        <input value={category} onChange={(e) => setCategory(e.target.value)} />
       </div>
       <button type="button" className="btn btn-primary" style={{ width: '100%' }} onClick={save}>
         הוסף מצרך

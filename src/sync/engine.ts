@@ -3,6 +3,7 @@
 // node with zero mocks; store.ts is the only place that actually runs an effect.
 import type { AppState } from '../types';
 import { SCHEMA_VERSION } from '../data/seed';
+import { ensureStations } from '../lib/migrateStations';
 import { backoffMs } from './backoff';
 import { applyPending, foldContiguous } from './log';
 import type { OpRow, PendingOp, PersistedSync, SyncEffect, SyncEvent, SyncState } from './types';
@@ -86,9 +87,13 @@ export function syncReduce(state: SyncState, event: SyncEvent): [SyncState, Sync
   switch (event.type) {
     case 'HYDRATE': {
       if (!event.cached) return [state, [{ type: 'BOOTSTRAP' }]];
+      // The cached blob is whatever a previous version of the app last persisted, which for
+      // anyone who used the app before per-kitchen stations shipped has no `stations` key at
+      // all — and HYDRATE renders immediately, well before BOOTSTRAP's network round trip could
+      // ever normalize it. See ensureStations's own comment for the full picture.
       const next: SyncState = {
         ...state,
-        confirmed: event.cached.confirmed,
+        confirmed: ensureStations(event.cached.confirmed),
         confirmedSeq: event.cached.confirmedSeq,
         pending: event.cached.pending,
         ready: true,

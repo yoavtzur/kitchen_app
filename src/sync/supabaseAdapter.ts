@@ -2,6 +2,7 @@
 // against the schema in supabase/migrations/0001_init.sql: a `snapshots` row plus an `ops` log,
 // both scoped to one restaurant, written only through the append_ops RPC.
 import { supabase } from '../lib/supabase';
+import { ensureStations } from '../lib/migrateStations';
 import type { Action } from '../store/reducer';
 import type { AppState } from '../types';
 import type { OpRow, PendingOp, SyncAdapter } from './types';
@@ -54,8 +55,12 @@ export function createSupabaseAdapter(restaurantId: string, clientId: string): S
         .order('seq');
       if (opsErr) throw new Error(describeError(opsErr));
 
+      // The restaurant's snapshot jsonb blob has no schema-migration mechanism of its own — it's
+      // whatever the last write left behind. A restaurant that existed before per-kitchen
+      // stations shipped has no `stations` key at all, so this must be backfilled right here,
+      // at the point the snapshot enters the app (see ensureStations's own comment for why).
       return {
-        confirmed: snap.state as AppState,
+        confirmed: ensureStations(snap.state as AppState),
         confirmedSeq: snap.seq as number,
         ops: (ops ?? []).map((row) => toOpRow(row as OpRowDb)),
         schemaVersion: restaurant.schema_version as number,

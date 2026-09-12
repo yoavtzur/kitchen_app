@@ -215,6 +215,18 @@ describe('HYDRATE', () => {
     expect(next.ready).toBe(false);
     expect(effects).toEqual([{ type: 'BOOTSTRAP' }]);
   });
+
+  // Regression: a cache written by a build from before per-kitchen stations shipped has no
+  // `stations` key at all. HYDRATE renders this state synchronously, before BOOTSTRAP's network
+  // round trip ever gets a chance to normalize it — this crashed the whole app in production.
+  it('a cache from before per-kitchen stations shipped (no stations key) does not crash', () => {
+    const legacyConfirmed = { ...baseState() } as Record<string, unknown>;
+    delete legacyConfirmed.stations;
+    const cached = { confirmed: legacyConfirmed as unknown as AppState, confirmedSeq: 1, pending: [] };
+    const [next] = syncReduce(initialSyncState(baseState()), { type: 'HYDRATE', cached });
+    expect(Array.isArray(next.confirmed.stations)).toBe(true);
+    expect(Array.isArray(next.display.stations)).toBe(true);
+  });
 });
 
 describe('convergence: two clients with different pending, merged into one server order', () => {

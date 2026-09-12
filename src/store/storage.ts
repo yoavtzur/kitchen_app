@@ -1,41 +1,17 @@
-import type { AppState, OrderLine, Station } from '../types';
+import type { AppState, OrderLine } from '../types';
 import { createSeedState, SCHEMA_VERSION } from '../data/seed';
 import { todayStr } from '../lib/date';
+import { ensureStations } from '../lib/migrateStations';
 
 /** A v4 state: everything the current AppState has except the station list. */
 type V4State = Omit<AppState, 'stations'>;
 
-/** Hebrew labels for the categories the old hardcoded 5-value preset used to offer, so a
- * kitchen that already has recipes/tasks tagged with one of them keeps a real, correctly
- * labeled station instead of an orphaned string once the preset list is gone. */
-const LEGACY_CATEGORY_LABELS: Record<string, string> = {
-  cold: 'פס קר',
-  hot: 'פס חם',
-  taboon: 'טאבון',
-  dessert: 'קינוחים',
-};
-
 /** v5 replaces the fixed 5-category preset with a per-kitchen `stations` list a chef builds by
- * hand. A brand-new kitchen starts empty (see `createSeedState`), but an existing kitchen's data
- * already carries category values from the old preset — back those into real `Station` rows
- * (reusing the category string itself as the station id) so nothing already tagged 'hot'/'cold'/
- * etc. loses its station, and no data needs rewriting. `'general'` is never backed by a Station
- * row — it's the permanent built-in "no station" fallback (see `lib/recipeCategories.ts`). */
+ * hand. `ensureStations` backs any category already in use into a real Station row so nothing
+ * loses its station; see that function's own comment for why it's shared with the Supabase
+ * bootstrap path rather than living only here. */
 function migrateV4toV5(old: V4State): AppState {
-  const used = new Set<string>();
-  for (const r of old.recipes ?? []) {
-    if (r.category && r.category !== 'general') used.add(r.category);
-  }
-  for (const t of old.tasks ?? []) {
-    if (t.categoryOverride && t.categoryOverride !== 'general') used.add(t.categoryOverride);
-  }
-  const now = new Date().toISOString();
-  const stations: Station[] = [...used].map((id) => ({
-    id,
-    name: LEGACY_CATEGORY_LABELS[id] ?? id,
-    createdAt: now,
-  }));
-  return { ...old, schemaVersion: 5, stations };
+  return { ...ensureStations(old), schemaVersion: 5 };
 }
 
 /** A v3 state: everything the current AppState has except dates on order lines. */

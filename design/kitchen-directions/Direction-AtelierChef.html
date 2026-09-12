@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Atelier Chef — Warm Luxury</title>
+<style>
+  /* ============================================================================
+     DESIGN TOKENS — "Modern Atelier / Warm Luxury" (dark variant, per product
+     decision — the brief also allows a light #F6F4EF base, not used here to
+     keep this exploration's scope to one palette).
+     High-end culinary craft: muted slate/stone tones, rich copper/saffron
+     accents, soft rounded cards, editorial typography. Every token is
+     commented with its purpose so a human can later decide which (if any)
+     belong in src/styles/tokens.css. NONE of this has been migrated there —
+     this file is a standalone design exploration only.
+     ============================================================================ */
+  :root {
+    /* --- Surfaces: warm dark stone, not cold black --- */
+    --bg: #1E1C1A;             /* page/app background */
+    --surface: #26221F;        /* card background */
+    --surface-2: #2E2925;      /* raised/secondary surface (header, nav, sheet) */
+    --surface-3: #362F2A;      /* hover/pressed surface */
+    --border: rgba(255,255,255,.06); /* soft slate hairline, per the brief */
+    --border-strong: rgba(255,255,255,.12);
+
+    /* --- Text --- */
+    --text: #F3ECE3;
+    --text-muted: #B5A896;
+    --text-faint: #8A7C6C;
+
+    /* --- Accent palette: copper/saffron, per the brief --- */
+    --accent-copper: #C25E2E;
+    --accent-saffron: #D97706;
+    --accent-cream: #EFE3CF;
+    --focus-ring: #D97706;
+
+    /* --- Status palette: kept close to the real app's meaning, warmed to fit
+       the palette rather than using laser-bright/industrial tones --- */
+    --accent-green: #6FA287;   /* on track / done */
+    --accent-amber: var(--accent-saffron); /* prep delay warning */
+    --accent-red: #C2543E;    /* critical timing */
+    --accent-blue: #8FA6B0;   /* informational / in-progress */
+
+    /* --- Priority triad --- */
+    --priority-red: var(--accent-red);
+    --priority-yellow: var(--accent-amber);
+    --priority-green: rgba(255,255,255,.10); /* muted — green stays reserved for "done" */
+
+    /* --- Radii: soft 18px per the brief, evokes printed menu card stock --- */
+    --radius-s: 10px;
+    --radius-m: 18px;
+    --radius-l: 26px;
+    --radius-pill: 999px;
+
+    /* --- Spacing scale --- */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+
+    /* --- Type: editorial serif for headings/titles, clean sans for meta/UI
+       chrome — a magazine-menu pairing rather than the real app's single
+       Rubik family. --- */
+    --font-serif: Georgia, 'Iowan Old Style', 'Palatino Linotype', serif;
+    --font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
+
+    --nav-height: 64px;
+    --shadow-sheet: 0 -8px 32px rgba(0,0,0,.5);
+    --toast-shadow: 0 6px 20px rgba(0,0,0,.4);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: #0f0e0d;
+    font-family: var(--font-family);
+    color: var(--text);
+    -webkit-tap-highlight-color: transparent;
+    display: flex;
+    justify-content: center;
+    padding: 40px 16px;
+  }
+
+  /* ---- Presentation chrome only: centers the phone-shaped card for desktop
+     browser review. Not part of the "app" itself. ---- */
+  .frame-label {
+    position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+    font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+    color: #5c554c; font-family: var(--font-family);
+  }
+
+  .phone-frame {
+    width: 100%; max-width: 420px; min-height: 840px;
+    background: var(--bg);
+    border-radius: 30px;
+    border: 1px solid rgba(255,255,255,.05);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 40px 90px rgba(0,0,0,.6);
+  }
+
+  /* ============================== HEADER ============================== */
+  .app-header {
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    padding: var(--space-5) var(--space-4) var(--space-3);
+  }
+  .header-title { font-family: var(--font-serif); font-size: 21px; font-weight: 700; letter-spacing: .01em; }
+  .header-sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; letter-spacing: .02em; }
+
+  .brigade-switch {
+    display: flex; gap: 8px;
+    margin-top: var(--space-4);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    padding: 4px;
+  }
+  .brigade-tab {
+    flex: 1; min-height: 44px;
+    background: transparent; color: var(--text-muted);
+    border: none; border-radius: var(--radius-pill);
+    font-family: inherit; font-size: 12px; font-weight: 600; letter-spacing: .01em;
+    cursor: pointer;
+  }
+  .brigade-tab.active { background: var(--accent-copper); color: var(--accent-cream); }
+
+  /* ============================== FEED ============================== */
+  .task-feed { flex: 1; overflow-y: auto; padding: var(--space-4); padding-bottom: calc(var(--nav-height) + var(--space-6)); }
+
+  /* Signature detail #3: editorial section rules — small-caps label + a thin
+     copper horizontal rule extending to the card edge, like a magazine
+     section divider, rather than a plain uppercase label. */
+  .section-header {
+    display: flex; align-items: baseline; gap: var(--space-3);
+    margin: var(--space-6) 0 var(--space-3);
+    font-size: 11px; font-weight: 700; letter-spacing: .12em;
+    font-variant: small-caps;
+    color: var(--accent-saffron);
+  }
+  .section-header:first-child { margin-top: 0; }
+  .section-header::after { content: ''; flex: 1; height: 1px; background: linear-gradient(to var(--rule-direction, left), var(--accent-copper), transparent); }
+  html[dir="rtl"] .section-header::after { --rule-direction: right; }
+  .section-header .window-range { font-variant: normal; letter-spacing: 0; color: var(--text-faint); font-size: 11px; flex: none; }
+
+  /* ---- Station group header (Full Brigade mode) ---- */
+  .station-section { margin-bottom: var(--space-5); }
+  .station-header {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-m);
+    padding: var(--space-3) var(--space-4);
+    margin-bottom: var(--space-2);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+  }
+  .station-name { font-family: var(--font-serif); font-size: 14px; font-weight: 700; }
+  .station-row { display: flex; align-items: center; justify-content: space-between; margin-top: var(--space-2); }
+  .cook-avatars { display: flex; gap: 6px; }
+  .cook-avatar {
+    width: 26px; height: 26px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: #241b12;
+    border: 2px solid var(--surface);
+  }
+  .progress-track { flex: 1; height: 5px; background: var(--surface-3); border-radius: var(--radius-pill); margin-inline-start: var(--space-3); overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--accent-green); border-radius: inherit; transition: width .3s ease; }
+  .progress-label { font-size: 11px; color: var(--text-muted); margin-inline-start: var(--space-2); white-space: nowrap; }
+
+  /* ============================== TASK CARD ============================== */
+  .task-card { margin-bottom: var(--space-3); }
+
+  /* Priority border mirrors the real app's .priority-card convention, but
+     this direction favors soft hairline borders + a faint inner highlight
+     over hard drop shadows — evokes printed menu card stock, per the brief. */
+  .swipe-wrap {
+    position: relative; overflow: hidden;
+    border-radius: var(--radius-m);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+  }
+  .task-card.priority-red .swipe-wrap { border-color: var(--priority-red); }
+  .task-card.priority-yellow .swipe-wrap { border-color: var(--priority-yellow); }
+  .task-card.priority-green .swipe-wrap { border-color: var(--border); }
+  .task-card.status-done .swipe-wrap { border-color: var(--accent-green); background: rgba(111,162,135,.08); }
+
+  .swipe-action {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(111,162,135,.18);
+    color: var(--accent-green);
+    font-family: var(--font-serif); font-weight: 700; font-size: 15px; letter-spacing: .02em;
+  }
+
+  .swipe-surface { position: relative; touch-action: pan-y; user-select: none; min-height: 48px; background: var(--surface); }
+
+  .task-card-inner { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-4); cursor: pointer; }
+  .task-main { flex: 1; min-width: 0; }
+
+  .status-dot { width: 13px; height: 13px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; border: 2px solid var(--border-strong); }
+  .status-dot.status-pending { background: transparent; }
+  .status-dot.status-inProgress { background: var(--accent-blue); border-color: var(--accent-blue); animation: soft-pulse 2s ease-out infinite; }
+  .status-dot.status-paused { background: var(--accent-amber); border-color: var(--accent-amber); }
+  .status-dot.status-done { background: var(--accent-green); border-color: var(--accent-green); }
+
+  @keyframes soft-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(143,166,176,.45); }
+    70% { box-shadow: 0 0 0 8px rgba(143,166,176,0); }
+    100% { box-shadow: 0 0 0 0 rgba(143,166,176,0); }
+  }
+
+  .task-title { font-family: var(--font-serif); font-size: 15px; font-weight: 700; line-height: 1.4; }
+  .task-card.status-done .task-title { text-decoration: line-through; opacity: .5; }
+
+  /* Signature detail #1: italic dependency-indicator caption — this is the
+     direction where it's actually shown (the other two files hide it). */
+  .task-dependency {
+    display: block;
+    font-style: italic;
+    font-size: 12px;
+    color: var(--accent-saffron);
+    opacity: .85;
+    margin-top: 4px;
+    line-height: 1.4;
+  }
+
+  .task-meta { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); margin-top: var(--space-2); font-size: 11.5px; color: var(--text-muted); }
+  .task-meta .meta-item { display: flex; align-items: center; gap: 4px; }
+
+  .priority-pill {
+    display: inline-flex; align-items: center; border-radius: var(--radius-s);
+    padding: 2px 8px; font-size: 10.5px; font-weight: 700;
+  }
+  .priority-pill.pill-red { background: rgba(194,84,62,.16); color: var(--accent-red); }
+  .priority-pill.pill-yellow { background: rgba(217,119,6,.16); color: var(--accent-saffron); }
+  .priority-pill.pill-green { background: rgba(255,255,255,.06); color: var(--text-faint); }
+
+  .assignee-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px 2px 2px; border-radius: var(--radius-pill);
+    background: var(--surface-3); border: 1px solid var(--border);
+    font-size: 11px; color: var(--text-muted);
+  }
+  .assignee-dot { width: 14px; height: 14px; border-radius: 50%; background: var(--cook-color, #888); }
+
+  .info-btn {
+    width: 40px; height: 40px; min-width: 40px; border-radius: 50%;
+    background: var(--surface-3); border: 1px solid var(--border);
+    color: var(--text-muted); font-size: 16px; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; flex-shrink: 0;
+  }
+  .info-btn:hover { color: var(--accent-saffron); border-color: rgba(217,119,6,.4); }
+
+  /* ============================== BOTTOM NAV ============================== */
+  .bottom-nav {
+    display: flex;
+    border-top: 1px solid var(--border);
+    background: var(--surface-2);
+    height: var(--nav-height);
+  }
+  .nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--text-faint); font-size: 10px; }
+  .nav-item.active { color: var(--accent-saffron); }
+  .nav-icon { font-size: 16px; }
+
+  /* ============================== BOTTOM SHEET ============================== */
+  /* NOTE: the real app's BottomSheet.tsx has NO transition at all — it mounts
+     instantly via React conditional render. The animated spring slide-up below
+     is a deliberate, net-new ergonomic improvement proposed by this prototype,
+     not a port of existing behavior. */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(15,14,13,0);
+    display: flex; align-items: flex-end; justify-content: center;
+    z-index: 100; pointer-events: none;
+    transition: background .25s ease;
+  }
+  .overlay.open { background: rgba(15,14,13,.65); pointer-events: auto; }
+
+  .sheet {
+    width: 100%; max-width: 420px;
+    background: var(--surface-2);
+    border-top: 1px solid var(--border-strong);
+    border-radius: var(--radius-l) var(--radius-l) 0 0;
+    max-height: 82vh; overflow-y: auto;
+    padding: var(--space-5) var(--space-4) var(--space-6);
+    box-shadow: var(--shadow-sheet);
+    transform: translateY(100%);
+    transition: transform .38s cubic-bezier(.34, 1.56, .64, 1);
+  }
+  .overlay.open .sheet { transform: translateY(0); }
+
+  .sheet-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: var(--space-4); }
+  .sheet-title { font-family: var(--font-serif); font-size: 18px; font-weight: 700; }
+  .sheet-close {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: var(--surface-3); border: 1px solid var(--border); color: var(--text);
+    font-size: 16px; cursor: pointer;
+  }
+
+  .sheet-meta-row { display: flex; justify-content: space-between; padding: var(--space-2) 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .sheet-meta-row .meta-label { color: var(--text-muted); }
+  .sheet-meta-row .meta-value { text-align: end; }
+
+  .sheet-section-title { font-family: var(--font-serif); font-size: 12px; font-weight: 700; font-style: italic; color: var(--accent-saffron); margin: var(--space-4) 0 var(--space-2); }
+
+  .checklist-item { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; font-size: 13px; }
+  .checklist-item input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent-green); }
+  .checklist-qty { color: var(--text-muted); margin-inline-start: auto; }
+
+  .step-list { margin: 0; padding-inline-start: 20px; font-size: 13px; line-height: 1.8; color: var(--text); }
+  .step-list li { margin-bottom: 5px; }
+
+  /* ============================== TOASTS ============================== */
+  #toast-root {
+    position: fixed; left: 50%; bottom: calc(var(--nav-height) + 16px);
+    transform: translateX(-50%);
+    display: flex; flex-direction: column; gap: 8px;
+    z-index: 200; pointer-events: none;
+    width: calc(100% - 32px); max-width: 380px; align-items: center;
+  }
+  .toast {
+    pointer-events: auto;
+    padding: 10px 18px; border-radius: var(--radius-pill);
+    font-size: 12.5px; font-weight: 600;
+    box-shadow: var(--toast-shadow);
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    color: var(--text);
+    opacity: 0; transform: translateY(8px);
+    animation: toast-in .22s ease forwards, toast-out .22s ease 2.6s forwards;
+    max-width: 100%;
+  }
+  .toast.tone-success { border-color: var(--accent-green); color: var(--accent-green); }
+  .toast.tone-info { border-color: var(--accent-saffron); color: var(--accent-saffron); }
+  .toast.tone-alert { border-color: var(--accent-red); color: var(--accent-red); }
+  @keyframes toast-in { to { opacity: 1; transform: translateY(0); } }
+  @keyframes toast-out { to { opacity: 0; transform: translateY(-6px); } }
+
+  /* ============================== SHARED TACTILE / A11Y UTILITY ============================== */
+  .tappable { transition: transform .1s ease; }
+  .tappable:active { transform: scale(0.96); }
+  .tappable:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+  .empty-note { text-align: center; color: var(--text-faint); font-size: 12px; padding: var(--space-4); }
+</style>
+</head>
+<body>
+  <div class="frame-label">ATELIER CHEF · WARM LUXURY</div>
+
+  <div class="phone-frame">
+    <header class="app-header">
+      <div class="header-title">מטבח האומן — משמרת ערב</div>
+      <div class="header-sub">יום שלישי · 12/09 · 5 משימות פעילות</div>
+      <div class="brigade-switch" role="tablist" aria-label="מצב תצוגה">
+        <button type="button" class="brigade-tab tappable active" role="tab" aria-selected="true" data-mode="compact">קו קומפקטי (יחיד/זוג)</button>
+        <button type="button" class="brigade-tab tappable" role="tab" aria-selected="false" data-mode="full">בריגדה מלאה (תחנות)</button>
+      </div>
+    </header>
+
+    <main class="task-feed" id="task-feed"></main>
+
+    <nav class="bottom-nav" aria-hidden="true">
+      <div class="nav-item active"><span class="nav-icon">🏠</span>בית</div>
+      <div class="nav-item"><span class="nav-icon">✓</span>משימות</div>
+      <div class="nav-item"><span class="nav-icon">🧺</span>מצרכים</div>
+      <div class="nav-item"><span class="nav-icon">📖</span>מתכונים</div>
+      <div class="nav-item"><span class="nav-icon">⋯</span>עוד</div>
+    </nav>
+  </div>
+
+  <div id="sheet-root">
+    <div class="overlay" id="overlay">
+      <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+        <div class="sheet-header">
+          <h2 class="sheet-title" id="sheet-title">—</h2>
+          <button type="button" class="sheet-close tappable" id="sheet-close-btn" aria-label="סגור">✕</button>
+        </div>
+        <div id="sheet-body"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-root" aria-live="polite"></div>
+
+<script>
+/* ==========================================================================
+   SHARED ENGINE — near-identical across all three Direction-*.html files, so
+   the three prototypes are a fair like-for-like comparison of VISUAL
+   direction only. This file omits the StationDispatch-exclusive brigade
+   reassignment popover (cook avatars here are decorative, non-interactive) —
+   see Direction-StationDispatch.html for that affordance.
+   ========================================================================== */
+
+// ---- Mock data -----------------------------------------------------------
+const CATEGORY_LABELS = { cold: 'פס קר', hot: 'פס חם', taboon: 'טאבון', dessert: 'קינוחים', general: 'כללי' };
+
+// ILLUSTRATIVE ONLY. The real app has no brigade-station concept — its only
+// station-like field is the 5-value RecipeCategory above. These station names
+// exist purely to demonstrate the "Full Brigade" design concept; a real
+// implementation would need to extend RecipeCategory or add a separate
+// station-assignment field to support this view for real.
+const BRIGADE_STATIONS = {
+  garde_manger: { label: 'Garde-Manger · פס קר' },
+  saucier: { label: 'Saucier · פס חם' },
+  patissier: { label: 'Pâtissier · קינוחים' },
+};
+
+const TIME_WINDOWS = {
+  preService: { label: 'לפני שירות', range: '10:00–16:30' },
+  serviceRush: { label: 'שיא השירות', range: '17:00–22:30' },
+  closeout: { label: 'סגירה', range: '22:30–23:30' },
+};
+
+const PRIORITY_LABELS = { red: 'דחוף', yellow: 'לא דחוף', green: 'לא צריך' };
+const STATUS_LABELS = { pending: 'ממתין', inProgress: 'בעבודה', paused: 'בהשהיה', done: 'הושלם' };
+const STATUS_CYCLE = ['pending', 'inProgress', 'paused', 'done'];
+
+const COOKS = [
+  { id: 'c1', name: 'דניאל', color: '#e8446a' },
+  { id: 'c2', name: 'נועה', color: '#1c8a6c' },
+  { id: 'c3', name: 'עומר', color: '#c99a2e' },
+];
+
+const MOCK_TASKS = [
+  {
+    id: 't1', title: 'התחלת ייבוש יבש — אנטריקוט 21 יום', category: 'cold', station: 'garde_manger',
+    timeWindow: 'preService', priority: 'yellow', assigneeId: 'c1', status: 'pending',
+    targetTemp: '1–3°C · לחות 82%', deadline: '06:30',
+    dependency: 'יש לתעד תאריך התחלה על התווית לפני העברה לתא הייבוש',
+    ingredients: [{ name: 'אנטריקוט שלם', qty: '4', unit: 'ק"ג' }, { name: 'מלח גס', qty: '0.2', unit: 'ק"ג' }],
+    steps: ['לשטוף ולייבש חתיכה במגבת נייר', 'לסדר על רשת בתא ייבוש', 'לתעד תאריך התחלה על התווית'],
+  },
+  {
+    id: 't2', title: 'בדיקת תסיסה — לחם מחמצת', category: 'hot', station: 'saucier',
+    timeWindow: 'preService', priority: 'red', assigneeId: 'c2', status: 'inProgress',
+    targetTemp: '24°C בצק', deadline: '07:00',
+    dependency: 'נדרש לפני אפיית לחמניות השירות',
+    ingredients: [{ name: 'מחמצת פעילה', qty: '0.3', unit: 'ק"ג' }, { name: 'קמח לחם', qty: '2', unit: 'ק"ג' }],
+    steps: ['לבדוק תפיחה כפולה בנפח', 'מבחן צף במים', 'לקפל ולתעד שעה'],
+  },
+  {
+    id: 't3', title: 'פתיחת קונכיות — סקאלופים טריים (60 יח\')', category: 'cold', station: 'garde_manger',
+    timeWindow: 'serviceRush', priority: 'red', assigneeId: 'c1', status: 'pending',
+    targetTemp: 'קור 0–2°C', deadline: '11:45',
+    dependency: 'נדרש לפני הכנת סביצ\'ה סקאלופים לתפריט הצהריים',
+    ingredients: [{ name: 'סקאלופים בקונכייה', qty: '60', unit: 'יח\'' }],
+    steps: ['לפתוח בעדינות עם סכין ייעודי', 'להסיר את הקורל', 'לשטוף במי ים קרים ולאחסן על קרח'],
+  },
+  {
+    id: 't4', title: 'הכנת דמי־גלאס — רדוקציה סופית', category: 'hot', station: 'saucier',
+    timeWindow: 'serviceRush', priority: 'yellow', assigneeId: 'c3', status: 'paused',
+    targetTemp: 'רתיחה עדינה 92°C', deadline: '12:30',
+    dependency: 'נדרשת רדוקציית דמי־גלאס עבור הרוטב הסופי',
+    ingredients: [{ name: 'ציר עגל כהה', qty: '8', unit: 'ליטר' }, { name: 'יין פורט', qty: '0.5', unit: 'ליטר' }],
+    steps: ['לצמצם עד לעקביות מצפה כפית', 'לסנן דרך שכבת בד גבינה', 'לקרר במהירות בבאן־מארי קרח'],
+  },
+  {
+    id: 't5', title: 'סגירת תחנת קינוחים — טמפרור שוקולד', category: 'dessert', station: 'patissier',
+    timeWindow: 'closeout', priority: 'green', assigneeId: 'c3', status: 'done',
+    targetTemp: 'טמפרור 31–32°C', deadline: '23:00',
+    dependency: 'שכבת הציפוי הסופית של קינוח החתימה תלויה בטמפרור תקין',
+    ingredients: [{ name: 'שוקולד מריר 64%', qty: '1.5', unit: 'ק"ג' }],
+    steps: ['להמיס בבאן־מארי', 'לצנן על משטח שיש', 'לחמם חזרה לטמפרטורת עבודה'],
+  },
+];
+
+// ---- State -----------------------------------------------------------
+const state = {
+  brigadeMode: 'compact',
+  tasks: MOCK_TASKS.map((t) => ({ ...t })),
+  activeSheetTaskId: null,
+  toastSeq: 0,
+};
+
+function cookById(id) { return COOKS.find((c) => c.id === id); }
+function taskById(id) { return state.tasks.find((t) => t.id === id); }
+
+function cycleTaskStatus(taskId) {
+  const task = taskById(taskId);
+  if (!task) return;
+  const idx = STATUS_CYCLE.indexOf(task.status);
+  task.status = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length];
+  render();
+}
+
+function completeTask(taskId) {
+  const task = taskById(taskId);
+  if (!task || task.status === 'done') return;
+  task.status = 'done';
+  pushToast(`הושלם: ${task.title}`, 'success');
+  render();
+}
+
+function setBrigadeMode(mode) {
+  state.brigadeMode = mode;
+  document.querySelectorAll('.brigade-tab').forEach((btn) => {
+    const active = btn.dataset.mode === mode;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', String(active));
+  });
+  render();
+}
+
+// ---- Toasts -----------------------------------------------------------
+function pushToast(message, tone) {
+  tone = tone || 'success';
+  const id = 'toast-' + (++state.toastSeq);
+  const el = document.createElement('div');
+  el.className = `toast tone-${tone}`;
+  el.id = id;
+  el.textContent = message;
+  el.addEventListener('click', () => el.remove());
+  document.getElementById('toast-root').appendChild(el);
+  setTimeout(() => { const n = document.getElementById(id); if (n) n.remove(); }, 3000);
+}
+
+// ---- Bottom sheet -----------------------------------------------------------
+function openSheet(taskId) {
+  const task = taskById(taskId);
+  if (!task) return;
+  state.activeSheetTaskId = taskId;
+  const cook = cookById(task.assigneeId);
+
+  document.getElementById('sheet-title').textContent = task.title;
+  document.getElementById('sheet-body').innerHTML = `
+    <div class="sheet-meta-row"><span class="meta-label">תחנה</span><span class="meta-value">${CATEGORY_LABELS[task.category]}</span></div>
+    <div class="sheet-meta-row"><span class="meta-label">טמפרטורת יעד</span><span class="meta-value">${task.targetTemp}</span></div>
+    <div class="sheet-meta-row"><span class="meta-label">דדליין</span><span class="meta-value">${task.deadline}</span></div>
+    <div class="sheet-meta-row"><span class="meta-label">אחראי</span><span class="meta-value">${cook ? cook.name : '—'}</span></div>
+    <div class="sheet-meta-row"><span class="meta-label">סטטוס</span><span class="meta-value">${STATUS_LABELS[task.status]}</span></div>
+
+    <div class="sheet-section-title">רשימת מצרכים</div>
+    ${task.ingredients.map((ing, i) => `
+      <label class="checklist-item">
+        <input type="checkbox" id="chk-${task.id}-${i}">
+        <span>${ing.name}</span>
+        <span class="checklist-qty">${ing.qty} ${ing.unit}</span>
+      </label>
+    `).join('')}
+
+    <div class="sheet-section-title">אופן הכנה</div>
+    <ol class="step-list">${task.steps.map((s) => `<li>${s}</li>`).join('')}</ol>
+  `;
+
+  const overlay = document.getElementById('overlay');
+  overlay.style.display = 'flex';
+  requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add('open')));
+}
+
+function closeSheet() {
+  const overlay = document.getElementById('overlay');
+  overlay.classList.remove('open');
+  setTimeout(() => { overlay.style.display = 'none'; }, 400);
+  state.activeSheetTaskId = null;
+}
+
+document.getElementById('overlay').addEventListener('click', (e) => {
+  if (e.target.id === 'overlay') closeSheet();
+});
+document.getElementById('sheet-close-btn').addEventListener('click', closeSheet);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && state.activeSheetTaskId !== null) closeSheet();
+});
+
+// ---- Swipe-to-complete (Pointer Events: unifies mouse + touch in one path —
+// a deliberate widening of the real app's touch-only SwipeToComplete.tsx).
+// Ports the exact dead-zone/threshold constants from src/lib/swipe.ts. ------
+function attachSwipeHandlers(surfaceEl, onCommit) {
+  const DEAD_ZONE = 8;
+  const COMPLETE_FRACTION = 0.4;
+  const COMPLETE_MIN_PX = 96;
+  let startX = 0, startY = 0, dx = 0, axis = 'undecided', dragging = false;
+
+  surfaceEl.style.touchAction = 'pan-y';
+
+  surfaceEl.addEventListener('pointerdown', (e) => {
+    dragging = true;
+    startX = e.clientX; startY = e.clientY; dx = 0; axis = 'undecided';
+    surfaceEl.setPointerCapture(e.pointerId);
+    surfaceEl.style.transition = 'none';
+  });
+
+  surfaceEl.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const ddx = e.clientX - startX;
+    const ddy = e.clientY - startY;
+    if (axis === 'undecided') {
+      if (Math.abs(ddx) < DEAD_ZONE && Math.abs(ddy) < DEAD_ZONE) return;
+      axis = Math.abs(ddx) > Math.abs(ddy) ? 'horizontal' : 'vertical';
+    }
+    if (axis !== 'horizontal') return;
+    dx = ddx;
+    surfaceEl.style.transform = `translateX(${dx}px)`;
+  });
+
+  function release() {
+    if (!dragging) return;
+    dragging = false;
+    const width = surfaceEl.offsetWidth || 1;
+    const threshold = Math.max(width * COMPLETE_FRACTION, COMPLETE_MIN_PX);
+    surfaceEl.style.transition = 'transform .2s ease';
+    if (axis === 'horizontal' && Math.abs(dx) >= threshold) {
+      surfaceEl.style.transform = `translateX(${dx < 0 ? -width : width}px)`;
+      onCommit();
+      setTimeout(() => { surfaceEl.style.transition = 'none'; surfaceEl.style.transform = ''; }, 210);
+    } else {
+      surfaceEl.style.transform = 'translateX(0)';
+    }
+    axis = 'undecided'; dx = 0;
+  }
+
+  surfaceEl.addEventListener('pointerup', release);
+  surfaceEl.addEventListener('pointercancel', release);
+}
+
+// ---- Rendering -----------------------------------------------------------
+function renderTaskCard(task) {
+  const cook = cookById(task.assigneeId);
+  return `
+    <div class="task-card priority-${task.priority} status-${task.status}" data-id="${task.id}">
+      <div class="swipe-wrap">
+        <div class="swipe-action">✓ הושלם</div>
+        <div class="swipe-surface tappable" data-swipe-id="${task.id}">
+          <div class="task-card-inner" data-cycle-id="${task.id}">
+            <span class="status-dot status-${task.status}"></span>
+            <div class="task-main">
+              <div class="task-title">${task.title}</div>
+              <div class="task-dependency">${task.dependency || ''}</div>
+              <div class="task-meta">
+                <span class="priority-pill pill-${task.priority}">${PRIORITY_LABELS[task.priority]}</span>
+                <span class="meta-item">⏱ ${task.deadline}</span>
+                <span class="meta-item">${STATUS_LABELS[task.status]}</span>
+                ${cook ? `<span class="assignee-pill"><span class="assignee-dot" style="--cook-color:${cook.color}"></span>${cook.name}</span>` : ''}
+              </div>
+            </div>
+            <button type="button" class="info-btn tappable" data-info-id="${task.id}" aria-label="פרטי משימה">›</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderCompact() {
+  const order = ['preService', 'serviceRush', 'closeout'];
+  const priorityOrder = { red: 0, yellow: 1, green: 2 };
+  let html = '';
+  order.forEach((win) => {
+    const tasks = state.tasks
+      .filter((t) => t.timeWindow === win)
+      .sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+    if (tasks.length === 0) return;
+    html += `<div class="section-header"><span>${TIME_WINDOWS[win].label}</span><span class="window-range">${TIME_WINDOWS[win].range}</span></div>`;
+    html += tasks.map(renderTaskCard).join('');
+  });
+  return html;
+}
+
+function renderFullBrigade() {
+  let html = '';
+  Object.keys(BRIGADE_STATIONS).forEach((stationKey) => {
+    const tasks = state.tasks.filter((t) => t.station === stationKey);
+    if (tasks.length === 0) return;
+    const station = BRIGADE_STATIONS[stationKey];
+    const assignedCookIds = [...new Set(tasks.map((t) => t.assigneeId))];
+    const doneCount = tasks.filter((t) => t.status === 'done').length;
+    const pct = Math.round((doneCount / tasks.length) * 100);
+    html += `
+      <div class="station-section">
+        <div class="station-header">
+          <div class="station-name">${station.label}</div>
+          <div class="station-row">
+            <div class="cook-avatars">
+              ${assignedCookIds.map((id) => {
+                const c = cookById(id);
+                return `<span class="cook-avatar" style="background:${c.color}" title="${c.name}">${c.name[0]}</span>`;
+              }).join('')}
+            </div>
+            <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
+            <div class="progress-label">${doneCount}/${tasks.length}</div>
+          </div>
+        </div>
+        ${tasks.map(renderTaskCard).join('')}
+      </div>
+    `;
+  });
+  return html;
+}
+
+function render() {
+  const feed = document.getElementById('task-feed');
+  feed.innerHTML = state.brigadeMode === 'compact' ? renderCompact() : renderFullBrigade();
+  if (!feed.innerHTML.trim()) feed.innerHTML = '<div class="empty-note">אין משימות להצגה</div>';
+
+  feed.querySelectorAll('[data-swipe-id]').forEach((surface) => {
+    const id = surface.dataset.swipeId;
+    attachSwipeHandlers(surface, () => completeTask(id));
+  });
+  feed.querySelectorAll('[data-cycle-id]').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('[data-info-id]')) return;
+      cycleTaskStatus(el.dataset.cycleId);
+    });
+  });
+  feed.querySelectorAll('[data-info-id]').forEach((btn) => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); openSheet(btn.dataset.infoId); });
+  });
+}
+
+// ---- Wiring -----------------------------------------------------------
+document.querySelectorAll('.brigade-tab').forEach((btn) => {
+  btn.addEventListener('click', () => setBrigadeMode(btn.dataset.mode));
+});
+
+render();
+</script>
+</body>
+</html>

@@ -361,9 +361,9 @@ function TaskRow({ task }: { task: DisplayTask }) {
       onComplete={task.done ? undoDone : markDone}
       label={task.done ? '↩ בטל בוצע' : '✓ בוצע'}
     >
-      <div className={`card priority-card ${task.priority}${task.done ? ' done' : ''}`}>
+      <div className={`card priority-card task-card-compact ${task.priority}${task.done ? ' done' : ''}`}>
         <div className="row">
-          <div className="row" style={{ gap: 10 }}>
+          <div className="row" style={{ gap: 6 }}>
             <span className="print-check" aria-hidden="true" />
             <PriorityDot priority={task.priority} onClick={cyclePriority} />
             <PriorityPill priority={task.priority} />
@@ -403,7 +403,7 @@ function TaskRow({ task }: { task: DisplayTask }) {
             value={task.assigneeId ?? ''}
             onChange={(e) => setAssignee(e.target.value)}
             aria-label="שיוך לטבח"
-            style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '6px', width: 'auto' }}
+            className="assignee-select"
           >
             <option value="">— ללא —</option>
             {state.cooks.map((c) => (
@@ -459,7 +459,7 @@ export function Tasks() {
         <button type="button" className="btn btn-primary no-print" style={{ flex: 1 }} onClick={() => setAddingManual(true)}>
           + משימה
         </button>
-        <PrintStationButton label="הדפס רשימת עמדה" />
+        <PrintStationButton label="הדפס רשימת עמדה" iconOnly />
       </div>
 
       <SearchInput value={query} onChange={setQuery} placeholder="חיפוש משימה או טבח..." />
@@ -471,7 +471,7 @@ export function Tasks() {
       {dayTasks.length === 0 ? (
         <EmptyState text={query ? 'לא נמצאו משימות.' : 'אין משימות ליום זה — הכל במלאי.'} />
       ) : (
-        <div className="card-list">
+        <div className="tasks-grid">
           {dayTasks.map((t) => (
             <TaskRow key={t.id} task={t} />
           ))}

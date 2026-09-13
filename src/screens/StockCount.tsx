@@ -88,15 +88,13 @@ function CountTable({
             <td>{row.name}</td>
             <td>
               <div className="count-qty-cell">
-                <input
+                <NumberEditor
+                  value={effectiveQty(row, drafts)}
+                  label={`ספירה — ${row.name}`}
+                  suffix={unitLabel(row.unit)}
                   className="count-input"
-                  type="number"
-                  inputMode="decimal"
-                  aria-label={`ספירה — ${row.name}`}
-                  value={drafts[row.id] ?? String(row.currentQty)}
-                  onChange={(e) => onDraftChange(row.id, e.target.value)}
+                  onChange={(value) => onDraftChange(row.id, String(value))}
                 />
-                <span className="muted">{unitLabel(row.unit)}</span>
               </div>
             </td>
           </tr>
@@ -147,15 +145,13 @@ function IngredientCountTable({
             </td>
             <td>
               <div className="count-qty-cell">
-                <input
+                <NumberEditor
+                  value={effectiveQty(ing, drafts)}
+                  label={`ספירה — ${ing.name}`}
+                  suffix={unitLabel(ing.unit)}
                   className="count-input"
-                  type="number"
-                  inputMode="decimal"
-                  aria-label={`ספירה — ${ing.name}`}
-                  value={drafts[ing.id] ?? String(ing.currentQty)}
-                  onChange={(e) => onDraftChange(ing.id, e.target.value)}
+                  onChange={(value) => onDraftChange(ing.id, String(value))}
                 />
-                <span className="muted">{unitLabel(ing.unit)}</span>
               </div>
             </td>
             <td>

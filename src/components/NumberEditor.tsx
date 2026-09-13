@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { BottomSheet } from './BottomSheet';
 
 type Props = {
@@ -8,8 +8,8 @@ type Props = {
   step?: number;
   onChange: (value: number) => void;
   className?: string;
-  /** 'default' — tap to open a bottom sheet with a text field (unchanged behavior).
-   * 'stepper' — no text field: oversized − and + buttons flanking a read-only value,
+  /** 'default' — tap to open a bottom sheet with a numeric keypad (unchanged behavior).
+   * 'stepper' — no keypad: oversized − and + buttons flanking a read-only value,
    * committing each tap straight through onChange. For gloved or wet hands mid-service. */
   variant?: 'default' | 'stepper';
 };
@@ -17,9 +17,14 @@ type Props = {
 export function NumberEditor({ value, label, suffix, step = 1, onChange, className, variant = 'default' }: Props) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(String(value));
+  // Whether any keypad press has landed yet in this open session — the first press replaces
+  // the pre-filled old value instead of appending to it, so a cook never has to backspace the
+  // stale number before typing a new one.
+  const startedRef = useRef(false);
 
   function openEditor() {
     setDraft(String(value));
+    startedRef.current = false;
     setOpen(true);
   }
 
@@ -29,6 +34,36 @@ export function NumberEditor({ value, label, suffix, step = 1, onChange, classNa
       onChange(parsed);
     }
     setOpen(false);
+  }
+
+  function pressDigit(d: string) {
+    if (!startedRef.current) {
+      startedRef.current = true;
+      setDraft(d);
+      return;
+    }
+    setDraft((prev) => prev + d);
+  }
+
+  function pressDot() {
+    if (!startedRef.current) {
+      startedRef.current = true;
+      setDraft('0.');
+      return;
+    }
+    setDraft((prev) => (prev.includes('.') ? prev : prev + '.'));
+  }
+
+  function pressBackspace() {
+    if (!startedRef.current) {
+      startedRef.current = true;
+      setDraft('0');
+      return;
+    }
+    setDraft((prev) => {
+      const next = prev.slice(0, -1);
+      return next === '' ? '0' : next;
+    });
   }
 
   if (variant === 'stepper') {
@@ -70,36 +105,34 @@ export function NumberEditor({ value, label, suffix, step = 1, onChange, classNa
       </button>
       {open && (
         <BottomSheet title={label} onClose={() => setOpen(false)}>
-          <div className="field">
-            <label>{label}</label>
-            <div className="row" style={{ gap: 8 }}>
+          <p className="keypad-display" aria-live="polite">
+            {draft}
+            {suffix ? ` ${suffix}` : ''}
+          </p>
+          <div className="keypad-grid">
+            {['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'].map((k) => (
               <button
+                key={k}
                 type="button"
-                className="btn btn-icon"
-                onClick={() => setDraft(String(Math.max(0, parseFloat(draft || '0') - step)))}
+                className="keypad-key"
+                onClick={() => {
+                  if (k === '⌫') pressBackspace();
+                  else if (k === '.') pressDot();
+                  else pressDigit(k);
+                }}
               >
-                −
+                {k}
               </button>
-              <input
-                type="number"
-                inputMode="decimal"
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                style={{ textAlign: 'center', flex: 1 }}
-                autoFocus
-              />
-              <button
-                type="button"
-                className="btn btn-icon"
-                onClick={() => setDraft(String(parseFloat(draft || '0') + step))}
-              >
-                +
-              </button>
-            </div>
+            ))}
           </div>
-          <button type="button" className="btn btn-primary" style={{ width: '100%' }} onClick={save}>
-            שמור
-          </button>
+          <div className="row" style={{ gap: 8, marginTop: 'var(--space-4)' }}>
+            <button type="button" className="btn" style={{ flex: 1 }} onClick={() => setOpen(false)}>
+              ביטול
+            </button>
+            <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={save}>
+              אישור
+            </button>
+          </div>
         </BottomSheet>
       )}
     </>

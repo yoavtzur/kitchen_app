@@ -3,7 +3,7 @@ import { useApp } from '../store/AppContext';
 import { useAuth } from '../auth/AuthContext';
 import { coverageColor, daysOfSupply, orderQtyForIngredient, weekdayValue } from '../lib/calc';
 import { addDays, dayName, dayOfWeek, todayStr } from '../lib/date';
-import { formatQty, unitLabel } from '../lib/units';
+import { unitLabel } from '../lib/units';
 import { EmptyState } from '../components/EmptyState';
 import { SearchInput } from '../components/SearchInput';
 import { CategoryTabs } from '../components/CategoryTabs';
@@ -92,10 +92,16 @@ function IngredientCard({
   state: AppState;
   onDraftChange: (id: string, value: string) => void;
 }) {
+  const { dispatch } = useApp();
   const [showForecast, setShowForecast] = useState(false);
   const qty = effectiveQty(ingredient, { [ingredient.id]: draft ?? '' });
   const days = daysOfSupply({ ...ingredient, currentQty: qty }, today);
-  const suggestedOrder = orderQtyForIngredient(ingredient.id, { ...state, ingredients: state.ingredients.map((i) => (i.id === ingredient.id ? { ...i, currentQty: qty } : i)) });
+  const computedSuggestion = orderQtyForIngredient(ingredient.id, {
+    ...state,
+    ingredients: state.ingredients.map((i) => (i.id === ingredient.id ? { ...i, currentQty: qty } : i)),
+  });
+  const override = state.orderLines.find((l) => l.ingredientId === ingredient.id && l.date === today)?.qtyOverride;
+  const suggestedOrder = override !== undefined ? override : computedSuggestion;
 
   return (
     <div className="card">
@@ -124,12 +130,15 @@ function IngredientCard({
       </div>
 
       <div className="row-item">
-        <span className="muted">מלאי מינימום</span>
-        <span>{formatQty(ingredient.parLevel ?? 0, ingredient.unit)}</span>
-      </div>
-      <div className="row-item">
         <span className="muted">להזמנה מוצע</span>
-        <span style={{ fontWeight: 600 }}>{formatQty(suggestedOrder, ingredient.unit)}</span>
+        <NumberEditor
+          value={suggestedOrder}
+          label={`להזמנה מוצע — ${ingredient.name}`}
+          suffix={unitLabel(ingredient.unit)}
+          onChange={(qtyOverride) =>
+            dispatch({ type: 'SET_ORDER_LINE_QTY', ingredientId: ingredient.id, date: today, qtyOverride })
+          }
+        />
       </div>
 
       <button type="button" className="btn" style={{ width: '100%', marginTop: 'var(--space-2)' }} onClick={() => setShowForecast((v) => !v)}>
@@ -174,7 +183,9 @@ export function MorningDashboard() {
         const change = changedCounts.find((c) => c.id === ing.id);
         const qty = change ? change.qty : ing.currentQty;
         const nextState = { ...state, ingredients: state.ingredients.map((i) => (i.id === ing.id ? { ...i, currentQty: qty } : i)) };
-        return { ingredientId: ing.id, qty: orderQtyForIngredient(ing.id, nextState) };
+        const override = state.orderLines.find((l) => l.ingredientId === ing.id && l.date === today)?.qtyOverride;
+        const computedQty = override !== undefined ? override : orderQtyForIngredient(ing.id, nextState);
+        return { ingredientId: ing.id, qty: computedQty };
       })
       .filter((l) => l.qty > 0);
 

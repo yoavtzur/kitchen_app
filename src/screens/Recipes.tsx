@@ -12,6 +12,8 @@ import { multiplierForProduct, toPrepare } from '../lib/calc';
 import { todayStr } from '../lib/date';
 import { formatQty, unitLabel } from '../lib/units';
 import { categoryTabs, stationOptions, UNASSIGNED_CATEGORY, type CategoryFilter } from '../lib/recipeCategories';
+import { GeminiScanError, isGeminiConfigured, parseRecipeFromImage } from '../lib/geminiScanner';
+import { scannedToDraft, type RecipeDraft } from '../lib/recipeDraft';
 import type { Recipe, RecipeCategory } from '../types';
 
 function RecipeRow({ recipe }: { recipe: Recipe }) {
@@ -118,7 +120,31 @@ function RecipeRow({ recipe }: { recipe: Recipe }) {
   );
 }
 
-type ScanStatus = 'idle' | 'loading-model' | 'recognizing' | 'done' | 'error';
+type ScanStatus = 'idle' | 'loading-model' | 'recognizing' | 'parsing' | 'done' | 'error';
+
+/** One Hebrew message per failure mode, so a scan never dead-ends on a raw exception. */
+function scanErrorMessage(err: unknown): string {
+  if (err instanceof GeminiScanError) {
+    switch (err.code) {
+      case 'no-api-key':
+        return 'סריקת AI לא מוגדרת באפליקציה. אפשר עדיין לקרוא את הטקסט בלבד.';
+      case 'too-large':
+        return 'התמונה גדולה מדי. נסו לצלם שוב באיכות נמוכה יותר.';
+      case 'network':
+        return 'אין חיבור לאינטרנט, או ששירות ה-AI לא זמין כרגע.';
+      case 'http':
+        return err.status === 429
+          ? 'חרגתם ממכסת השימוש ב-AI. נסו שוב בעוד כמה דקות.'
+          : `שירות ה-AI החזיר שגיאה (${err.status ?? '—'}). נסו שוב.`;
+      case 'unreadable':
+        return 'לא זוהה מתכון בתמונה. נסו תמונה ברורה וחדה יותר.';
+      case 'bad-response':
+      default:
+        return 'התקבלה תשובה לא תקינה מה-AI. נסו שוב.';
+    }
+  }
+  return 'הסריקה נכשלה. נסו שוב.';
+}
 
 function CameraIcon() {
   return (
@@ -130,13 +156,16 @@ function CameraIcon() {
 }
 
 /**
- * First step toward "photograph a recipe" — OCR only, entirely client-side (tesseract.js,
- * no server, no cost). It just reads the text out of the photo; it does not yet try to turn
- * that text into a structured recipe (name/category/ingredients/steps) — that needs an AI
- * parsing step behind a small server function, deliberately left for later so we can first
- * see how well plain OCR reads real printed recipes.
+ * "Photograph a recipe" in two tiers.
+ *
+ * With a Gemini key configured the photo goes to the model and comes back as a structured
+ * draft, which opens in RecipeEditor for the cook to check line by line — nothing is written
+ * to the kitchen's data until they press save there. Without a key the sheet degrades to what
+ * it always did: on-device OCR (tesseract.js, no network, no cost) that just reads the text
+ * out so it can be copied into the editor by hand.
  */
-function RecipeScanSheet({ onClose }: { onClose: () => void }) {
+function RecipeScanSheet({ onClose, onDraft }: { onClose: () => void; onDraft: (draft: RecipeDraft) => void }) {
+  const { state } = useApp();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -144,18 +173,37 @@ function RecipeScanSheet({ onClose }: { onClose: () => void }) {
   const [progress, setProgress] = useState(0);
   const [text, setText] = useState('');
   const [copied, setCopied] = useState(false);
+  const [errorText, setErrorText] = useState('');
+
+  const aiAvailable = isGeminiConfigured();
 
   function pickFile(file: File) {
     setImageFile(file);
     setImageUrl(URL.createObjectURL(file));
     setText('');
+    setErrorText('');
     setStatus('idle');
+  }
+
+  /** Photo → Gemini → draft → RecipeEditor. Errors surface as text; the sheet stays usable. */
+  async function scanWithAi() {
+    if (!imageFile) return;
+    setStatus('parsing');
+    setErrorText('');
+    try {
+      const scanned = await parseRecipeFromImage(imageFile);
+      onDraft(scannedToDraft(scanned, state));
+    } catch (err) {
+      setErrorText(scanErrorMessage(err));
+      setStatus('error');
+    }
   }
 
   async function scan() {
     if (!imageFile) return;
     setStatus('loading-model');
     setProgress(0);
+    setErrorText('');
     try {
       const worker = await createWorker('heb+eng', undefined, {
         logger: (m) => {
@@ -170,6 +218,7 @@ function RecipeScanSheet({ onClose }: { onClose: () => void }) {
       setText(data.text.trim());
       setStatus('done');
     } catch {
+      setErrorText('קריאת הטקסט נכשלה. נסו תמונה ברורה וחדה יותר.');
       setStatus('error');
     }
   }
@@ -184,13 +233,14 @@ function RecipeScanSheet({ onClose }: { onClose: () => void }) {
       .catch(() => {});
   }
 
-  const busy = status === 'loading-model' || status === 'recognizing';
+  const busy = status === 'loading-model' || status === 'recognizing' || status === 'parsing';
 
   return (
-    <BottomSheet title="סריקת מתכון (ניסיוני)" onClose={onClose}>
+    <BottomSheet title="סריקת מתכון" onClose={onClose}>
       <p className="muted" style={{ marginBottom: 'var(--space-4)' }}>
-        צלמו או בחרו תמונה של מתכון מודפס. השלב הזה קורא את הטקסט מתוך התמונה בלבד —
-        עדיין לא יוצר מתכון אוטומטית. אפשר להעתיק את הטקסט ולהדביק אותו בעורך המתכון.
+        {aiAvailable
+          ? 'צלמו או בחרו תמונה של מתכון. ה-AI יקרא אותה וימלא עבורכם טופס מתכון — תוכלו לבדוק ולתקן הכל לפני שמירה.'
+          : 'צלמו או בחרו תמונה של מתכון מודפס. השלב הזה קורא את הטקסט מתוך התמונה בלבד. אפשר להעתיק אותו ולהדביק בעורך המתכון.'}
       </p>
 
       <input
@@ -225,23 +275,41 @@ function RecipeScanSheet({ onClose }: { onClose: () => void }) {
         />
       )}
 
-      {imageFile && !busy && status !== 'done' && (
-        <button type="button" className="btn btn-primary" style={{ width: '100%', marginBottom: 'var(--space-3)' }} onClick={scan}>
-          סרוק טקסט
-        </button>
+      {imageFile && !busy && (
+        <div className="stack-gap-2" style={{ marginBottom: 'var(--space-3)' }}>
+          {aiAvailable && (
+            <button type="button" className="btn btn-primary" style={{ width: '100%' }} onClick={scanWithAi}>
+              נתחו מתכון עם AI
+            </button>
+          )}
+          {status !== 'done' && (
+            <button
+              type="button"
+              className={aiAvailable ? 'btn' : 'btn btn-primary'}
+              style={{ width: '100%' }}
+              onClick={scan}
+            >
+              {aiAvailable ? 'קראו טקסט בלבד' : 'סרוק טקסט'}
+            </button>
+          )}
+        </div>
       )}
 
       {busy && (
-        <div className="card" style={{ marginBottom: 'var(--space-3)', textAlign: 'center' }}>
+        <div className="card" style={{ marginBottom: 'var(--space-3)', textAlign: 'center' }} aria-live="polite">
           <p className="muted">
-            {status === 'loading-model' ? 'טוען מנוע זיהוי טקסט…' : `סורק… ${progress}%`}
+            {status === 'parsing'
+              ? 'סורק מתכון עם AI…'
+              : status === 'loading-model'
+                ? 'טוען מנוע זיהוי טקסט…'
+                : `סורק… ${progress}%`}
           </p>
         </div>
       )}
 
-      {status === 'error' && (
-        <p style={{ color: 'var(--color-red)', marginBottom: 'var(--space-3)' }}>
-          הסריקה נכשלה. נסו תמונה ברורה וחדה יותר.
+      {status === 'error' && errorText && (
+        <p role="alert" style={{ color: 'var(--color-red)', marginBottom: 'var(--space-3)' }}>
+          {errorText}
         </p>
       )}
 
@@ -270,6 +338,8 @@ export function Recipes() {
   const [query, setQuery] = useState('');
   const [adding, setAdding] = useState(false);
   const [scanning, setScanning] = useState(false);
+  // A scanned draft opens the editor pre-filled; it is never dispatched from here.
+  const [scanDraft, setScanDraft] = useState<RecipeDraft | null>(null);
 
   const searching = query.trim().length > 0;
 
@@ -338,7 +408,23 @@ export function Recipes() {
       )}
 
       {adding && <RecipeEditor recipe={null} defaultCategory={addDefaultCategory} onClose={() => setAdding(false)} />}
-      {scanning && <RecipeScanSheet onClose={() => setScanning(false)} />}
+      {scanning && (
+        <RecipeScanSheet
+          onClose={() => setScanning(false)}
+          onDraft={(draft) => {
+            setScanning(false);
+            setScanDraft(draft);
+          }}
+        />
+      )}
+      {scanDraft && (
+        <RecipeEditor
+          recipe={null}
+          draft={scanDraft}
+          defaultCategory={addDefaultCategory}
+          onClose={() => setScanDraft(null)}
+        />
+      )}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { describeImpact, impactOfDeletingRecipe } from '../lib/integrity';
 import { newId } from '../lib/ids';
 import { WeekdayUsageEditor } from '../components/WeekdayUsageEditor';
 import { stationOptions } from '../lib/recipeCategories';
+import { NEW_INGREDIENT_REF, type RecipeDraft } from '../lib/recipeDraft';
 import type { Ingredient, Product, ProductKind, Recipe, RecipeCategory, RecipeItem, Station, Unit, Weekday, WeekdayUsage } from '../types';
 
 const KIND_OPTIONS: { value: ProductKind; label: string }[] = [
@@ -22,11 +23,17 @@ const UNIT_OPTIONS: { value: Unit; label: string }[] = [
   { value: 'unit', label: "יח'" },
 ];
 
-type ItemDraft = RecipeItem & { key: string; newIngredientName?: string };
+type ItemDraft = RecipeItem & {
+  key: string;
+  newIngredientName?: string;
+  /** Present only on AI-scanned rows: the line as printed, shown so the cook can check it. */
+  sourceLine?: string;
+};
 
 // Sentinel refId marking a recipe item that names a not-yet-created ingredient — resolved
-// into a real ingredient (via ADD_INGREDIENT) at save time.
-const NEW_INGREDIENT_ID = '__new__';
+// into a real ingredient (via ADD_INGREDIENT) at save time. Shared with lib/recipeDraft.ts so
+// an AI-scanned draft and a hand-typed row travel the exact same path.
+const NEW_INGREDIENT_ID = NEW_INGREDIENT_REF;
 
 // Sentinel station value picked from the dropdown to reveal the "new station" text field.
 // Unlike NEW_INGREDIENT_ID, a station is created immediately (ADD_STATION dispatched as soon as
@@ -102,6 +109,12 @@ type Props = {
   recipe: Recipe | null;
   defaultCategory: RecipeCategory;
   onClose: () => void;
+  /**
+   * Pre-fills a NEW item (ignored when `recipe` is set) — currently from an AI photo scan.
+   * Every field stays editable and nothing is written until the cook presses שמור, so a draft
+   * is a suggestion, never a save.
+   */
+  draft?: RecipeDraft | null;
 };
 
 /**
@@ -109,7 +122,7 @@ type Props = {
  * Saving dispatches SAVE_PREP_ITEM so both halves are created and linked together, which is
  * what makes a new recipe show up on Home, Tasks, Consumption and Orders straight away.
  */
-export function RecipeEditor({ recipe, defaultCategory, onClose }: Props) {
+export function RecipeEditor({ recipe, defaultCategory, onClose, draft = null }: Props) {
   const { state, dispatch } = useApp();
   const { canEditRecipes, canDeleteRecipes } = usePermissions();
 
@@ -117,15 +130,15 @@ export function RecipeEditor({ recipe, defaultCategory, onClose }: Props) {
     state.products.find((p) => p.id === recipe?.producesProductId) ??
     state.products.find((p) => p.recipeId === recipe?.id);
 
-  const [name, setName] = useState(recipe?.name ?? '');
+  const [name, setName] = useState(recipe?.name ?? draft?.name ?? '');
   const [category, setCategory] = useState<RecipeCategory>(recipe?.category ?? defaultCategory);
   const [newStationName, setNewStationName] = useState('');
   const [addingStation, setAddingStation] = useState(state.stations.length === 0);
   const [kind, setKind] = useState<ProductKind>(linkedProduct?.kind ?? 'component');
   // One unit drives both the product's stock and the recipe's yield, so the two can never
   // disagree and produce a silently wrong multiplier.
-  const [unit, setUnit] = useState<Unit>(linkedProduct?.unit ?? recipe?.yieldUnit ?? 'unit');
-  const [yieldQty, setYieldQty] = useState(String(recipe?.yieldQty ?? 1));
+  const [unit, setUnit] = useState<Unit>(linkedProduct?.unit ?? recipe?.yieldUnit ?? draft?.yieldUnit ?? 'unit');
+  const [yieldQty, setYieldQty] = useState(String(recipe?.yieldQty ?? draft?.yieldQty ?? 1));
   const [tracksStock, setTracksStock] = useState(recipe ? linkedProduct !== undefined : true);
 
   const [currentQty, setCurrentQty] = useState(String(linkedProduct?.currentQty ?? 0));
@@ -142,10 +155,15 @@ export function RecipeEditor({ recipe, defaultCategory, onClose }: Props) {
       : String(linkedProduct.coverageDaysOverride),
   );
 
-  const [items, setItems] = useState<ItemDraft[]>(
-    (recipe?.items ?? []).map((it, i) => ({ ...it, key: `${i}-${it.refId}` })),
-  );
-  const [steps, setSteps] = useState<string[]>(recipe?.steps.length ? recipe.steps : ['']);
+  const [items, setItems] = useState<ItemDraft[]>(() => {
+    const source = recipe?.items ?? draft?.items ?? [];
+    return source.map((it, i) => ({ ...it, key: `${i}-${it.refId}` }));
+  });
+  const [steps, setSteps] = useState<string[]>(() => {
+    if (recipe?.steps.length) return recipe.steps;
+    if (draft?.steps.length) return draft.steps;
+    return [''];
+  });
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -282,7 +300,20 @@ export function RecipeEditor({ recipe, defaultCategory, onClose }: Props) {
   }
 
   return (
-    <BottomSheet title={recipe ? 'עריכת פריט' : 'הוספת פריט'} onClose={onClose}>
+    <BottomSheet title={recipe ? 'עריכת פריט' : draft ? 'בדיקת מתכון שנסרק' : 'הוספת פריט'} onClose={onClose}>
+      {draft && (
+        <div className="card" style={{ marginBottom: 'var(--space-4)' }}>
+          <p style={{ fontWeight: 600, marginBottom: 'var(--space-2)' }}>נסרק מתמונה — בדקו לפני שמירה</p>
+          <p className="muted">
+            הפרטים מולאו אוטומטית ועלולים להיות שגויים. כלום לא נשמר עד שתלחצו שמור.
+          </p>
+          {draft.newIngredientNames.length > 0 && (
+            <p className="muted" style={{ marginTop: 'var(--space-2)' }}>
+              מצרכים שלא קיימים עדיין במטבח וייווצרו בשמירה: {draft.newIngredientNames.join(', ')}
+            </p>
+          )}
+        </div>
+      )}
       <div className="field">
         <label>שם הפריט</label>
         <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
@@ -521,7 +552,7 @@ export function RecipeEditor({ recipe, defaultCategory, onClose }: Props) {
                 value={item.newIngredientName ?? ''}
                 onChange={(e) => updateItem(item.key, { newIngredientName: e.target.value })}
                 placeholder="שם המצרך החדש"
-                autoFocus
+                autoFocus={!draft}
                 style={{
                   marginTop: 4,
                   width: '100%',
@@ -530,6 +561,11 @@ export function RecipeEditor({ recipe, defaultCategory, onClose }: Props) {
                   padding: '8px',
                 }}
               />
+            )}
+            {item.sourceLine && (
+              <p className="muted" style={{ marginTop: 4, fontSize: 12 }}>
+                בתמונה: {item.sourceLine}
+              </p>
             )}
           </div>
         ))}

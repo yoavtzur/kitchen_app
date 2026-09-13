@@ -101,10 +101,10 @@ export function Consumption() {
 
       <div className="row" style={{ marginBottom: 'var(--space-2)' }}>
         <button type="button" className="btn" onClick={() => goToWeek(-7)}>
-          ◀ שבוע קודם
+          ▶ שבוע קודם
         </button>
         <button type="button" className="btn" onClick={() => goToWeek(7)}>
-          שבוע הבא ▶
+          שבוע הבא ◀
         </button>
       </div>
 

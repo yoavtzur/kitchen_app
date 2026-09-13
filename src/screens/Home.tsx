@@ -84,7 +84,7 @@ export function Home() {
             <p className="muted">{formatToday(today)} &middot; המטבח מחכה לך</p>
           </div>
           <div className="row no-print" style={{ gap: 8 }}>
-            <PrintStationButton label="הדפס רשימת הכנות" />
+            <PrintStationButton label="הדפס רשימת הכנות" iconOnly />
             <div className="home-mascot" aria-hidden="true">
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M4 10h16v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-6z" />

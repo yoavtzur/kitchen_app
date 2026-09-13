@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { BottomSheet } from './BottomSheet';
 
 type Props = {
@@ -8,8 +8,8 @@ type Props = {
   step?: number;
   onChange: (value: number) => void;
   className?: string;
-  /** 'default' — tap to open a bottom sheet with a text field (unchanged behavior).
-   * 'stepper' — no text field: oversized − and + buttons flanking a read-only value,
+  /** 'default' — tap to open a bottom sheet with a numeric keypad (unchanged behavior).
+   * 'stepper' — no keypad: oversized − and + buttons flanking a read-only value,
    * committing each tap straight through onChange. For gloved or wet hands mid-service. */
   variant?: 'default' | 'stepper';
 };
@@ -17,9 +17,14 @@ type Props = {
 export function NumberEditor({ value, label, suffix, step = 1, onChange, className, variant = 'default' }: Props) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(String(value));
+  // Whether any keypad press has landed yet in this open session — the first press replaces
+  // the pre-filled old value instead of appending to it, so a cook never has to backspace the
+  // stale number before typing a new one.
+  const startedRef = useRef(false);
 
   function openEditor() {
     setDraft(String(value));
+    startedRef.current = false;
     setOpen(true);
   }
 
@@ -32,14 +37,29 @@ export function NumberEditor({ value, label, suffix, step = 1, onChange, classNa
   }
 
   function pressDigit(d: string) {
+    if (!startedRef.current) {
+      startedRef.current = true;
+      setDraft(d);
+      return;
+    }
     setDraft((prev) => prev + d);
   }
 
   function pressDot() {
+    if (!startedRef.current) {
+      startedRef.current = true;
+      setDraft('0.');
+      return;
+    }
     setDraft((prev) => (prev.includes('.') ? prev : prev + '.'));
   }
 
   function pressBackspace() {
+    if (!startedRef.current) {
+      startedRef.current = true;
+      setDraft('0');
+      return;
+    }
     setDraft((prev) => {
       const next = prev.slice(0, -1);
       return next === '' ? '0' : next;

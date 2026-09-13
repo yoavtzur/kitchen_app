@@ -227,6 +227,11 @@ p {
   gap: var(--space-2);
   align-items: stretch;
 }
+/* A leftover single card at the end of an odd-length list spans the full row instead of
+   sitting stranded in one column with empty space beside it. */
+.tasks-grid > :last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
 
 .task-card-compact .row {
   flex-wrap: wrap;

@@ -22,7 +22,11 @@ export function SyncBadge() {
     return () => clearTimeout(t);
   }, [quiet]);
 
-  if (!isSupabaseConfigured || !visible) return null;
+  if (!isSupabaseConfigured) return null;
+
+  if (!visible) {
+    return <div className="sync-badge" role="status" aria-live="polite" />;
+  }
 
   let label: string;
   let tone: 'red' | 'yellow' | 'green';
@@ -54,5 +58,9 @@ export function SyncBadge() {
     tone = 'yellow';
   }
 
-  return <div className={`pill ${tone} sync-badge`}>{label}</div>;
+  return (
+    <div className="sync-badge" role="status" aria-live="polite">
+      <div className={`pill ${tone}`}>{label}</div>
+    </div>
+  );
 }

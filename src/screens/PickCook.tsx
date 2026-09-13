@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useApp } from '../store/AppContext';
 import { useAuth } from '../auth/AuthContext';
 import { newId } from '../lib/ids';
@@ -14,6 +14,7 @@ export function PickCook() {
   const [newName, setNewName] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const nameId = useId();
 
   async function pick(cookId: string) {
     setError('');
@@ -66,10 +67,14 @@ export function PickCook() {
       <h2 className="section-title">לא ברשימה?</h2>
       <div className="card stack-gap-3">
         <div className="field" style={{ marginBottom: 0 }}>
-          <label>השם שלך</label>
-          <input value={newName} onChange={(e) => setNewName(e.target.value)} autoFocus={state.cooks.length === 0} />
+          <label htmlFor={nameId}>השם שלך</label>
+          <input id={nameId} value={newName} onChange={(e) => setNewName(e.target.value)} autoComplete="name" />
         </div>
-        {error && <p style={{ color: 'var(--color-red)' }}>{error}</p>}
+        {error && (
+          <p role="alert" style={{ color: 'var(--color-red)' }}>
+            {error}
+          </p>
+        )}
         <button type="button" className="btn btn-primary" onClick={createAndPick} disabled={busy || !newName.trim()}>
           {busy ? 'רגע...' : 'הוסף אותי ובחר'}
         </button>

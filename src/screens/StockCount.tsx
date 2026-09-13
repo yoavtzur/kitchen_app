@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { useApp } from '../store/AppContext';
 import { coverageColor, daysOfSupply } from '../lib/calc';
 import { EmptyState } from '../components/EmptyState';
@@ -207,6 +207,10 @@ function IngredientDetailSheet({ ingredient, onClose }: { ingredient: Ingredient
   const [nameDraft, setNameDraft] = useState(ingredient.name);
   const [supplierDraft, setSupplierDraft] = useState(ingredient.supplier ?? '');
   const [categoryDraft, setCategoryDraft] = useState(ingredient.category ?? '');
+  const nameId = useId();
+  const supplierId = useId();
+  const categoryId = useId();
+  const weekdayUsageLabel = `צריכה יומית לפי יום (ריק = ברירת מחדל ${ingredient.dailyUsage})`;
 
   function handlePickUnit(unit: Unit) {
     setPickingUnit(false);
@@ -247,16 +251,26 @@ function IngredientDetailSheet({ ingredient, onClose }: { ingredient: Ingredient
   return (
     <BottomSheet title={ingredient.name} onClose={onClose}>
       <div className="field">
-        <label>שם המצרך</label>
-        <input value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onBlur={commitName} />
+        <label htmlFor={nameId}>שם המצרך</label>
+        <input id={nameId} value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onBlur={commitName} />
       </div>
       <div className="field">
-        <label>ספק (לא חובה)</label>
-        <input value={supplierDraft} onChange={(e) => setSupplierDraft(e.target.value)} onBlur={commitSupplier} />
+        <label htmlFor={supplierId}>ספק (לא חובה)</label>
+        <input
+          id={supplierId}
+          value={supplierDraft}
+          onChange={(e) => setSupplierDraft(e.target.value)}
+          onBlur={commitSupplier}
+        />
       </div>
       <div className="field">
-        <label>קטגוריה (לא חובה)</label>
-        <input value={categoryDraft} onChange={(e) => setCategoryDraft(e.target.value)} onBlur={commitCategory} />
+        <label htmlFor={categoryId}>קטגוריה (לא חובה)</label>
+        <input
+          id={categoryId}
+          value={categoryDraft}
+          onChange={(e) => setCategoryDraft(e.target.value)}
+          onBlur={commitCategory}
+        />
       </div>
       <div className="row-item">
         <span>כמות במלאי</span>
@@ -287,10 +301,11 @@ function IngredientDetailSheet({ ingredient, onClose }: { ingredient: Ingredient
         />
       </div>
       <div className="field">
-        <label>צריכה יומית לפי יום (ריק = ברירת מחדל {ingredient.dailyUsage})</label>
+        <span className="field-label">{weekdayUsageLabel}</span>
         <WeekdayUsageEditor
           base={ingredient.dailyUsage}
           overrides={ingredient.dailyUsageByWeekday}
+          label={weekdayUsageLabel}
           onChange={(weekday: Weekday, value: number | undefined) =>
             dispatch({ type: 'SET_INGREDIENT_WEEKDAY_USAGE', id: ingredient.id, weekday, dailyUsage: value })
           }
@@ -374,6 +389,14 @@ function AddIngredientSheet({ onClose }: { onClose: () => void }) {
   const [parLevel, setParLevel] = useState('');
   const [supplier, setSupplier] = useState('');
   const [category, setCategory] = useState('');
+  const nameId = useId();
+  const unitId = useId();
+  const currentQtyId = useId();
+  const dailyUsageId = useId();
+  const weeklyUsageId = useId();
+  const parLevelId = useId();
+  const supplierId = useId();
+  const categoryId = useId();
 
   function save() {
     if (!name.trim()) return;
@@ -398,12 +421,12 @@ function AddIngredientSheet({ onClose }: { onClose: () => void }) {
   return (
     <BottomSheet title="הוספת מצרך" onClose={onClose}>
       <div className="field">
-        <label>שם המצרך</label>
-        <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+        <label htmlFor={nameId}>שם המצרך</label>
+        <input id={nameId} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
       </div>
       <div className="field">
-        <label>יחידת מידה</label>
-        <select value={unit} onChange={(e) => setUnit(e.target.value as Unit)}>
+        <label htmlFor={unitId}>יחידת מידה</label>
+        <select id={unitId} value={unit} onChange={(e) => setUnit(e.target.value as Unit)}>
           {UNIT_OPTIONS.map((u) => (
             <option key={u.value} value={u.value}>
               {u.label}
@@ -412,28 +435,52 @@ function AddIngredientSheet({ onClose }: { onClose: () => void }) {
         </select>
       </div>
       <div className="field">
-        <label>כמות נוכחית</label>
-        <input type="number" inputMode="decimal" value={currentQty} onChange={(e) => setCurrentQty(e.target.value)} />
+        <label htmlFor={currentQtyId}>כמות נוכחית</label>
+        <input
+          id={currentQtyId}
+          type="number"
+          inputMode="decimal"
+          value={currentQty}
+          onChange={(e) => setCurrentQty(e.target.value)}
+        />
       </div>
       <div className="field">
-        <label>צריכה יומית</label>
-        <input type="number" inputMode="decimal" value={dailyUsage} onChange={(e) => setDailyUsage(e.target.value)} />
+        <label htmlFor={dailyUsageId}>צריכה יומית</label>
+        <input
+          id={dailyUsageId}
+          type="number"
+          inputMode="decimal"
+          value={dailyUsage}
+          onChange={(e) => setDailyUsage(e.target.value)}
+        />
       </div>
       <div className="field">
-        <label>צריכה שבועית</label>
-        <input type="number" inputMode="decimal" value={weeklyUsage} onChange={(e) => setWeeklyUsage(e.target.value)} />
+        <label htmlFor={weeklyUsageId}>צריכה שבועית</label>
+        <input
+          id={weeklyUsageId}
+          type="number"
+          inputMode="decimal"
+          value={weeklyUsage}
+          onChange={(e) => setWeeklyUsage(e.target.value)}
+        />
       </div>
       <div className="field">
-        <label>מלאי מינימום (לא חובה)</label>
-        <input type="number" inputMode="decimal" value={parLevel} onChange={(e) => setParLevel(e.target.value)} />
+        <label htmlFor={parLevelId}>מלאי מינימום (לא חובה)</label>
+        <input
+          id={parLevelId}
+          type="number"
+          inputMode="decimal"
+          value={parLevel}
+          onChange={(e) => setParLevel(e.target.value)}
+        />
       </div>
       <div className="field">
-        <label>ספק (לא חובה)</label>
-        <input value={supplier} onChange={(e) => setSupplier(e.target.value)} />
+        <label htmlFor={supplierId}>ספק (לא חובה)</label>
+        <input id={supplierId} value={supplier} onChange={(e) => setSupplier(e.target.value)} />
       </div>
       <div className="field">
-        <label>קטגוריה (לא חובה)</label>
-        <input value={category} onChange={(e) => setCategory(e.target.value)} />
+        <label htmlFor={categoryId}>קטגוריה (לא חובה)</label>
+        <input id={categoryId} value={category} onChange={(e) => setCategory(e.target.value)} />
       </div>
       <button type="button" className="btn btn-primary" style={{ width: '100%' }} onClick={save}>
         הוסף מצרך
@@ -483,6 +530,15 @@ export function StockCount() {
     [state.products, productDrafts],
   );
   const changeCount = changedIngredients.length + changedProducts.length;
+
+  useEffect(() => {
+    if (changeCount === 0) return;
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      e.preventDefault();
+    }
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [changeCount]);
 
   function save() {
     dispatch({
@@ -581,7 +637,7 @@ export function StockCount() {
       )}
 
       {justSaved && changeCount === 0 && (
-        <p className="pill green" style={{ marginTop: 'var(--space-4)' }}>
+        <p className="pill green" aria-live="polite" style={{ marginTop: 'var(--space-4)' }}>
           הספירה נשמרה ✓
         </p>
       )}

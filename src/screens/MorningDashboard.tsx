@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../store/AppContext';
 import { useAuth } from '../auth/AuthContext';
 import { coverageColor, daysOfSupply, orderQtyForIngredient, weekdayValue } from '../lib/calc';
@@ -132,7 +132,13 @@ function IngredientCard({
         <span style={{ fontWeight: 600 }}>{formatQty(suggestedOrder, ingredient.unit)}</span>
       </div>
 
-      <button type="button" className="btn" style={{ width: '100%', marginTop: 'var(--space-2)' }} onClick={() => setShowForecast((v) => !v)}>
+      <button
+        type="button"
+        className="btn"
+        style={{ width: '100%', marginTop: 'var(--space-2)' }}
+        aria-expanded={showForecast}
+        onClick={() => setShowForecast((v) => !v)}
+      >
         תחזית {showForecast ? '▲' : '▼'}
       </button>
       {showForecast && <ForecastRow ingredient={ingredient} />}
@@ -167,6 +173,15 @@ export function MorningDashboard() {
   });
 
   const changedCounts = useMemo(() => collectChanges(state.ingredients, drafts), [state.ingredients, drafts]);
+
+  useEffect(() => {
+    if (changedCounts.length === 0) return;
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      e.preventDefault();
+    }
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [changedCounts.length]);
 
   function approve() {
     const lines = state.ingredients
@@ -222,7 +237,7 @@ export function MorningDashboard() {
       )}
 
       {submitted && (
-        <p className="pill green" style={{ marginTop: 'var(--space-4)' }}>
+        <p className="pill green" aria-live="polite" style={{ marginTop: 'var(--space-4)' }}>
           הספירה וההזמנה נשמרו ✓
         </p>
       )}

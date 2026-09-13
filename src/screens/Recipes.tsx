@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { createWorker } from 'tesseract.js';
 import { useApp } from '../store/AppContext';
 import { usePermissions } from '../auth/usePermissions';
@@ -144,6 +144,7 @@ function RecipeScanSheet({ onClose }: { onClose: () => void }) {
   const [progress, setProgress] = useState(0);
   const [text, setText] = useState('');
   const [copied, setCopied] = useState(false);
+  const scannedTextId = useId();
 
   function pickFile(file: File) {
     setImageFile(file);
@@ -221,7 +222,9 @@ function RecipeScanSheet({ onClose }: { onClose: () => void }) {
         <img
           src={imageUrl}
           alt="תצוגה מקדימה של המתכון"
-          style={{ width: '100%', borderRadius: 'var(--radius-m)', marginBottom: 'var(--space-3)', display: 'block' }}
+          className="recipe-preview-img"
+          decoding="async"
+          style={{ marginBottom: 'var(--space-3)' }}
         />
       )}
 
@@ -247,8 +250,9 @@ function RecipeScanSheet({ onClose }: { onClose: () => void }) {
 
       {status === 'done' && (
         <div className="field">
-          <label>טקסט שזוהה (אפשר לערוך)</label>
+          <label htmlFor={scannedTextId}>טקסט שזוהה (אפשר לערוך)</label>
           <textarea
+            id={scannedTextId}
             value={text}
             onChange={(e) => setText(e.target.value)}
             style={{ minHeight: 220 }}

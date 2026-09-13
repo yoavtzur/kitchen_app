@@ -1,5 +1,7 @@
+import { useId } from 'react';
 import { dayShortLabel } from '../lib/date';
 import type { Weekday, WeekdayUsage } from '../types';
+import { DraftNumberInput } from './DraftNumberInput';
 
 const WEEKDAYS: Weekday[] = [0, 1, 2, 3, 4, 5, 6];
 
@@ -8,27 +10,29 @@ type Props = {
   base: number;
   overrides?: WeekdayUsage;
   onChange: (weekday: Weekday, value: number | undefined) => void;
+  label?: string;
 };
 
 /** Seven small inputs, Sunday through Saturday — a blank cell means "use the default value". */
-export function WeekdayUsageEditor({ base, overrides, onChange }: Props) {
+export function WeekdayUsageEditor({ base, overrides, onChange, label }: Props) {
+  const idPrefix = useId();
   return (
-    <div className="weekday-usage-grid">
-      {WEEKDAYS.map((weekday) => (
-        <div key={weekday} className="weekday-usage-cell">
-          <label>{dayShortLabel(weekday)}</label>
-          <input
-            type="number"
-            inputMode="decimal"
-            placeholder={String(base)}
-            value={overrides?.[weekday] ?? ''}
-            onChange={(e) => {
-              const raw = e.target.value;
-              onChange(weekday, raw === '' ? undefined : parseFloat(raw) || 0);
-            }}
-          />
-        </div>
-      ))}
+    <div className="weekday-usage-grid" role="group" aria-label={label}>
+      {WEEKDAYS.map((weekday) => {
+        const inputId = `${idPrefix}-${weekday}`;
+        return (
+          <div key={weekday} className="weekday-usage-cell">
+            <label htmlFor={inputId}>{dayShortLabel(weekday)}</label>
+            <DraftNumberInput
+              id={inputId}
+              placeholder={String(base)}
+              value={overrides?.[weekday]}
+              allowClear
+              onCommit={(v) => onChange(weekday, v)}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }

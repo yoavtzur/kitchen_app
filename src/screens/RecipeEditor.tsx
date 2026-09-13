@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useApp } from '../store/AppContext';
 import { usePermissions } from '../auth/usePermissions';
 import { BottomSheet } from '../components/BottomSheet';
@@ -149,6 +149,17 @@ export function RecipeEditor({ recipe, defaultCategory, onClose }: Props) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
 
+  const nameId = useId();
+  const stationId = useId();
+  const unitId = useId();
+  const yieldQtyId = useId();
+  const kindId = useId();
+  const currentQtyId = useId();
+  const dailyUsageId = useId();
+  const weekdayUsageLabel = `צריכה יומית לפי יום (ריק = ברירת מחדל ${parseFloat(dailyUsage) || 0})`;
+  const weeklyTargetId = useId();
+  const coverageDaysId = useId();
+
   // A recipe must never consume the product it produces.
   const selectableProducts = state.products.filter((p) => p.id !== linkedProduct?.id);
 
@@ -284,15 +295,16 @@ export function RecipeEditor({ recipe, defaultCategory, onClose }: Props) {
   return (
     <BottomSheet title={recipe ? 'עריכת פריט' : 'הוספת פריט'} onClose={onClose}>
       <div className="field">
-        <label>שם הפריט</label>
-        <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+        <label htmlFor={nameId}>שם הפריט</label>
+        <input id={nameId} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
       </div>
 
       <div className="row" style={{ gap: 8, alignItems: 'flex-start' }}>
         <div className="field" style={{ flex: 1 }}>
-          <label>עמדה</label>
+          <label htmlFor={stationId}>עמדה</label>
           {state.stations.length > 0 && !addingStation ? (
             <select
+              id={stationId}
               value={category}
               onChange={(e) => {
                 if (e.target.value === NEW_STATION_ID) {
@@ -312,6 +324,7 @@ export function RecipeEditor({ recipe, defaultCategory, onClose }: Props) {
           ) : (
             <div className="row" style={{ gap: 6 }}>
               <input
+                id={stationId}
                 value={newStationName}
                 onChange={(e) => setNewStationName(e.target.value)}
                 onKeyDown={(e) => {
@@ -344,8 +357,8 @@ export function RecipeEditor({ recipe, defaultCategory, onClose }: Props) {
           )}
         </div>
         <div className="field" style={{ flex: 1 }}>
-          <label>יחידת מידה</label>
-          <select value={unit} onChange={(e) => setUnit(e.target.value as Unit)}>
+          <label htmlFor={unitId}>יחידת מידה</label>
+          <select id={unitId} value={unit} onChange={(e) => setUnit(e.target.value as Unit)}>
             {UNIT_OPTIONS.map((u) => (
               <option key={u.value} value={u.value}>
                 {u.label}
@@ -356,8 +369,9 @@ export function RecipeEditor({ recipe, defaultCategory, onClose }: Props) {
       </div>
 
       <div className="field">
-        <label>כמות בבאטץ&apos; אחד (תפוקת המתכון)</label>
+        <label htmlFor={yieldQtyId}>כמות בבאטץ&apos; אחד (תפוקת המתכון)</label>
         <input
+          id={yieldQtyId}
           type="number"
           inputMode="decimal"
           value={yieldQty}
@@ -380,8 +394,8 @@ export function RecipeEditor({ recipe, defaultCategory, onClose }: Props) {
       {tracksStock && (
         <>
           <div className="field">
-            <label>סוג</label>
-            <select value={kind} onChange={(e) => setKind(e.target.value as ProductKind)}>
+            <label htmlFor={kindId}>סוג</label>
+            <select id={kindId} value={kind} onChange={(e) => setKind(e.target.value as ProductKind)}>
               {KIND_OPTIONS.map((k) => (
                 <option key={k.value} value={k.value}>
                   {k.label}
@@ -391,8 +405,9 @@ export function RecipeEditor({ recipe, defaultCategory, onClose }: Props) {
           </div>
           <div className="row" style={{ gap: 8, alignItems: 'flex-start' }}>
             <div className="field" style={{ flex: 1 }}>
-              <label>כמות נוכחית</label>
+              <label htmlFor={currentQtyId}>כמות נוכחית</label>
               <input
+                id={currentQtyId}
                 type="number"
                 inputMode="decimal"
                 value={currentQty}
@@ -400,8 +415,9 @@ export function RecipeEditor({ recipe, defaultCategory, onClose }: Props) {
               />
             </div>
             <div className="field" style={{ flex: 1 }}>
-              <label>צריכה יומית</label>
+              <label htmlFor={dailyUsageId}>צריכה יומית</label>
               <input
+                id={dailyUsageId}
                 type="number"
                 inputMode="decimal"
                 value={dailyUsage}
@@ -423,10 +439,11 @@ export function RecipeEditor({ recipe, defaultCategory, onClose }: Props) {
           </div>
           {showWeekdayUsage && (
             <div className="field">
-              <label>צריכה יומית לפי יום (ריק = ברירת מחדל {parseFloat(dailyUsage) || 0})</label>
+              <span className="field-label">{weekdayUsageLabel}</span>
               <WeekdayUsageEditor
                 base={parseFloat(dailyUsage) || 0}
                 overrides={weekdayUsage}
+                label={weekdayUsageLabel}
                 onChange={updateWeekdayUsage}
               />
             </div>
@@ -434,8 +451,9 @@ export function RecipeEditor({ recipe, defaultCategory, onClose }: Props) {
 
           <div className="row" style={{ gap: 8, alignItems: 'flex-start' }}>
             <div className="field" style={{ flex: 1 }}>
-              <label>יעד שבועי</label>
+              <label htmlFor={weeklyTargetId}>יעד שבועי</label>
               <input
+                id={weeklyTargetId}
                 type="number"
                 inputMode="decimal"
                 value={weeklyTarget}
@@ -443,8 +461,9 @@ export function RecipeEditor({ recipe, defaultCategory, onClose }: Props) {
               />
             </div>
             <div className="field" style={{ flex: 1 }}>
-              <label>ימי כיסוי (ריק = ברירת מחדל)</label>
+              <label htmlFor={coverageDaysId}>ימי כיסוי (ריק = ברירת מחדל)</label>
               <input
+                id={coverageDaysId}
                 type="number"
                 inputMode="decimal"
                 value={coverageDays}

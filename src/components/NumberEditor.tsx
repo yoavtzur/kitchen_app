@@ -63,6 +63,7 @@ export function NumberEditor({ value, label, suffix, step = 1, onChange, classNa
       <button
         type="button"
         className={`number-editor-value ${className ?? ''}`}
+        aria-label={label}
         onClick={openEditor}
       >
         {formatDisplay(value)}

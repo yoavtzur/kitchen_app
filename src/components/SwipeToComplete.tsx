@@ -97,14 +97,13 @@ export function SwipeToComplete({ onComplete, disabled, label = '✓ בוצע', 
       </div>
       <div
         ref={surfaceRef}
-        className="swipe-surface"
+        className={`swipe-surface ${releasing ? 'releasing' : ''}`}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
         onTouchCancel={reset}
         style={{
           transform: dx ? `translateX(${dx}px)` : undefined,
-          transition: releasing ? 'transform 0.2s ease' : 'none',
         }}
       >
         {children}

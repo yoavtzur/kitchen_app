@@ -5,6 +5,7 @@ import { formatQty } from '../lib/units';
 import { addDays, dayOfWeek, dayShortLabel, orderLineKey, todayStr } from '../lib/date';
 import { EmptyState } from '../components/EmptyState';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { DraftNumberInput } from '../components/DraftNumberInput';
 import { SearchInput } from '../components/SearchInput';
 import { CategoryTabs } from '../components/CategoryTabs';
 import { matchesQuery } from '../lib/search';
@@ -79,6 +80,7 @@ function CurrentOrder() {
   const [receiving, setReceiving] = useState(false);
   const [copied, setCopied] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [confirmingClear, setConfirmingClear] = useState(false);
 
   const groups = useMemo(() => {
     const filtered = state.ingredients.filter((ing) => matchesQuery(query, ing.name, ing.supplier));
@@ -124,7 +126,7 @@ function CurrentOrder() {
   return (
     <div>
       <div className="row" style={{ gap: 8, marginBottom: 'var(--space-4)' }}>
-        <button type="button" className="btn" style={{ flex: 1 }} onClick={copyList}>
+        <button type="button" className="btn" style={{ flex: 1 }} onClick={copyList} aria-live="polite">
           {copied ? 'הועתק ✓' : 'העתק רשימה'}
         </button>
         <button type="button" className="btn" style={{ flex: 1 }} onClick={shareToWhatsApp}>
@@ -176,36 +178,37 @@ function CurrentOrder() {
                         </td>
                         <td>{formatQty(ing.currentQty, ing.unit)}</td>
                         <td>
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            value={ing.parLevel ?? ''}
+                          <DraftNumberInput
+                            value={ing.parLevel}
+                            allowClear
+                            aria-label={`מלאי מינימום — ${ing.name}`}
                             placeholder="—"
-                            onChange={(e) =>
+                            onCommit={(parLevel) =>
                               dispatch({
                                 type: 'SET_INGREDIENT_PAR',
                                 id: ing.id,
-                                parLevel: parseFloat(e.target.value) || 0,
+                                parLevel: parLevel ?? 0,
                               })
                             }
-                            style={{ width: 62, border: '1px solid var(--color-border)', borderRadius: 8, padding: '6px' }}
+                            className="count-input"
+                            style={{ width: 62 }}
                           />
                         </td>
                         <td>{formatQty(weeklyNeed, ing.unit)}</td>
                         <td>
-                          <input
-                            type="number"
-                            inputMode="decimal"
+                          <DraftNumberInput
                             value={qty}
-                            onChange={(e) =>
+                            aria-label={`כמות להזמנה — ${ing.name}`}
+                            onCommit={(qtyOverride) =>
                               dispatch({
                                 type: 'SET_ORDER_LINE_QTY',
                                 ingredientId: ing.id,
                                 date,
-                                qtyOverride: parseFloat(e.target.value) || 0,
+                                qtyOverride: qtyOverride ?? 0,
                               })
                             }
-                            style={{ width: 72, border: '1px solid var(--color-border)', borderRadius: 8, padding: '6px' }}
+                            className="count-input"
+                            style={{ width: 72 }}
                           />
                         </td>
                         <td>
@@ -238,6 +241,7 @@ function CurrentOrder() {
         className="btn btn-primary"
         style={{ width: '100%', marginTop: 'var(--space-4)' }}
         onClick={submitOrder}
+        aria-live="polite"
       >
         {submitted ? 'ההזמנה נשלחה ✓' : 'שלח הזמנה'}
       </button>
@@ -247,13 +251,28 @@ function CurrentOrder() {
           type="button"
           className="btn"
           style={{ marginTop: 'var(--space-3)', color: 'var(--color-red)' }}
-          onClick={() => dispatch({ type: 'CLEAR_ORDER_SHEET', date })}
+          onClick={() => setConfirmingClear(true)}
         >
           אפס גיליון הזמנה
         </button>
       )}
 
       {receiving && <ReceiveDialog date={date} onClose={() => setReceiving(false)} />}
+
+      {confirmingClear && (
+        <ConfirmDialog
+          title="איפוס גיליון הזמנה"
+          confirmLabel="אפס לצמיתות"
+          destructive
+          onClose={() => setConfirmingClear(false)}
+          onConfirm={() => {
+            dispatch({ type: 'CLEAR_ORDER_SHEET', date });
+            setConfirmingClear(false);
+          }}
+        >
+          <p>כל השורות בגיליון ההזמנה של היום יימחקו. לא ניתן לשחזר.</p>
+        </ConfirmDialog>
+      )}
     </div>
   );
 }

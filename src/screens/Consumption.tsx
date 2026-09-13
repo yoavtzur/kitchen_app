@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { useApp } from '../store/AppContext';
 import { multiplierForProduct, toPrepare, weekdayValue } from '../lib/calc';
 import { addDays, dayName, dayOfWeek, todayStr, weekDates } from '../lib/date';
@@ -6,6 +6,7 @@ import { newId } from '../lib/ids';
 import { WeekStrip } from '../components/WeekStrip';
 import { NumberEditor } from '../components/NumberEditor';
 import { BottomSheet } from '../components/BottomSheet';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { EmptyState } from '../components/EmptyState';
 import type { SpecialEvent } from '../types';
 
@@ -14,6 +15,8 @@ function AddEventSheet({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState('');
   const [date, setDate] = useState(todayStr());
   const [selectedProducts, setSelectedProducts] = useState<Record<string, string>>({});
+  const nameId = useId();
+  const dateId = useId();
 
   function toggleQty(productId: string, value: string) {
     setSelectedProducts((prev) => ({ ...prev, [productId]: value }));
@@ -33,12 +36,12 @@ function AddEventSheet({ onClose }: { onClose: () => void }) {
   return (
     <BottomSheet title="אירוע מיוחד" onClose={onClose}>
       <div className="field">
-        <label>שם האירוע</label>
-        <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+        <label htmlFor={nameId}>שם האירוע</label>
+        <input id={nameId} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
       </div>
       <div className="field">
-        <label>תאריך</label>
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        <label htmlFor={dateId}>תאריך</label>
+        <input id={dateId} type="date" value={date} onChange={(e) => setDate(e.target.value)} />
       </div>
       <h3 className="section-title">תוספת כמות למוצרים</h3>
       <div className="stack-gap-2">
@@ -49,6 +52,7 @@ function AddEventSheet({ onClose }: { onClose: () => void }) {
               type="number"
               inputMode="decimal"
               placeholder="0"
+              aria-label={`תוספת כמות — ${p.name}`}
               value={selectedProducts[p.id] ?? ''}
               onChange={(e) => toggleQty(p.id, e.target.value)}
               style={{ width: 90, border: '1px solid var(--color-border)', borderRadius: 8, padding: '8px' }}
@@ -68,6 +72,7 @@ export function Consumption() {
   const [selectedDate, setSelectedDate] = useState(todayStr());
   const [weekAnchor, setWeekAnchor] = useState(todayStr());
   const [addingEvent, setAddingEvent] = useState(false);
+  const [deletingEvent, setDeletingEvent] = useState<SpecialEvent | null>(null);
 
   const dates = useMemo(() => weekDates(weekAnchor, state.settings.weekStartsOn), [weekAnchor, state.settings.weekStartsOn]);
 
@@ -164,6 +169,7 @@ export function Consumption() {
                           className="pill yellow"
                           style={{ border: 'none' }}
                           title="איפוס לברירת מחדל"
+                          aria-label={`איפוס צריכה יומית מותאמת לברירת מחדל — ${product.name}`}
                           onClick={() =>
                             dispatch({
                               type: 'SET_PRODUCT_WEEKDAY_USAGE',
@@ -198,6 +204,7 @@ export function Consumption() {
                           className="pill yellow"
                           style={{ border: 'none' }}
                           title="איפוס לחישוב אוטומטי"
+                          aria-label={`איפוס הכנה ידנית לחישוב אוטומטי — ${product.name}`}
                           onClick={() =>
                             dispatch({
                               type: 'SET_DAY_PLAN_ENTRY',
@@ -258,7 +265,8 @@ export function Consumption() {
                   <button
                     type="button"
                     className="btn btn-icon"
-                    onClick={() => dispatch({ type: 'DELETE_SPECIAL_EVENT', id: ev.id })}
+                    onClick={() => setDeletingEvent(ev)}
+                    aria-label={`מחק אירוע — ${ev.name}`}
                   >
                     ✕
                   </button>
@@ -280,6 +288,21 @@ export function Consumption() {
       )}
 
       {addingEvent && <AddEventSheet onClose={() => setAddingEvent(false)} />}
+
+      {deletingEvent && (
+        <ConfirmDialog
+          title={`מחיקת "${deletingEvent.name}"`}
+          confirmLabel="מחק לצמיתות"
+          destructive
+          onClose={() => setDeletingEvent(null)}
+          onConfirm={() => {
+            dispatch({ type: 'DELETE_SPECIAL_EVENT', id: deletingEvent.id });
+            setDeletingEvent(null);
+          }}
+        >
+          <p>האירוע יימחק לצמיתות ולא ניתן יהיה לשחזר אותו.</p>
+        </ConfirmDialog>
+      )}
     </div>
   );
 }

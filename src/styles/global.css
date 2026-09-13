@@ -24,6 +24,11 @@ button {
   cursor: pointer;
 }
 
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
 input,
 select,
 textarea {
@@ -337,7 +342,8 @@ p {
   margin-bottom: var(--space-4);
 }
 
-.field label {
+.field label,
+.field-label {
   font-size: 13px;
   font-weight: 600;
   color: var(--color-text-muted);
@@ -499,6 +505,15 @@ textarea {
   min-width: 0;
 }
 
+.search-input input:focus-visible {
+  outline: none;
+}
+
+.search-input:focus-within {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
 .search-input input::-webkit-search-cancel-button {
   display: none;
 }
@@ -583,6 +598,10 @@ textarea {
   position: relative;
   touch-action: pan-y;
   user-select: none;
+}
+
+.swipe-surface.releasing {
+  transition: transform 0.2s ease;
 }
 
 /* Home dashboard */
@@ -845,6 +864,67 @@ textarea {
   }
   50% {
     transform: rotate(3deg);
+  }
+}
+
+.task-check {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--color-border);
+  background: var(--color-surface);
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: transparent;
+  padding: 0;
+  /* Larger than the visible circle so the tap target still meets the 44px minimum. */
+  position: relative;
+}
+
+.task-check::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+
+.task-check[aria-pressed='true'] {
+  background: var(--color-green);
+  border-color: var(--color-green);
+  color: #fff;
+}
+
+.recipe-preview-img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: contain;
+  background: var(--color-surface-2);
+  border-radius: var(--radius-s);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .priority-dot.red {
+    animation: none;
+  }
+  .home-blob-a,
+  .home-blob-b,
+  .home-mascot {
+    animation: none;
+  }
+  .btn-primary,
+  .btn-primary:active {
+    transition: none;
+  }
+  .bottom-nav .nav-icon-box {
+    transition: none;
+  }
+  .swipe-surface.releasing {
+    transition: none;
   }
 }
 

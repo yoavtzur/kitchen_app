@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useId, type ReactNode } from 'react';
 
 type Props = {
   title: string;
@@ -7,11 +7,21 @@ type Props = {
 };
 
 export function BottomSheet({ title, onClose, children }: Props) {
+  const titleId = useId();
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
   return (
-    <div className="overlay" onClick={onClose}>
-      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+    <div className="overlay">
+      <div className="sheet" role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <div className="sheet-header">
-          <h2 style={{ fontSize: 18, fontWeight: 700 }}>{title}</h2>
+          <h2 id={titleId} style={{ fontSize: 18, fontWeight: 700 }}>{title}</h2>
           <button type="button" className="btn btn-icon" onClick={onClose} aria-label="סגור">
             ✕
           </button>

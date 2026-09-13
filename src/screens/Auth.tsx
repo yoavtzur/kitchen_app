@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 
 type Mode = 'signin' | 'signup';
@@ -10,6 +10,8 @@ export function Auth() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const emailId = useId();
+  const passwordId = useId();
 
   async function submit() {
     setError('');
@@ -34,25 +36,37 @@ export function Auth() {
       </p>
       <div className="card stack-gap-3">
         <div className="field" style={{ marginBottom: 0 }}>
-          <label>אימייל</label>
+          <label htmlFor={emailId}>אימייל</label>
           <input
+            id={emailId}
             type="email"
+            name="email"
+            autoComplete="email"
+            inputMode="email"
+            spellCheck={false}
+            autoCapitalize="none"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            autoFocus
             onKeyDown={(e) => e.key === 'Enter' && submit()}
           />
         </div>
         <div className="field" style={{ marginBottom: 0 }}>
-          <label>סיסמה</label>
+          <label htmlFor={passwordId}>סיסמה</label>
           <input
+            id={passwordId}
             type="password"
+            name="password"
+            autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && submit()}
           />
         </div>
-        {error && <p style={{ color: 'var(--color-red)' }}>{error}</p>}
+        {error && (
+          <p role="alert" style={{ color: 'var(--color-red)' }}>
+            {error}
+          </p>
+        )}
         <button type="button" className="btn btn-primary" onClick={submit} disabled={busy}>
           {busy ? 'רגע...' : mode === 'signup' ? 'הרשמה' : 'התחברות'}
         </button>

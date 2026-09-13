@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useApp, useSync } from '../store/AppContext';
 import { useAuth } from '../auth/AuthContext';
 import { usePermissions } from '../auth/usePermissions';
@@ -8,6 +8,7 @@ import { SCHEMA_VERSION } from '../data/seed';
 import { newId } from '../lib/ids';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { CookPill } from '../components/CookPill';
+import { DraftNumberInput } from '../components/DraftNumberInput';
 import type { Cook, MemberRole, RoundTo } from '../types';
 
 type MemberRow = {
@@ -49,6 +50,9 @@ export function Settings() {
   const [deleteCandidate, setDeleteCandidate] = useState<Cook | null>(null);
   const [removeCandidate, setRemoveCandidate] = useState<MemberRow | null>(null);
   const [removedMessage, setRemovedMessage] = useState('');
+  const coverageDaysId = useId();
+  const roundMultiplierId = useId();
+  const newCookNameId = useId();
 
   const boundCookIds = new Set(members.map((m) => m.cookId).filter((id): id is string => !!id));
 
@@ -160,11 +164,7 @@ export function Settings() {
   }
 
   function requestDeleteCook(cook: Cook) {
-    if (isSupabaseConfigured && boundCookIds.has(cook.id)) {
-      setDeleteCandidate(cook);
-      return;
-    }
-    dispatch({ type: 'DELETE_COOK', id: cook.id });
+    setDeleteCandidate(cook);
   }
 
   async function copyJoinCode() {
@@ -209,6 +209,7 @@ export function Settings() {
                     cursor: 'pointer',
                   }}
                   onClick={copyJoinCode}
+                  aria-live="polite"
                 >
                   {copied ? 'הועתק!' : restaurant.joinCode}
                 </button>
@@ -221,9 +222,13 @@ export function Settings() {
                 {sync.pendingCount > 0 ? ` · ${sync.pendingCount} ממתינים` : ''}
               </span>
             </div>
-            {sync.lastError && <p style={{ color: 'var(--color-red)' }}>{sync.lastError}</p>}
+            {sync.lastError && (
+              <p role="alert" style={{ color: 'var(--color-red)' }}>
+                {sync.lastError}
+              </p>
+            )}
             {sync.stalePendingMinutes !== undefined && (
-              <p style={{ color: 'var(--color-red)' }}>
+              <p aria-live="polite" style={{ color: 'var(--color-red)' }}>
                 השינויים לא נשלחים כבר {sync.stalePendingMinutes} דקות. בדקו את החיבור לאינטרנט.
               </p>
             )}
@@ -238,8 +243,16 @@ export function Settings() {
         <>
           <h2 className="section-title">הרשאות צוות</h2>
           <div className="card stack-gap-2">
-            {permError && <p style={{ color: 'var(--color-red)' }}>{permError}</p>}
-            {removedMessage && <p style={{ color: 'var(--color-green)' }}>{removedMessage}</p>}
+            {permError && (
+              <p role="alert" style={{ color: 'var(--color-red)' }}>
+                {permError}
+              </p>
+            )}
+            {removedMessage && (
+              <p aria-live="polite" style={{ color: 'var(--color-green)' }}>
+                {removedMessage}
+              </p>
+            )}
             {members.map((row) => {
               const cook = row.cookId ? state.cooks.find((c) => c.id === row.cookId) : undefined;
               return (
@@ -301,19 +314,20 @@ export function Settings() {
       <h2 className="section-title">חישוב</h2>
       <div className="card stack-gap-3">
         <div className="field" style={{ marginBottom: 0 }}>
-          <label>ימי כיסוי ברירת מחדל</label>
-          <input
-            type="number"
-            inputMode="decimal"
+          <label htmlFor={coverageDaysId}>ימי כיסוי ברירת מחדל</label>
+          <DraftNumberInput
+            id={coverageDaysId}
             value={state.settings.defaultCoverageDays}
-            onChange={(e) =>
-              dispatch({ type: 'UPDATE_SETTINGS', settings: { defaultCoverageDays: parseFloat(e.target.value) || 1 } })
+            min={1}
+            onCommit={(defaultCoverageDays) =>
+              dispatch({ type: 'UPDATE_SETTINGS', settings: { defaultCoverageDays: defaultCoverageDays ?? 1 } })
             }
           />
         </div>
         <div className="field" style={{ marginBottom: 0 }}>
-          <label>עיגול כפולות מתכון</label>
+          <label htmlFor={roundMultiplierId}>עיגול כפולות מתכון</label>
           <select
+            id={roundMultiplierId}
             value={roundValue}
             onChange={(e) => {
               const v = e.target.value;
@@ -336,7 +350,12 @@ export function Settings() {
           {state.cooks.map((cook) => (
             <div key={cook.id} className="row-item">
               <CookPill cook={cook} />
-              <button type="button" className="btn btn-icon" onClick={() => requestDeleteCook(cook)}>
+              <button
+                type="button"
+                className="btn btn-icon"
+                onClick={() => requestDeleteCook(cook)}
+                aria-label={`מחק טבח — ${cook.name}`}
+              >
                 ✕
               </button>
             </div>
@@ -344,6 +363,8 @@ export function Settings() {
         </div>
         <div className="row" style={{ gap: 8 }}>
           <input
+            id={newCookNameId}
+            aria-label="שם טבח חדש"
             value={newCookName}
             onChange={(e) => setNewCookName(e.target.value)}
             placeholder="שם טבח חדש"
@@ -370,7 +391,11 @@ export function Settings() {
             ייבוא גיבוי
           </button>
         </div>
-        {importError && <p style={{ color: 'var(--color-red)' }}>{importError}</p>}
+        {importError && (
+          <p role="alert" style={{ color: 'var(--color-red)' }}>
+            {importError}
+          </p>
+        )}
         <input
           ref={fileInputRef}
           type="file"
@@ -386,18 +411,23 @@ export function Settings() {
 
       {deleteCandidate && (
         <ConfirmDialog
-          title="מחיקת טבח"
-          confirmLabel="מחק בכל זאת"
+          title={`מחיקת "${deleteCandidate.name}"`}
+          confirmLabel="מחק לצמיתות"
+          destructive
           onClose={() => setDeleteCandidate(null)}
           onConfirm={() => {
             dispatch({ type: 'DELETE_COOK', id: deleteCandidate.id });
             setDeleteCandidate(null);
           }}
         >
-          <p>
-            "{deleteCandidate.name}" משויך לחשבון פעיל של אחד המשתמשים. מחיקתו לא תסיר את החשבון, אבל הוא ייאלץ לבחור
-            את עצמו מחדש.
-          </p>
+          {isSupabaseConfigured && boundCookIds.has(deleteCandidate.id) ? (
+            <p>
+              "{deleteCandidate.name}" משויך לחשבון פעיל של אחד המשתמשים. מחיקתו לא תסיר את החשבון, אבל הוא ייאלץ לבחור
+              את עצמו מחדש.
+            </p>
+          ) : (
+            <p>הטבח יימחק לצמיתות ולא ניתן יהיה לשחזר אותו.</p>
+          )}
         </ConfirmDialog>
       )}
 

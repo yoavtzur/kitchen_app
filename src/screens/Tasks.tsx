@@ -1,4 +1,4 @@
-import { useState, type Dispatch } from 'react';
+import { useId, useState, type Dispatch } from 'react';
 import { useApp } from '../store/AppContext';
 import { weightedRecipeItems } from '../lib/calc';
 import { getDisplayTasks, ingredientDeltasFor, type DisplayTask } from '../lib/tasks';
@@ -8,6 +8,7 @@ import { formatQty } from '../lib/units';
 import { PriorityDot, PriorityPill } from '../components/PriorityDot';
 import { NumberEditor } from '../components/NumberEditor';
 import { BottomSheet } from '../components/BottomSheet';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { EmptyState } from '../components/EmptyState';
 import { SearchInput } from '../components/SearchInput';
 import { CategoryTabs } from '../components/CategoryTabs';
@@ -48,7 +49,7 @@ function TaskDetailSheet({ task, onClose }: { task: DisplayTask; onClose: () => 
   return (
     <BottomSheet title={`${recipe.name} — מתכון ×${task.multiplier}`} onClose={onClose}>
       <div className="field">
-        <label>כפולת מתכון</label>
+        <span className="field-label">כפולת מתכון</span>
         <NumberEditor value={task.multiplier} label="כפולת מתכון" step={0.25} variant="stepper" onChange={setMultiplier} />
       </div>
       <table className="data-table" style={{ marginBottom: 'var(--space-3)' }}>
@@ -132,6 +133,13 @@ function AddManualTaskSheet({ date, onClose }: { date: string; onClose: () => vo
   const [newStationName, setNewStationName] = useState('');
   const [addingStation, setAddingStation] = useState(state.stations.length === 0);
 
+  const recipeSelectId = useId();
+  const titleId = useId();
+  const stationId = useId();
+  const multiplierId = useId();
+  const priorityId = useId();
+  const assigneeSelectId = useId();
+
   const isFreeText = recipeId === FREE_TEXT_OPTION;
   const selectedRecipe = state.recipes.find((r) => r.id === recipeId);
 
@@ -186,8 +194,9 @@ function AddManualTaskSheet({ date, onClose }: { date: string; onClose: () => vo
   return (
     <BottomSheet title="הוספת משימה" onClose={onClose}>
       <div className="field">
-        <label>מתכון</label>
+        <label htmlFor={recipeSelectId}>מתכון</label>
         <select
+          id={recipeSelectId}
           value={recipeId}
           onChange={(e) => {
             setRecipeId(e.target.value);
@@ -205,15 +214,22 @@ function AddManualTaskSheet({ date, onClose }: { date: string; onClose: () => vo
       </div>
       {isFreeText && (
         <div className="field">
-          <label>כותרת המשימה</label>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="לדוגמה: לנקות מדפים" autoFocus />
+          <label htmlFor={titleId}>כותרת המשימה</label>
+          <input
+            id={titleId}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="לדוגמה: לנקות מדפים"
+            autoFocus
+          />
         </div>
       )}
       <div className="field">
-        <label>עמדה</label>
+        <label htmlFor={stationId}>עמדה</label>
         {addingStation ? (
           <div className="row" style={{ gap: 6 }}>
             <input
+              id={stationId}
               value={newStationName}
               onChange={(e) => setNewStationName(e.target.value)}
               onKeyDown={(e) => {
@@ -245,6 +261,7 @@ function AddManualTaskSheet({ date, onClose }: { date: string; onClose: () => vo
           </div>
         ) : (
           <select
+            id={stationId}
             value={isFreeText ? category : (selectedRecipe?.category ?? UNASSIGNED_CATEGORY)}
             onChange={(e) => {
               if (e.target.value === NEW_STATION_ID) {
@@ -265,13 +282,19 @@ function AddManualTaskSheet({ date, onClose }: { date: string; onClose: () => vo
       </div>
       {!isFreeText && (
         <div className="field">
-          <label>כפולת מתכון</label>
-          <input type="number" inputMode="decimal" value={multiplier} onChange={(e) => setMultiplier(e.target.value)} />
+          <label htmlFor={multiplierId}>כפולת מתכון</label>
+          <input
+            id={multiplierId}
+            type="number"
+            inputMode="decimal"
+            value={multiplier}
+            onChange={(e) => setMultiplier(e.target.value)}
+          />
         </div>
       )}
       <div className="field">
-        <label>רמת דחיפות</label>
-        <select value={priority} onChange={(e) => setPriority(e.target.value as Priority)}>
+        <label htmlFor={priorityId}>רמת דחיפות</label>
+        <select id={priorityId} value={priority} onChange={(e) => setPriority(e.target.value as Priority)}>
           {PRIORITY_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
@@ -280,8 +303,8 @@ function AddManualTaskSheet({ date, onClose }: { date: string; onClose: () => vo
         </select>
       </div>
       <div className="field">
-        <label>שיוך לטבח</label>
-        <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
+        <label htmlFor={assigneeSelectId}>שיוך לטבח</label>
+        <select id={assigneeSelectId} value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
           <option value="">— ללא —</option>
           {state.cooks.map((c) => (
             <option key={c.id} value={c.id}>
@@ -300,6 +323,7 @@ function AddManualTaskSheet({ date, onClose }: { date: string; onClose: () => vo
 function TaskRow({ task }: { task: DisplayTask }) {
   const { state, dispatch } = useApp();
   const [detailOpen, setDetailOpen] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const recipe = state.recipes.find((r) => r.id === task.recipeId);
 
   const isAuto = task.source === 'auto';
@@ -365,6 +389,15 @@ function TaskRow({ task }: { task: DisplayTask }) {
         <div className="row">
           <div className="row" style={{ gap: 10 }}>
             <span className="print-check" aria-hidden="true" />
+            <button
+              type="button"
+              className="task-check"
+              aria-label={task.done ? 'בטל סימון בוצע' : 'סמן כבוצע'}
+              aria-pressed={task.done}
+              onClick={task.done ? undoDone : markDone}
+            >
+              ✓
+            </button>
             <PriorityDot priority={task.priority} onClick={cyclePriority} />
             <PriorityPill priority={task.priority} />
             <button
@@ -387,7 +420,7 @@ function TaskRow({ task }: { task: DisplayTask }) {
             type="button"
             className="btn btn-icon"
             style={{ minHeight: 48, minWidth: 48 }}
-            onClick={deleteTask}
+            onClick={() => setConfirmingDelete(true)}
             aria-label="מחק משימה"
           >
             ✕
@@ -414,6 +447,24 @@ function TaskRow({ task }: { task: DisplayTask }) {
           </select>
         </div>
         {detailOpen && <TaskDetailSheet task={task} onClose={() => setDetailOpen(false)} />}
+        {confirmingDelete && (
+          <ConfirmDialog
+            title={isAuto ? 'הסתרת משימה' : 'מחיקת משימה'}
+            confirmLabel={isAuto ? 'הסתר' : 'מחק לצמיתות'}
+            destructive={!isAuto}
+            onClose={() => setConfirmingDelete(false)}
+            onConfirm={() => {
+              deleteTask();
+              setConfirmingDelete(false);
+            }}
+          >
+            <p>
+              {isAuto
+                ? 'המשימה תוסתר להיום. היא תופיע שוב אם המלאי או התוכנית ישתנו.'
+                : 'המשימה תימחק לצמיתות ולא ניתן יהיה לשחזר אותה.'}
+            </p>
+          </ConfirmDialog>
+        )}
       </div>
     </SwipeToComplete>
   );
@@ -447,7 +498,14 @@ export function Tasks() {
     <div>
       <div className="screen-header">
         <h1 className="screen-title">משימות יומיות</h1>
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="no-print" style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '8px' }} />
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          className="no-print"
+          aria-label="תאריך"
+          style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '8px' }}
+        />
       </div>
 
       <div className="print-only print-banner">

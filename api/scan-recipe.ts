@@ -1,4 +1,8 @@
-import { hasApiKey, scanRecipeImage } from './_gemini.ts';
+/// <reference types="node" />
+// `.js`, not `.ts`: Vercel compiles each function to JavaScript but leaves import paths as
+// written, so a `.ts` specifier crashes at runtime with ERR_MODULE_NOT_FOUND. TypeScript's
+// nodenext resolution maps this back to _gemini.ts for type-checking.
+import { hasApiKey, scanRecipeImage } from './_gemini.js';
 
 /**
  * Vercel serverless function backing the recipe photo scanner.

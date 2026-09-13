@@ -1,7 +1,12 @@
+import { downscaleImage } from './imageDownscale';
 import type { Unit } from '../types';
 
 /**
  * Turns a photo of a written recipe into structured data via Google Gemini.
+ *
+ * The API key never reaches the browser: this module posts the photo to our own
+ * `/api/scan-recipe` endpoint, which holds `GEMINI_API_KEY` server-side and talks to Google
+ * on our behalf (see `api/_gemini.ts`). The browser only ever sees the model's reply text.
  *
  * Deliberately name-based, not id-based: the model can only read what is printed on the page,
  * so it returns ingredient *names*. Resolving those names against this kitchen's actual
@@ -18,10 +23,13 @@ export type ScannedIngredient = {
   qty: number | null;
   /**
    * The written unit mapped onto one of the app's five units, or null when it maps onto none
-   * of them (cups, spoons, pinches). Null is not a failure — the caller falls back to the
-   * matched ingredient's own stock unit, which is nearly always the right guess.
+   * of them. Read together with `unitText`: null with no `unitText` means no unit was written
+   * ("2 ביצים"), while null WITH `unitText` means a unit was written that the app cannot
+   * represent ("חצי כפית") — and then `qty` is in a unit we don't have, so it must not be used.
    */
   unit: Unit | null;
+  /** The unit exactly as written on the page, or null when none was written. */
+  unitText: string | null;
   /** The whole line verbatim, so the cook can see exactly what the AI read. */
   raw: string;
 };
@@ -68,64 +76,25 @@ export class GeminiScanError extends Error {
   }
 }
 
+const SCAN_ENDPOINT = '/api/scan-recipe';
+
 /**
- * gemini-1.5-flash (the model this feature was originally specced against) is retired for new
- * API keys, so it 404s rather than answering. 2.5-flash is the current equivalent: same
- * cheap/fast tier, same multimodal input. To go back, change this one string.
+ * Asks the server whether a Gemini key is configured, so the UI only offers the AI button
+ * when pressing it would actually work. The browser cannot check this itself — that is the
+ * whole point of the key being server-side.
+ *
+ * Returns false for any failure, including a 404 from a static host with no functions, which
+ * makes "no AI available, fall back to on-device OCR" the safe default everywhere.
  */
-const GEMINI_MODEL = 'gemini-2.5-flash';
-
-/** Inline image data has to travel inside the JSON request, so keep a sane ceiling. */
-const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
-
-const API_KEY: string = import.meta.env.VITE_GEMINI_API_KEY ?? '';
-
-/** False when no key is configured — callers fall back to plain on-device OCR. */
-export function isGeminiConfigured(): boolean {
-  return API_KEY.trim().length > 0;
-}
-
-const PROMPT = `You are reading a photograph of a cooking recipe, most likely written in Hebrew.
-Extract the recipe and reply with JSON only, matching exactly this shape:
-
-{
-  "name": string,
-  "yieldQty": number | null,
-  "yieldUnit": string | null,
-  "servings": number | null,
-  "prepTimeMinutes": number | null,
-  "cookTimeMinutes": number | null,
-  "ingredients": [{ "name": string, "qty": number | null, "unit": string | null, "raw": string }],
-  "steps": [string]
-}
-
-Rules:
-- Keep the original language of the recipe. Do not translate.
-- "raw" is the ingredient line exactly as printed, including its quantity and unit.
-- "name" on an ingredient is just the ingredient itself, with no quantity and no unit.
-- Use null, never a guess, for anything the photo does not state. Never invent ingredients or steps.
-- "qty" must be a plain number: convert fractions ("חצי", "1/2") to decimals (0.5).
-- "unit" is the unit as written (for example "גרם", "כפית", "כוס"); leave null if none is written.
-- "steps" is the method, one entry per step, in order, without leading numbers.
-- If the photo is not a recipe at all, return the shape above with an empty name, empty
-  ingredients and empty steps.`;
-
-/** Reads a File as base64 with the `data:...;base64,` prefix stripped, as the API expects. */
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new GeminiScanError('unreadable', 'לא ניתן לקרוא את קובץ התמונה'));
-    reader.onload = () => {
-      const result = reader.result;
-      if (typeof result !== 'string') {
-        reject(new GeminiScanError('unreadable', 'לא ניתן לקרוא את קובץ התמונה'));
-        return;
-      }
-      const comma = result.indexOf(',');
-      resolve(comma === -1 ? result : result.slice(comma + 1));
-    };
-    reader.readAsDataURL(file);
-  });
+export async function isGeminiConfigured(): Promise<boolean> {
+  try {
+    const response = await fetch(SCAN_ENDPOINT, { method: 'GET' });
+    if (!response.ok) return false;
+    const body = (await response.json()) as { configured?: unknown };
+    return body?.configured === true;
+  } catch {
+    return false;
+  }
 }
 
 const UNIT_ALIASES: Record<string, Unit> = {
@@ -177,10 +146,12 @@ export function sanitizeScanned(raw: unknown): ScannedRecipe {
     const line = entry as Record<string, unknown>;
     const name = toTrimmedString(line.name);
     if (!name) continue;
+    const unitText = toTrimmedString(line.unit);
     ingredients.push({
       name,
       qty: toNumberOrNull(line.qty),
       unit: normalizeUnit(line.unit),
+      unitText: unitText || null,
       raw: toTrimmedString(line.raw) || name,
     });
   }
@@ -206,21 +177,25 @@ function isEmptyScan(scanned: ScannedRecipe): boolean {
   return !scanned.name && scanned.ingredients.length === 0 && scanned.steps.length === 0;
 }
 
-/** Digs the model's text out of the Gemini response envelope. */
-function extractText(payload: unknown): string {
-  const candidates = (payload as { candidates?: unknown })?.candidates;
-  if (!Array.isArray(candidates) || candidates.length === 0) return '';
-  const parts = (candidates[0] as { content?: { parts?: unknown } })?.content?.parts;
-  if (!Array.isArray(parts)) return '';
-  return parts
-    .map((p) => ((p as { text?: unknown })?.text))
-    .filter((t): t is string => typeof t === 'string')
-    .join('')
-    .trim();
+/** Maps an error code reported by our own endpoint onto the client's error vocabulary. */
+function codeFromServer(raw: unknown, httpStatus: number): GeminiScanErrorCode {
+  switch (raw) {
+    case 'no-api-key':
+      return 'no-api-key';
+    case 'too-large':
+      return 'too-large';
+    case 'bad-response':
+      return 'bad-response';
+    default:
+      return httpStatus === 413 ? 'too-large' : 'http';
+  }
 }
 
 /**
- * Sends `file` to Gemini and returns the recipe it read off the page.
+ * Sends `file` to our `/api/scan-recipe` endpoint and returns the recipe Gemini read off it.
+ *
+ * The photo is downscaled first (see `downscaleImage`) so a full-size phone picture doesn't
+ * blow the serverless request-body limit.
  *
  * Throws {@link GeminiScanError} — never a bare Error — so the UI can branch on `.code`:
  * `no-api-key`, `too-large`, `network`, `http`, `bad-response`, `unreadable`.
@@ -234,58 +209,52 @@ function extractText(payload: unknown): string {
  * }
  */
 export async function parseRecipeFromImage(file: File): Promise<ScannedRecipe> {
-  if (!isGeminiConfigured()) {
-    throw new GeminiScanError('no-api-key', 'לא הוגדר מפתח Gemini');
+  let image;
+  try {
+    image = await downscaleImage(file);
+  } catch {
+    throw new GeminiScanError('unreadable', 'לא ניתן לקרוא את קובץ התמונה');
   }
-  if (file.size > MAX_IMAGE_BYTES) {
-    throw new GeminiScanError('too-large', 'התמונה גדולה מדי');
-  }
-
-  const base64 = await fileToBase64(file);
 
   let response: Response;
   try {
-    response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(API_KEY)}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { text: PROMPT },
-                { inline_data: { mime_type: file.type || 'image/jpeg', data: base64 } },
-              ],
-            },
-          ],
-          generationConfig: { responseMimeType: 'application/json', temperature: 0 },
-        }),
-      },
-    );
+    response = await fetch(SCAN_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageBase64: image.base64, mimeType: image.mimeType }),
+    });
   } catch {
-    throw new GeminiScanError('network', 'אין חיבור לשרת Gemini');
-  }
-
-  if (!response.ok) {
-    throw new GeminiScanError('http', `Gemini החזיר שגיאה ${response.status}`, response.status);
+    throw new GeminiScanError('network', 'אין חיבור לשרת');
   }
 
   let payload: unknown;
   try {
     payload = await response.json();
   } catch {
-    throw new GeminiScanError('bad-response', 'תשובה לא תקינה מ-Gemini');
+    throw new GeminiScanError('bad-response', 'תשובה לא תקינה מהשרת');
   }
 
-  const text = extractText(payload);
-  if (!text) throw new GeminiScanError('bad-response', 'תשובה ריקה מ-Gemini');
+  if (!response.ok) {
+    const serverError = (payload as { error?: unknown; status?: unknown })?.error;
+    const upstream = (payload as { status?: unknown })?.status;
+    const code = codeFromServer(serverError, response.status);
+    throw new GeminiScanError(
+      code,
+      'סריקת המתכון נכשלה',
+      typeof upstream === 'number' ? upstream : response.status,
+    );
+  }
+
+  const text = (payload as { text?: unknown })?.text;
+  if (typeof text !== 'string' || !text) {
+    throw new GeminiScanError('bad-response', 'תשובה ריקה מהשרת');
+  }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
   } catch {
-    throw new GeminiScanError('bad-response', 'תשובה לא תקינה מ-Gemini');
+    throw new GeminiScanError('bad-response', 'תשובה לא תקינה מהשרת');
   }
 
   const scanned = sanitizeScanned(parsed);

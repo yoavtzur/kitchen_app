@@ -28,6 +28,8 @@ type ItemDraft = RecipeItem & {
   newIngredientName?: string;
   /** Present only on AI-scanned rows: the line as printed, shown so the cook can check it. */
   sourceLine?: string;
+  /** AI-scanned row whose written unit (a spoon, a cup) has no equivalent, so qty was blanked. */
+  unitUnsupported?: boolean;
 };
 
 // Sentinel refId marking a recipe item that names a not-yet-created ingredient — resolved
@@ -565,6 +567,11 @@ export function RecipeEditor({ recipe, defaultCategory, onClose, draft = null }:
             {item.sourceLine && (
               <p className="muted" style={{ marginTop: 4, fontSize: 12 }}>
                 בתמונה: {item.sourceLine}
+              </p>
+            )}
+            {item.unitUnsupported && !item.qty && (
+              <p className="pill yellow" style={{ marginTop: 4 }}>
+                היחידה בתמונה לא נתמכת — הזינו כמות ויחידה ידנית
               </p>
             )}
           </div>

@@ -19,6 +19,11 @@ export type RecipeDraftItem = RecipeItem & {
   newIngredientName?: string;
   /** The ingredient line verbatim, shown to the cook so they can check the AI against the photo. */
   sourceLine?: string;
+  /**
+   * The page used a unit the app can't represent (a spoon, a cup), so `qty` was left at 0
+   * rather than silently reinterpreted — "חצי כפית מלח" must never become 0.5 kg of salt.
+   */
+  unitUnsupported?: boolean;
 };
 
 export type RecipeDraft = {
@@ -84,19 +89,27 @@ export function scannedToDraft(
 
   for (const line of scanned.ingredients) {
     const match = findMatch(line.name, catalog.ingredients, catalog.products);
-    // A unit the page didn't state (or stated as cups/spoons) falls back to the matched item's
-    // own stock unit — the same default RecipeEditor applies when an item is picked by hand.
+    // A unit was written but has no equivalent here (כפית, כוס, קורט). Its number is in a unit
+    // we don't have and there's no density model to convert it, so the quantity is dropped —
+    // the cook fills it in, and RecipeEditor.save() skips a qty of 0 so it can't slip through.
+    const unitUnsupported = line.unitText !== null && line.unit === null;
+    // With no usable unit, default the dropdown to the matched item's own stock unit — the same
+    // default RecipeEditor applies when an item is picked by hand. When no unit was written at
+    // all ("2 ביצים") that unit is also what the number means, so the quantity is kept.
     const unit = line.unit ?? match?.unit ?? NEW_INGREDIENT_UNIT;
+    const qty = unitUnsupported ? 0 : (line.qty ?? 0);
+    const extras = { sourceLine: line.raw, ...(unitUnsupported ? { unitUnsupported: true } : {}) };
+
     if (match) {
-      items.push({ refType: match.refType, refId: match.refId, qty: line.qty ?? 0, unit, sourceLine: line.raw });
+      items.push({ refType: match.refType, refId: match.refId, qty, unit, ...extras });
     } else {
       items.push({
         refType: 'ingredient',
         refId: NEW_INGREDIENT_REF,
-        qty: line.qty ?? 0,
+        qty,
         unit,
         newIngredientName: line.name,
-        sourceLine: line.raw,
+        ...extras,
       });
       newIngredientNames.push(line.name);
     }

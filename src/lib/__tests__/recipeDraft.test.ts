@@ -30,7 +30,7 @@ function scan(partial: Partial<ScannedRecipe>): ScannedRecipe {
 describe('scannedToDraft', () => {
   it('resolves an exact ingredient name to its id', () => {
     const draft = scannedToDraft(
-      scan({ ingredients: [{ name: 'קמח', qty: 2, unit: 'kg', raw: '2 ק"ג קמח' }] }),
+      scan({ ingredients: [{ name: 'קמח', qty: 2, unit: 'kg', unitText: 'ק"ג', raw: '2 ק"ג קמח' }] }),
       { ingredients, products },
     );
 
@@ -42,8 +42,8 @@ describe('scannedToDraft', () => {
     const draft = scannedToDraft(
       scan({
         ingredients: [
-          { name: 'עגבניות שרי', qty: 1, unit: 'kg', raw: '1 ק"ג עגבניות שרי' },
-          { name: 'שמן', qty: 0.1, unit: 'l', raw: '100 מ"ל שמן' },
+          { name: 'עגבניות שרי', qty: 1, unit: 'kg', unitText: 'ק"ג', raw: '1 ק"ג עגבניות שרי' },
+          { name: 'שמן', qty: 0.1, unit: 'l', unitText: 'ליטר', raw: '100 מ"ל שמן' },
         ],
       }),
       { ingredients, products },
@@ -55,7 +55,7 @@ describe('scannedToDraft', () => {
 
   it('falls back to products when no ingredient matches', () => {
     const draft = scannedToDraft(
-      scan({ ingredients: [{ name: 'בצק לפיצות', qty: 3, unit: null, raw: '3 בצקים' }] }),
+      scan({ ingredients: [{ name: 'בצק לפיצות', qty: 3, unit: null, unitText: null, raw: '3 בצקים' }] }),
       { ingredients, products },
     );
 
@@ -64,7 +64,7 @@ describe('scannedToDraft', () => {
 
   it('marks an unknown name as a new ingredient rather than inventing an id', () => {
     const draft = scannedToDraft(
-      scan({ ingredients: [{ name: 'זעתר', qty: 50, unit: 'g', raw: '50 גרם זעתר' }] }),
+      scan({ ingredients: [{ name: 'זעתר', qty: 50, unit: 'g', unitText: 'גרם', raw: '50 גרם זעתר' }] }),
       { ingredients, products },
     );
 
@@ -78,19 +78,40 @@ describe('scannedToDraft', () => {
     expect(draft.newIngredientNames).toEqual(['זעתר']);
   });
 
-  it("uses the matched item's own stock unit when the page states no usable unit", () => {
-    // "2 כוסות קמח" — normalizeUnit already returned null for כוס upstream.
+  it('keeps the quantity when no unit was written, reading it in the stock unit', () => {
+    // "2 ביצים" — genuinely unit-less, so 2 in the egg's own count unit is exactly right.
+    const eggs: Ingredient = { id: 'ing-egg', name: 'ביצים', unit: 'unit', currentQty: 30, dailyUsage: 5, weeklyUsage: 35 };
     const draft = scannedToDraft(
-      scan({ ingredients: [{ name: 'קמח', qty: 2, unit: null, raw: '2 כוסות קמח' }] }),
+      scan({ ingredients: [{ name: 'ביצים', qty: 2, unit: null, unitText: null, raw: '2 ביצים' }] }),
+      { ingredients: [...ingredients, eggs], products },
+    );
+
+    expect(draft.items[0]).toMatchObject({ refId: 'ing-egg', qty: 2, unit: 'unit' });
+    expect(draft.items[0].unitUnsupported).toBeUndefined();
+  });
+
+  it('never reinterprets a written unit the app cannot represent', () => {
+    // Regression, found by a real Gemini scan: "חצי כפית מלח" came out as 0.5 kg of salt, and
+    // "2 כוסות קמח" would have become 2 kg of flour. The number must be dropped, not re-unit-ed.
+    const draft = scannedToDraft(
+      scan({
+        ingredients: [
+          { name: 'קמח', qty: 2, unit: null, unitText: 'כוסות', raw: '2 כוסות קמח' },
+          { name: 'מלח', qty: 0.5, unit: null, unitText: 'כפית', raw: 'חצי כפית מלח' },
+        ],
+      }),
       { ingredients, products },
     );
 
-    expect(draft.items[0].unit).toBe('kg');
+    expect(draft.items[0]).toMatchObject({ refId: 'ing-flour', qty: 0, unitUnsupported: true });
+    expect(draft.items[1]).toMatchObject({ refId: NEW_INGREDIENT_REF, qty: 0, unitUnsupported: true });
+    expect(draft.items.map((i) => i.qty)).not.toContain(0.5);
+    expect(draft.items.map((i) => i.qty)).not.toContain(2);
   });
 
   it('keeps the source line so the cook can check the AI against the photo', () => {
     const draft = scannedToDraft(
-      scan({ ingredients: [{ name: 'קמח', qty: 1, unit: 'kg', raw: '1 ק"ג קמח מלא' }] }),
+      scan({ ingredients: [{ name: 'קמח', qty: 1, unit: 'kg', unitText: 'ק"ג', raw: '1 ק"ג קמח מלא' }] }),
       { ingredients, products },
     );
 
@@ -100,7 +121,7 @@ describe('scannedToDraft', () => {
   it('defaults a missing quantity to 0 so the row is visible but unsaved', () => {
     // RecipeEditor.save() skips items with qty <= 0, so the cook must fill this in on purpose.
     const draft = scannedToDraft(
-      scan({ ingredients: [{ name: 'מלח', qty: null, unit: null, raw: 'מלח לפי הטעם' }] }),
+      scan({ ingredients: [{ name: 'מלח', qty: null, unit: null, unitText: null, raw: 'מלח לפי הטעם' }] }),
       { ingredients, products },
     );
 

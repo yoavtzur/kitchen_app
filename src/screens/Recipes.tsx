@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createWorker } from 'tesseract.js';
 import { useApp } from '../store/AppContext';
 import { usePermissions } from '../auth/usePermissions';
@@ -133,9 +133,11 @@ function scanErrorMessage(err: unknown): string {
       case 'network':
         return 'אין חיבור לאינטרנט, או ששירות ה-AI לא זמין כרגע.';
       case 'http':
-        return err.status === 429
-          ? 'חרגתם ממכסת השימוש ב-AI. נסו שוב בעוד כמה דקות.'
-          : `שירות ה-AI החזיר שגיאה (${err.status ?? '—'}). נסו שוב.`;
+        if (err.status === 429) return 'חרגתם ממכסת השימוש ב-AI. נסו שוב בעוד כמה דקות.';
+        // Not transient — retrying won't help, so don't tell the cook to try again.
+        if (err.status === 404) return 'מודל ה-AI שהאפליקציה משתמשת בו כבר לא זמין. צריך לעדכן את הקוד.';
+        if (err.status === 400 || err.status === 403) return 'מפתח ה-AI לא תקין או חסרות לו הרשאות.';
+        return `שירות ה-AI החזיר שגיאה (${err.status ?? '—'}). נסו שוב.`;
       case 'unreadable':
         return 'לא זוהה מתכון בתמונה. נסו תמונה ברורה וחדה יותר.';
       case 'bad-response':
@@ -174,8 +176,19 @@ function RecipeScanSheet({ onClose, onDraft }: { onClose: () => void; onDraft: (
   const [text, setText] = useState('');
   const [copied, setCopied] = useState(false);
   const [errorText, setErrorText] = useState('');
+  // null = still asking the server whether a key is configured. The browser can't know this
+  // on its own now that the key lives server-side, so the sheet asks when it opens.
+  const [aiAvailable, setAiAvailable] = useState<boolean | null>(null);
 
-  const aiAvailable = isGeminiConfigured();
+  useEffect(() => {
+    let cancelled = false;
+    isGeminiConfigured().then((configured) => {
+      if (!cancelled) setAiAvailable(configured);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function pickFile(file: File) {
     setImageFile(file);
@@ -238,7 +251,7 @@ function RecipeScanSheet({ onClose, onDraft }: { onClose: () => void; onDraft: (
   return (
     <BottomSheet title="סריקת מתכון" onClose={onClose}>
       <p className="muted" style={{ marginBottom: 'var(--space-4)' }}>
-        {aiAvailable
+        {aiAvailable === true
           ? 'צלמו או בחרו תמונה של מתכון. ה-AI יקרא אותה וימלא עבורכם טופס מתכון — תוכלו לבדוק ולתקן הכל לפני שמירה.'
           : 'צלמו או בחרו תמונה של מתכון מודפס. השלב הזה קורא את הטקסט מתוך התמונה בלבד. אפשר להעתיק אותו ולהדביק בעורך המתכון.'}
       </p>
@@ -277,7 +290,7 @@ function RecipeScanSheet({ onClose, onDraft }: { onClose: () => void; onDraft: (
 
       {imageFile && !busy && (
         <div className="stack-gap-2" style={{ marginBottom: 'var(--space-3)' }}>
-          {aiAvailable && (
+          {aiAvailable === true && (
             <button type="button" className="btn btn-primary" style={{ width: '100%' }} onClick={scanWithAi}>
               נתחו מתכון עם AI
             </button>
@@ -285,11 +298,11 @@ function RecipeScanSheet({ onClose, onDraft }: { onClose: () => void; onDraft: (
           {status !== 'done' && (
             <button
               type="button"
-              className={aiAvailable ? 'btn' : 'btn btn-primary'}
+              className={aiAvailable === true ? 'btn' : 'btn btn-primary'}
               style={{ width: '100%' }}
               onClick={scan}
             >
-              {aiAvailable ? 'קראו טקסט בלבד' : 'סרוק טקסט'}
+              {aiAvailable === true ? 'קראו טקסט בלבד' : 'סרוק טקסט'}
             </button>
           )}
         </div>

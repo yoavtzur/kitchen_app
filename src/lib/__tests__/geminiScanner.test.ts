@@ -41,7 +41,7 @@ describe('sanitizeScanned', () => {
     expect(scanned.yieldQty).toBe(2);
     expect(scanned.yieldUnit).toBe('kg');
     expect(scanned.prepTimeMinutes).toBe(20);
-    expect(scanned.ingredients).toEqual([{ name: 'קמח', qty: 1, unit: 'kg', raw: '1 ק"ג קמח' }]);
+    expect(scanned.ingredients).toEqual([{ name: 'קמח', qty: 1, unit: 'kg', unitText: 'ק"ג', raw: '1 ק"ג קמח' }]);
     expect(scanned.steps).toEqual(['ללוש', 'לתפח']);
   });
 
@@ -60,7 +60,7 @@ describe('sanitizeScanned', () => {
 
     expect(scanned.name).toBe('סלט');
     expect(scanned.ingredients).toHaveLength(1);
-    expect(scanned.ingredients[0]).toEqual({ name: 'עגבניות', qty: 2.5, unit: 'kg', raw: '2.5 ק"ג עגבניות' });
+    expect(scanned.ingredients[0]).toEqual({ name: 'עגבניות', qty: 2.5, unit: 'kg', unitText: 'ק"ג', raw: '2.5 ק"ג עגבניות' });
     expect(scanned.steps).toEqual(['לחתוך']);
   });
 
@@ -76,6 +76,19 @@ describe('sanitizeScanned', () => {
     expect(scanned.servings).toBeNull();
     expect(scanned.ingredients[0].qty).toBeNull();
     expect(scanned.ingredients[0].unit).toBeNull();
+  });
+
+  it('records a written unit even when it cannot be normalized, so callers can tell the two nulls apart', () => {
+    const scanned = sanitizeScanned({
+      name: 'x',
+      ingredients: [
+        { name: 'מלח', qty: 0.5, unit: 'כפית', raw: 'חצי כפית מלח' },
+        { name: 'ביצים', qty: 2, unit: null, raw: '2 ביצים' },
+      ],
+    });
+
+    expect(scanned.ingredients[0]).toMatchObject({ unit: null, unitText: 'כפית' });
+    expect(scanned.ingredients[1]).toMatchObject({ unit: null, unitText: null });
   });
 
   it('falls back to the ingredient name when the model omits the raw line', () => {

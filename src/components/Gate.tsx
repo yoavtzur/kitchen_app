@@ -1,8 +1,10 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { usePermissions } from '../auth/usePermissions';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { Auth } from '../screens/Auth';
+import { ForgotPassword } from '../screens/ForgotPassword';
+import { NewPassword } from '../screens/NewPassword';
 import { Onboarding } from '../screens/Onboarding';
 import { PickCook } from '../screens/PickCook';
 import { FullScreenMessage } from './FullScreenMessage';
@@ -13,10 +15,21 @@ import { FullScreenMessage } from './FullScreenMessage';
 // hook order never depends on isSupabaseConfigured.
 
 export function AuthGate({ children }: { children: ReactNode }) {
-  const { loading, session } = useAuth();
+  const { loading, session, recovering } = useAuth();
+  // Which signed-out screen to show. Local state, not a route, for the same reason the whole
+  // gate isn't one (see above): there is no URL here to navigate to.
+  const [view, setView] = useState<'signin' | 'forgot'>('signin');
   if (!isSupabaseConfigured) return <>{children}</>;
   if (loading) return <FullScreenMessage text="טוען..." />;
-  if (!session) return <Auth />;
+  // Checked before `session`: a reset link signs the user in, so they'd otherwise sail past this.
+  if (recovering) return <NewPassword />;
+  if (!session) {
+    return view === 'forgot' ? (
+      <ForgotPassword onBack={() => setView('signin')} />
+    ) : (
+      <Auth onForgotPassword={() => setView('forgot')} />
+    );
+  }
   return <>{children}</>;
 }
 

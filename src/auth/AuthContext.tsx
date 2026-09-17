@@ -15,9 +15,15 @@ type AuthContextValue = {
    * last-known cached value while a fresh membership fetch is in flight or fails offline. */
   membership: Membership | null;
   membershipLoading: boolean;
+  /** True once Supabase has reported a PASSWORD_RECOVERY event — i.e. the session came from a
+   * reset link, not a normal sign-in, so the user still owes us a new password. */
+  recovering: boolean;
+  clearRecovering(): void;
   signUp(email: string, password: string): Promise<ActionResult>;
   signIn(email: string, password: string): Promise<ActionResult>;
   signOut(): Promise<void>;
+  resetPassword(email: string): Promise<ActionResult>;
+  updatePassword(password: string): Promise<ActionResult>;
   createRestaurant(name: string, snapshot: unknown, schemaVersion: number): Promise<ActionResult>;
   joinRestaurant(code: string): Promise<ActionResult>;
   setMyCook(cookId: string): Promise<ActionResult>;
@@ -35,6 +41,11 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 function mapAuthError(message: string): string {
   if (message.includes('Invalid login credentials')) return 'אימייל או סיסמה שגויים';
   if (message.includes('User already registered')) return 'כבר קיים חשבון עם האימייל הזה';
+  // Checked before the generic 'email'/'password' substring cases below, which would otherwise
+  // mislabel a delivery failure or a throttle as "invalid address".
+  if (message.includes('Error sending')) return 'שליחת המייל נכשלה, נסה שוב';
+  if (message.includes('For security purposes') || message.toLowerCase().includes('rate limit'))
+    return 'יותר מדי ניסיונות — נסה שוב בעוד רגע';
   if (message.toLowerCase().includes('password')) return 'הסיסמה חייבת להכיל לפחות 6 תווים';
   if (message.toLowerCase().includes('email')) return 'כתובת אימייל לא תקינה';
   return message;
@@ -60,6 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [membership, setMembership] = useState<Membership | null>(() => readCachedMembership());
   const [membershipLoading, setMembershipLoading] = useState(false);
+  const [recovering, setRecovering] = useState(false);
 
   useEffect(() => {
     if (!supabase) {
@@ -75,7 +87,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (event === 'SIGNED_OUT') {
         setMembership(null);
         writeCachedMembership(null);
+        setRecovering(false);
       }
+      // A reset link signs the user straight in, so `session` alone can't tell a recovery apart
+      // from a normal login — this event is the only signal. AuthGate renders NewPassword on it.
+      if (event === 'PASSWORD_RECOVERY') setRecovering(true);
     });
     return () => sub.subscription.unsubscribe();
   }, []);
@@ -128,6 +144,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function signOut(): Promise<void> {
     if (!supabase) return;
     await supabase.auth.signOut();
+  }
+
+  async function resetPassword(email: string): Promise<ActionResult> {
+    if (!supabase) return { error: 'Supabase אינו מוגדר' };
+    // Supabase emails a link back to `redirectTo` with its own `#access_token=...&type=recovery`
+    // fragment appended. This app uses HashRouter, so redirectTo deliberately carries no `#/...`
+    // route of its own: supabase-js's detectSessionInUrl (on by default) consumes that fragment
+    // and clears it, leaving an empty hash that HashRouter resolves to "/".
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + window.location.pathname,
+    });
+    return { error: error ? mapAuthError(error.message) : null };
+  }
+
+  async function updatePassword(password: string): Promise<ActionResult> {
+    if (!supabase) return { error: 'Supabase אינו מוגדר' };
+    // Acts on whatever session is current — for a recovery that's the one the emailed link
+    // established, which is exactly what makes a reset possible without the old password.
+    const { error } = await supabase.auth.updateUser({ password });
+    return { error: error ? mapAuthError(error.message) : null };
   }
 
   async function createRestaurant(name: string, snapshot: unknown, schemaVersion: number): Promise<ActionResult> {
@@ -225,9 +261,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         session,
         membership,
         membershipLoading,
+        recovering,
+        clearRecovering: () => setRecovering(false),
         signUp,
         signIn,
         signOut,
+        resetPassword,
+        updatePassword,
         createRestaurant,
         joinRestaurant,
         setMyCook,

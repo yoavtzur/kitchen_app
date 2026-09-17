@@ -3,7 +3,7 @@ import { useAuth } from '../auth/AuthContext';
 
 type Mode = 'signin' | 'signup';
 
-export function Auth() {
+export function Auth({ onForgotPassword }: { onForgotPassword: () => void }) {
   const { signUp, signIn } = useAuth();
   const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
@@ -56,6 +56,11 @@ export function Auth() {
         <button type="button" className="btn btn-primary" onClick={submit} disabled={busy}>
           {busy ? 'רגע...' : mode === 'signup' ? 'הרשמה' : 'התחברות'}
         </button>
+        {mode === 'signin' && (
+          <button type="button" className="btn" onClick={onForgotPassword}>
+            שכחתי סיסמה
+          </button>
+        )}
         <button
           type="button"
           className="btn"

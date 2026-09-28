@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApp, useSync } from '../store/AppContext';
 import { useAuth } from '../auth/AuthContext';
 import { usePermissions } from '../auth/usePermissions';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import { mapRpcError } from '../lib/rpcErrors';
 import { exportStateAsJson, parseImportedState } from '../store/storage';
 import { SCHEMA_VERSION } from '../data/seed';
 import { newId } from '../lib/ids';
@@ -45,6 +46,11 @@ export function Settings() {
   const [restaurant, setRestaurant] = useState<{ name: string; joinCode: string } | null>(null);
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [permError, setPermError] = useState('');
+  const [membersError, setMembersError] = useState('');
+  // Initialized during render rather than set from the mount effect: in remote mode the very
+  // first paint of this screen genuinely is loading, and deriving that is both more honest and
+  // one fewer cascading render than announcing it afterwards.
+  const [membersLoading, setMembersLoading] = useState(() => isSupabaseConfigured && Boolean(membership));
   const [copied, setCopied] = useState(false);
   const [deleteCandidate, setDeleteCandidate] = useState<Cook | null>(null);
   const [removeCandidate, setRemoveCandidate] = useState<MemberRow | null>(null);
@@ -52,16 +58,30 @@ export function Settings() {
 
   const boundCookIds = new Set(members.map((m) => m.cookId).filter((id): id is string => !!id));
 
-  function reloadMembers() {
+  /** A failed team fetch used to be completely silent: `error` was destructured away, so a
+   * chef on a dropped connection saw an empty permissions list and no reason for it — visually
+   * identical to "you are the only member". It now reports, and offers a retry.
+   *
+   * `cancelledRef` covers it too. The old version guarded only the sibling restaurant fetch
+   * with `cancelled`, so a slow membership response landing after this screen unmounted called
+   * `setMembers` on a dead component. */
+  const cancelledRef = useRef(false);
+
+  const reloadMembers = useCallback(() => {
     if (!isSupabaseConfigured || !supabase || !membership) return;
     supabase
       .from('memberships')
       .select('user_id, cook_id, role, can_edit_recipes, can_delete_recipes')
       .eq('restaurant_id', membership.restaurantId)
-      .then(({ data }) => {
-        if (!data) return;
+      .then(({ data, error }) => {
+        if (cancelledRef.current) return;
+        setMembersLoading(false);
+        if (error) {
+          setMembersError(mapRpcError(error));
+          return;
+        }
         setMembers(
-          data.map((row) => ({
+          (data ?? []).map((row) => ({
             userId: row.user_id as string,
             cookId: row.cook_id as string | null,
             role: row.role as MemberRole,
@@ -70,25 +90,26 @@ export function Settings() {
           })),
         );
       });
-  }
+  }, [membership]);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase || !membership) return;
-    let cancelled = false;
+    cancelledRef.current = false;
     supabase
       .from('restaurants')
       .select('name, join_code')
       .eq('id', membership.restaurantId)
       .single()
       .then(({ data }) => {
-        if (!cancelled && data) setRestaurant({ name: data.name as string, joinCode: data.join_code as string });
+        if (!cancelledRef.current && data) {
+          setRestaurant({ name: data.name as string, joinCode: data.join_code as string });
+        }
       });
     reloadMembers();
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [membership]);
+  }, [membership, reloadMembers]);
 
   async function updatePermissions(row: MemberRow, patch: Partial<Pick<MemberRow, 'canEditRecipes' | 'canDeleteRecipes'>>) {
     setPermError('');
@@ -140,7 +161,7 @@ export function Settings() {
             p_snapshot: imported,
             p_schema_version: SCHEMA_VERSION,
           });
-          if (error) setImportError(error.message);
+          if (error) setImportError(mapRpcError(error));
           return;
         }
         dispatch({ type: 'IMPORT_STATE', state: imported });
@@ -240,6 +261,23 @@ export function Settings() {
           <div className="card stack-gap-2">
             {permError && <p style={{ color: 'var(--color-red)' }}>{permError}</p>}
             {removedMessage && <p style={{ color: 'var(--color-green)' }}>{removedMessage}</p>}
+            {membersLoading && members.length === 0 && <p className="muted">טוען צוות...</p>}
+            {membersError && (
+              <div className="stack-gap-2">
+                <p style={{ color: 'var(--color-red)' }}>טעינת הצוות נכשלה: {membersError}</p>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    setMembersError('');
+                    setMembersLoading(true);
+                    reloadMembers();
+                  }}
+                >
+                  נסה שוב
+                </button>
+              </div>
+            )}
             {members.map((row) => {
               const cook = row.cookId ? state.cooks.find((c) => c.id === row.cookId) : undefined;
               return (

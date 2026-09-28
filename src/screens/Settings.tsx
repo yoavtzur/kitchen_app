@@ -33,6 +33,7 @@ const SYNC_STATUS_LABEL: Record<string, string> = {
   offline: 'לא מקוון',
   error: 'שגיאת סנכרון',
   'upgrade-required': 'יש לרענן את האפליקציה',
+  'read-only': 'קריאה בלבד — שינויים לא נשלחים',
 };
 
 export function Settings() {

@@ -35,6 +35,9 @@ export type SyncStore = {
   getState(): SyncState;
   getSyncInfo(): SyncInfo;
   dispatch(action: Action): void;
+  /** Switches outbound writes off or on from app_config (see src/lib/appConfig.ts). Separate
+   * from `dispatch` because it is not an op: nothing about it belongs in the log. */
+  setReadOnly(readOnly: boolean): void;
 };
 
 /**
@@ -177,6 +180,9 @@ function createSyncStore(adapter: SyncAdapter, initial: SyncState, kv?: KVStore,
       // crash report. See lib/sentry.ts, and the test that pins the crumb's shape.
       addOpBreadcrumb(action.type);
       apply({ type: 'DISPATCH', opId: newUuid(), action });
+    },
+    setReadOnly(readOnly) {
+      apply({ type: 'SET_READ_ONLY', readOnly });
     },
   };
 }

@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { usePermissions } from '../auth/usePermissions';
 import { isSupabaseConfigured } from '../lib/supabase';
+import { useAppConfig } from '../lib/useAppConfig';
 import { Auth } from '../screens/Auth';
 import { ForgotPassword } from '../screens/ForgotPassword';
 import { NewPassword } from '../screens/NewPassword';
@@ -39,6 +40,31 @@ export function MembershipGate({ children }: { children: ReactNode }) {
   if (!membership && membershipLoading) return <FullScreenMessage text="טוען..." />;
   if (!membership) return <Onboarding />;
   return <>{children}</>;
+}
+
+/**
+ * Renders a maintenance notice in place of the app while `app_config.maintenance_mode` is on.
+ *
+ * Placed **above `AppProvider`** (MembershipGate > MaintenanceGate > AppProvider), and that
+ * position is the whole point: no sync store is ever constructed, so not one op can be
+ * dispatched. A check inside `maybeAppend` could only stop ops being *sent* — a dispatched op
+ * would still land in `pending` and `display`, so a cook would keep "completing" tasks into a
+ * queue that will never drain, and watch them all un-complete on the next reload.
+ *
+ * Below `AuthGate`, so signing in to check still works and password recovery is unaffected.
+ *
+ * `config === null` means we have no trustworthy answer, and that is treated as "carry on" —
+ * see appConfig.ts.
+ */
+export function MaintenanceGate({ children }: { children: ReactNode }) {
+  const config = useAppConfig();
+  if (!isSupabaseConfigured) return <>{children}</>;
+  if (!config?.maintenanceMode) return <>{children}</>;
+  return (
+    <FullScreenMessage
+      text={config.maintenanceMessage?.trim() || 'האפליקציה בתחזוקה מתוכננת. ננסה שוב בעוד מספר דקות.'}
+    />
+  );
 }
 
 /** Sits *inside* AppProvider, not beside MembershipGate: picking a cook needs `state.cooks` and

@@ -61,7 +61,23 @@ export type GeminiScanErrorCode =
   | 'network'
   | 'http'
   | 'bad-response'
-  | 'unreadable';
+  | 'unreadable'
+  /** The photo isn't a type the server will forward (see ALLOWED_MIME in api/_gemini.ts). */
+  | 'bad-mime'
+  /** Gemini took too long. Distinct from `network` because retrying later is the right advice. */
+  | 'timeout'
+  /** Not signed in, or the session expired. */
+  | 'unauthorized'
+  /** Signed in but not a member of any restaurant — no quota to draw on. */
+  | 'forbidden'
+  /** This restaurant's (or the whole app's) daily scan allowance is used up. Deliberately
+   * distinct from a Gemini-side 429, which is a transient upstream throttle — a different thing
+   * entirely to a cook, and it needs different words. */
+  | 'quota'
+  /** Scanning is switched off from app_config. */
+  | 'maintenance'
+  /** The server couldn't check the quota, so it refused rather than spend the budget blind. */
+  | 'unavailable';
 
 /** Carries a machine-readable `code` so the UI can pick its own Hebrew wording per failure. */
 export class GeminiScanError extends Error {
@@ -77,6 +93,10 @@ export class GeminiScanError extends Error {
 }
 
 const SCAN_ENDPOINT = '/api/scan-recipe';
+
+/** Client-side ceiling on one scan. Above the server's 20s Gemini timeout and its 30s
+ * maxDuration, so the server's own error reaches us first whenever it can. */
+const SCAN_TIMEOUT_MS = 35_000;
 
 /**
  * Asks the server whether a Gemini key is configured, so the UI only offers the AI button
@@ -178,17 +198,30 @@ function isEmptyScan(scanned: ScannedRecipe): boolean {
 }
 
 /** Maps an error code reported by our own endpoint onto the client's error vocabulary. */
+/** Every code the server can send, mapped straight through; the status-based fallbacks only
+ * cover a response that didn't come from our own handler at all (a platform 413, a proxy). */
+const SERVER_CODES = new Set<GeminiScanErrorCode>([
+  'no-api-key',
+  'too-large',
+  'bad-response',
+  'bad-mime',
+  'timeout',
+  'unauthorized',
+  'forbidden',
+  'quota',
+  'maintenance',
+  'unavailable',
+]);
+
 function codeFromServer(raw: unknown, httpStatus: number): GeminiScanErrorCode {
-  switch (raw) {
-    case 'no-api-key':
-      return 'no-api-key';
-    case 'too-large':
-      return 'too-large';
-    case 'bad-response':
-      return 'bad-response';
-    default:
-      return httpStatus === 413 ? 'too-large' : 'http';
+  if (typeof raw === 'string' && SERVER_CODES.has(raw as GeminiScanErrorCode)) {
+    return raw as GeminiScanErrorCode;
   }
+  if (httpStatus === 413) return 'too-large';
+  if (httpStatus === 401) return 'unauthorized';
+  if (httpStatus === 403) return 'forbidden';
+  if (httpStatus === 429) return 'quota';
+  return 'http';
 }
 
 /**
@@ -208,7 +241,7 @@ function codeFromServer(raw: unknown, httpStatus: number): GeminiScanErrorCode {
  *   if (err instanceof GeminiScanError && err.code === 'no-api-key') { ... }
  * }
  */
-export async function parseRecipeFromImage(file: File): Promise<ScannedRecipe> {
+export async function parseRecipeFromImage(file: File, accessToken?: string | null): Promise<ScannedRecipe> {
   let image;
   try {
     image = await downscaleImage(file);
@@ -220,10 +253,24 @@ export async function parseRecipeFromImage(file: File): Promise<ScannedRecipe> {
   try {
     response = await fetch(SCAN_ENDPOINT, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        // The server forwards this to Supabase, which verifies it and decides whether this
+        // account may scan and has budget left — see api/_auth.ts. Omitted when there is no
+        // session; the server then answers 401, which is the honest outcome.
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
       body: JSON.stringify({ imageBase64: image.base64, mimeType: image.mimeType }),
+      // A scan that never comes back is worse than one that fails: without this the sheet sits
+      // on "סורק..." forever. Comfortably above the server's own 20s Gemini timeout, so a real
+      // upstream timeout still arrives as a proper error rather than being cut off here.
+      signal: AbortSignal.timeout(SCAN_TIMEOUT_MS),
     });
-  } catch {
+  } catch (err) {
+    const name = (err as Error)?.name;
+    if (name === 'TimeoutError' || name === 'AbortError') {
+      throw new GeminiScanError('timeout', 'הסריקה ארכה זמן רב מדי');
+    }
     throw new GeminiScanError('network', 'אין חיבור לשרת');
   }
 

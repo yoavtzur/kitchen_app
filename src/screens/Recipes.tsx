@@ -13,6 +13,7 @@ import { todayStr } from '../lib/date';
 import { formatQty, unitLabel } from '../lib/units';
 import { categoryTabs, stationOptions, UNASSIGNED_CATEGORY, type CategoryFilter } from '../lib/recipeCategories';
 import { GeminiScanError, isGeminiConfigured, parseRecipeFromImage } from '../lib/geminiScanner';
+import { getAccessToken } from '../lib/authToken';
 import { scannedToDraft, type RecipeDraft } from '../lib/recipeDraft';
 import type { Recipe, RecipeCategory } from '../types';
 
@@ -132,8 +133,24 @@ function scanErrorMessage(err: unknown): string {
         return 'התמונה גדולה מדי. נסו לצלם שוב באיכות נמוכה יותר.';
       case 'network':
         return 'אין חיבור לאינטרנט, או ששירות ה-AI לא זמין כרגע.';
+      case 'timeout':
+        return 'הסריקה ארכה יותר מדי זמן. נסו שוב, או צלמו תמונה קטנה יותר.';
+      case 'bad-mime':
+        return 'סוג הקובץ לא נתמך. צלמו תמונה (JPEG, PNG או HEIC).';
+      case 'unauthorized':
+        return 'צריך להיות מחוברים כדי לסרוק מתכון. התחברו שוב ונסו שנית.';
+      case 'forbidden':
+        return 'הסריקה זמינה רק לחברי מטבח. הצטרפו למטבח בהגדרות ונסו שוב.';
+      // Deliberately worded differently from the Gemini-side 429 below: this is our own daily
+      // allowance, which resets tomorrow — not an upstream throttle that clears in minutes.
+      case 'quota':
+        return 'נגמרה מכסת הסריקות היומית של המטבח. אפשר לנסות שוב מחר, או להזין את המתכון ידנית.';
+      case 'maintenance':
+        return 'סריקת מתכונים מושבתת זמנית. נסו שוב מאוחר יותר.';
+      case 'unavailable':
+        return 'לא הצלחנו לאמת את המכסה כרגע, ולכן הסריקה בוטלה. נסו שוב בעוד רגע.';
       case 'http':
-        if (err.status === 429) return 'חרגתם ממכסת השימוש ב-AI. נסו שוב בעוד כמה דקות.';
+        if (err.status === 429) return 'שירות ה-AI עמוס כרגע. נסו שוב בעוד כמה דקות.';
         // Not transient — retrying won't help, so don't tell the cook to try again.
         if (err.status === 404) return 'מודל ה-AI שהאפליקציה משתמשת בו כבר לא זמין. צריך לעדכן את הקוד.';
         if (err.status === 400 || err.status === 403) return 'מפתח ה-AI לא תקין או חסרות לו הרשאות.';
@@ -204,7 +221,11 @@ function RecipeScanSheet({ onClose, onDraft }: { onClose: () => void; onDraft: (
     setStatus('parsing');
     setErrorText('');
     try {
-      const scanned = await parseRecipeFromImage(imageFile);
+      // The endpoint costs money per call, so it now requires proof of who is asking and draws
+      // on a per-user/per-restaurant/global daily quota — see api/_auth.ts. In local mode there
+      // is no token and the server answers 401, which is correct: no account, no membership,
+      // no quota to draw on.
+      const scanned = await parseRecipeFromImage(imageFile, await getAccessToken());
       onDraft(scannedToDraft(scanned, state));
     } catch (err) {
       setErrorText(scanErrorMessage(err));

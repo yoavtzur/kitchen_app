@@ -31,6 +31,12 @@ export function SyncBadge() {
     // should never be masked by the more generic "stuck sending" warning below.
     label = 'יש לרענן את האפליקציה';
     tone = 'red';
+  } else if (status === 'read-only') {
+    // Deliberately NOT "refresh the app". Writes are off because an operator switched them off
+    // (or this build is below min_client_version) — refreshing changes nothing, and saying so
+    // would train a cook to ignore the message above, which is the one time it does.
+    label = pendingCount > 0 ? `במצב קריאה בלבד (${pendingCount} ממתינים)` : 'במצב קריאה בלבד';
+    tone = 'yellow';
   } else if (stalePendingMinutes !== undefined) {
     // A queue stuck for 10+ minutes is worth flagging even while `status` still looks like a
     // routine retry loop (e.g. a captive portal that answers every request, so we're technically

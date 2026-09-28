@@ -2,6 +2,7 @@
 // subscribe/getSnapshot pair. Nothing in here contains sync *logic* — that all lives in engine.ts
 // and log.ts; this file only ever calls out to an adapter or a KVStore.
 import { newUuid } from '../lib/ids';
+import { addOpBreadcrumb } from '../lib/sentry';
 import { createSeedState } from '../data/seed';
 import type { Action } from '../store/reducer';
 import { loadState } from '../store/storage';
@@ -170,6 +171,11 @@ function createSyncStore(adapter: SyncAdapter, initial: SyncState, kv?: KVStore,
     getState: () => state,
     getSyncInfo: () => syncInfo,
     dispatch(action) {
+      // The type only — never the payload. `Action['type']` is a closed enum of literals with
+      // zero user data in it, and the trail of them ("SET_PRODUCT_QTY, SET_PRODUCT_QTY,
+      // CONFIRM_AUTO_TASK_COMPLETION, crash") is the most useful thing this app can tell a
+      // crash report. See lib/sentry.ts, and the test that pins the crumb's shape.
+      addOpBreadcrumb(action.type);
       apply({ type: 'DISPATCH', opId: newUuid(), action });
     },
   };

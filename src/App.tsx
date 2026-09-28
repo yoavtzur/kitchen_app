@@ -1,18 +1,12 @@
-import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { HashRouter, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './auth/AuthContext';
 import { AuthGate, MembershipGate, CookGate } from './components/Gate';
 import { AppProvider } from './store/AppContext';
 import { BottomNav } from './components/BottomNav';
+import { RouteBoundary } from './components/RouteBoundary';
+import { SentryContext } from './components/SentryContext';
 import { SyncBadge } from './components/SyncBadge';
-import { Home } from './screens/Home';
-import { MorningDashboard } from './screens/MorningDashboard';
-import { Recipes } from './screens/Recipes';
-import { Consumption } from './screens/Consumption';
-import { Tasks } from './screens/Tasks';
-import { StockCount } from './screens/StockCount';
-import { Orders } from './screens/Orders';
-import { Settings } from './screens/Settings';
-import { More } from './screens/More';
+import { APP_ROUTES } from './routes';
 
 export default function App() {
   return (
@@ -24,18 +18,18 @@ export default function App() {
               <MembershipGate>
                 <AppProvider>
                   <CookGate>
+                    <SentryContext />
                     <SyncBadge />
+                    {/* BottomNav and SyncBadge are siblings of <Routes>, so a per-route boundary
+                        (which lives inside each element) can never take them down with it. */}
                     <Routes>
-                      <Route path="/" element={<Home />} />
-                      <Route path="/morning" element={<MorningDashboard />} />
-                      <Route path="/ingredients" element={<Navigate to="/count" replace />} />
-                      <Route path="/recipes" element={<Recipes />} />
-                      <Route path="/consumption" element={<Consumption />} />
-                      <Route path="/tasks" element={<Tasks />} />
-                      <Route path="/count" element={<StockCount />} />
-                      <Route path="/orders" element={<Orders />} />
-                      <Route path="/settings" element={<Settings />} />
-                      <Route path="/more" element={<More />} />
+                      {APP_ROUTES.map(({ path, name, element, redirect }) => (
+                        <Route
+                          key={path}
+                          path={path}
+                          element={redirect ? element : <RouteBoundary name={name}>{element}</RouteBoundary>}
+                        />
+                      ))}
                     </Routes>
                     <BottomNav />
                   </CookGate>

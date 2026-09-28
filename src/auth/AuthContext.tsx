@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { mapRpcError } from '../lib/rpcErrors';
 import { readCachedMembership, writeCachedMembership, type CachedMembership } from './authCache';
 
 type Membership = CachedMembership;
@@ -49,17 +50,6 @@ function mapAuthError(message: string): string {
   if (message.toLowerCase().includes('password')) return 'הסיסמה חייבת להכיל לפחות 6 תווים';
   if (message.toLowerCase().includes('email')) return 'כתובת אימייל לא תקינה';
   return message;
-}
-
-function mapRpcError(err: { code?: string; message: string }): string {
-  if (err.code === 'P0002') return 'קוד לא נמצא';
-  if (err.code === '23505') return 'החשבון כבר משויך למטבח';
-  if (err.code === '42501') {
-    if (err.message.includes('last_chef')) return 'לא ניתן להוריד את השף האחרון מתפקידו';
-    if (err.message.includes('cannot_remove_self')) return 'לא ניתן להסיר את עצמך';
-    return 'אין הרשאה לפעולה הזו';
-  }
-  return err.message;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {

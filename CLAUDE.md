@@ -225,6 +225,42 @@ a single-item `BULK_UPDATE_QUANTITIES` before opening the sheet, so the sheet al
 truth — otherwise a unit change made inside the sheet would silently reinterpret a draft quantity
 still typed in the old unit.
 
+### Security headers and the service worker — the bits `vercel.json` can't comment on
+
+`vercel.json` is JSON, so it carries no comments; the reasoning for what's in it lives here.
+
+**CSP.** `script-src 'self'` works because the production build emits no inline script —
+`vite-plugin-pwa` is configured with `injectRegister: null` and `UpdatePrompt.tsx` registers the
+worker from app code instead. `style-src` needs `'unsafe-inline'` and always will: this codebase
+uses React `style={{…}}` attributes on almost every screen. `connect-src` covers Supabase over
+both https and wss plus `*.sentry.io`; **Phase 7's PostHog will need adding here**, and a missing
+entry fails as a silent network error, not a build error. `https://vercel.live` (and the
+`wss://ws-us3.pusher.com` it talks to) is allowed for the preview-comment toolbar, which Vercel
+injects into preview deployments only — it costs nothing in trust terms, since Vercel already
+serves every byte of this app, and without it the review workflow in "Branch workflow" above
+breaks.
+
+**Fonts are bundled, not linked.** Rubik comes from `@fontsource/rubik`, imported in `main.tsx` —
+four weights (400/600/700/900, matching what the CSS actually uses; 900 is `.stat-card
+.stat-value`) in two subsets. Hebrew for the text, **Latin for the digits**, which is why a
+Hebrew-only app still needs it. This is also what lets `font-src` stay `'self'`.
+
+**The service worker serves the app shell and nothing else.** Everything bound for Supabase or
+`/api/` is `NetworkOnly`, deliberately — `ops?seq=gt.N` responses are *deltas*, meaningless
+without the `confirmedSeq` the worker knows nothing about, and a cached one would silence
+`foldContiguous`'s gap detection, which is the actual correctness guarantee. See the long note
+on `kitchenPwa()` in `vite.config.ts` before changing any caching rule.
+
+**A new worker waits rather than claiming.** `skipWaiting` and `clientsClaim` are both false, so
+a live page never has its controller swapped under JavaScript from the old bundle. One real
+consequence to know: **the very first visit is never controlled by the worker**, so offline only
+works from the second launch onward. That is the correct trade — the alternative risks exactly
+the bundle mismatch `upgrade-required` exists to prevent — but it means "install and immediately
+go offline in the same tab" does not work.
+
+**Do not add `manualChunks`.** It was measured on this codebase and is a net loss; `vite.config.ts`
+carries the numbers.
+
 ### RTL / Hebrew
 
 The whole app is Hebrew and right-to-left (`<html dir="rtl" lang="he">` in `index.html`). Keep new UI text

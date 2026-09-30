@@ -1,5 +1,23 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+// Rubik, self-hosted, replacing the three Google Fonts <link> tags index.html used to carry.
+// That fixes four things at once: two render-blocking cross-origin round trips on first paint,
+// a font that simply never arrived offline, an EU visitor's IP being handed to Google on every
+// load (which is what would have required a cookie/consent banner), and a CSP that would
+// otherwise have to allow fonts.googleapis.com and fonts.gstatic.com.
+//
+// Exactly the four weights this app uses — 400 for body, 600 and 700 throughout, 900 for
+// .stat-card .stat-value — in the two subsets it needs. Hebrew for all the text, Latin for
+// every digit, which is why Latin can't be dropped from a Hebrew-only app. index.html used to
+// request six weights across every subset Rubik ships.
+import '@fontsource/rubik/hebrew-400.css'
+import '@fontsource/rubik/hebrew-600.css'
+import '@fontsource/rubik/hebrew-700.css'
+import '@fontsource/rubik/hebrew-900.css'
+import '@fontsource/rubik/latin-400.css'
+import '@fontsource/rubik/latin-600.css'
+import '@fontsource/rubik/latin-700.css'
+import '@fontsource/rubik/latin-900.css'
 import './styles/global.css'
 import App from './App.tsx'
 import { CrashScreen } from './components/CrashScreen.tsx'

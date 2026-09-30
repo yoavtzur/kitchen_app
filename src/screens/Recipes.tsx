@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { createWorker } from 'tesseract.js';
 import { useApp } from '../store/AppContext';
 import { usePermissions } from '../auth/usePermissions';
 import { CategoryTabs } from '../components/CategoryTabs';
@@ -121,7 +120,7 @@ function RecipeRow({ recipe }: { recipe: Recipe }) {
   );
 }
 
-type ScanStatus = 'idle' | 'loading-model' | 'recognizing' | 'parsing' | 'done' | 'error';
+type ScanStatus = 'idle' | 'parsing' | 'error';
 
 /** One Hebrew message per failure mode, so a scan never dead-ends on a raw exception. */
 function scanErrorMessage(err: unknown): string {
@@ -175,13 +174,17 @@ function CameraIcon() {
 }
 
 /**
- * "Photograph a recipe" in two tiers.
+ * "Photograph a recipe": the photo goes to Gemini and comes back as a structured draft, which
+ * opens in RecipeEditor for the cook to check line by line — nothing is written to the
+ * kitchen's data until they press save there.
  *
- * With a Gemini key configured the photo goes to the model and comes back as a structured
- * draft, which opens in RecipeEditor for the cook to check line by line — nothing is written
- * to the kitchen's data until they press save there. Without a key the sheet degrades to what
- * it always did: on-device OCR (tesseract.js, no network, no cost) that just reads the text
- * out so it can be copied into the editor by hand.
+ * There used to be a second tier here: on-device OCR via tesseract.js, which just read the text
+ * out for copying into the editor by hand. It was removed with the service worker and the
+ * Content-Security-Policy, for three reasons that all point the same way. tesseract fetches its
+ * worker and WASM core from a CDN at runtime, which a tight CSP has to either break or punch a
+ * hole for. Raw OCR text was never actually useful — a cook still had to retype every line into
+ * the editor. And with it gone, `isGeminiConfigured() === false` means there is nothing this
+ * sheet can do, so the camera button is hidden entirely rather than opening an empty sheet.
  */
 function RecipeScanSheet({ onClose, onDraft }: { onClose: () => void; onDraft: (draft: RecipeDraft) => void }) {
   const { state } = useApp();
@@ -189,28 +192,11 @@ function RecipeScanSheet({ onClose, onDraft }: { onClose: () => void; onDraft: (
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<ScanStatus>('idle');
-  const [progress, setProgress] = useState(0);
-  const [text, setText] = useState('');
-  const [copied, setCopied] = useState(false);
   const [errorText, setErrorText] = useState('');
-  // null = still asking the server whether a key is configured. The browser can't know this
-  // on its own now that the key lives server-side, so the sheet asks when it opens.
-  const [aiAvailable, setAiAvailable] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    isGeminiConfigured().then((configured) => {
-      if (!cancelled) setAiAvailable(configured);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   function pickFile(file: File) {
     setImageFile(file);
     setImageUrl(URL.createObjectURL(file));
-    setText('');
     setErrorText('');
     setStatus('idle');
   }
@@ -233,48 +219,12 @@ function RecipeScanSheet({ onClose, onDraft }: { onClose: () => void; onDraft: (
     }
   }
 
-  async function scan() {
-    if (!imageFile) return;
-    setStatus('loading-model');
-    setProgress(0);
-    setErrorText('');
-    try {
-      const worker = await createWorker('heb+eng', undefined, {
-        logger: (m) => {
-          if (m.status === 'recognizing text') {
-            setStatus('recognizing');
-            setProgress(Math.round(m.progress * 100));
-          }
-        },
-      });
-      const { data } = await worker.recognize(imageFile);
-      await worker.terminate();
-      setText(data.text.trim());
-      setStatus('done');
-    } catch {
-      setErrorText('קריאת הטקסט נכשלה. נסו תמונה ברורה וחדה יותר.');
-      setStatus('error');
-    }
-  }
-
-  function copyText() {
-    navigator.clipboard
-      ?.writeText(text)
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      })
-      .catch(() => {});
-  }
-
-  const busy = status === 'loading-model' || status === 'recognizing' || status === 'parsing';
+  const busy = status === 'parsing';
 
   return (
     <BottomSheet title="סריקת מתכון" onClose={onClose}>
       <p className="muted" style={{ marginBottom: 'var(--space-4)' }}>
-        {aiAvailable === true
-          ? 'צלמו או בחרו תמונה של מתכון. ה-AI יקרא אותה וימלא עבורכם טופס מתכון — תוכלו לבדוק ולתקן הכל לפני שמירה.'
-          : 'צלמו או בחרו תמונה של מתכון מודפס. השלב הזה קורא את הטקסט מתוך התמונה בלבד. אפשר להעתיק אותו ולהדביק בעורך המתכון.'}
+        צלמו או בחרו תמונה של מתכון. ה-AI יקרא אותה וימלא עבורכם טופס מתכון — תוכלו לבדוק ולתקן הכל לפני שמירה.
       </p>
 
       <input
@@ -310,34 +260,19 @@ function RecipeScanSheet({ onClose, onDraft }: { onClose: () => void; onDraft: (
       )}
 
       {imageFile && !busy && (
-        <div className="stack-gap-2" style={{ marginBottom: 'var(--space-3)' }}>
-          {aiAvailable === true && (
-            <button type="button" className="btn btn-primary" style={{ width: '100%' }} onClick={scanWithAi}>
-              נתחו מתכון עם AI
-            </button>
-          )}
-          {status !== 'done' && (
-            <button
-              type="button"
-              className={aiAvailable === true ? 'btn' : 'btn btn-primary'}
-              style={{ width: '100%' }}
-              onClick={scan}
-            >
-              {aiAvailable === true ? 'קראו טקסט בלבד' : 'סרוק טקסט'}
-            </button>
-          )}
-        </div>
+        <button
+          type="button"
+          className="btn btn-primary"
+          style={{ width: '100%', marginBottom: 'var(--space-3)' }}
+          onClick={scanWithAi}
+        >
+          נתחו מתכון עם AI
+        </button>
       )}
 
       {busy && (
         <div className="card" style={{ marginBottom: 'var(--space-3)', textAlign: 'center' }} aria-live="polite">
-          <p className="muted">
-            {status === 'parsing'
-              ? 'סורק מתכון עם AI…'
-              : status === 'loading-model'
-                ? 'טוען מנוע זיהוי טקסט…'
-                : `סורק… ${progress}%`}
-          </p>
+          <p className="muted">סורק מתכון עם AI…</p>
         </div>
       )}
 
@@ -347,20 +282,6 @@ function RecipeScanSheet({ onClose, onDraft }: { onClose: () => void; onDraft: (
         </p>
       )}
 
-      {status === 'done' && (
-        <div className="field">
-          <label>טקסט שזוהה (אפשר לערוך)</label>
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            style={{ minHeight: 220 }}
-            dir="rtl"
-          />
-          <button type="button" className="btn" style={{ marginTop: 'var(--space-2)' }} onClick={copyText}>
-            {copied ? 'הועתק ✓' : 'העתק טקסט'}
-          </button>
-        </div>
-      )}
     </BottomSheet>
   );
 }
@@ -372,6 +293,23 @@ export function Recipes() {
   const [query, setQuery] = useState('');
   const [adding, setAdding] = useState(false);
   const [scanning, setScanning] = useState(false);
+  // null while the server is still being asked whether a Gemini key is configured. The browser
+  // can't know this on its own — that is the whole point of the key living server-side.
+  //
+  // With the OCR fallback gone (see RecipeScanSheet), `false` means the scan sheet has nothing
+  // it can do, so the camera button is hidden rather than opening an empty sheet. Asked here
+  // rather than inside the sheet for exactly that reason.
+  const [aiAvailable, setAiAvailable] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    isGeminiConfigured().then((configured) => {
+      if (!cancelled) setAiAvailable(configured);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   // A scanned draft opens the editor pre-filled; it is never dispatched from here.
   const [scanDraft, setScanDraft] = useState<RecipeDraft | null>(null);
 
@@ -409,9 +347,11 @@ export function Recipes() {
         <div className="row" style={{ gap: 8, width: 'auto' }}>
           {canEditRecipes && (
             <>
-              <button type="button" className="btn btn-icon" onClick={() => setScanning(true)} aria-label="סרוק מתכון">
-                <CameraIcon />
-              </button>
+              {aiAvailable === true && (
+                <button type="button" className="btn btn-icon" onClick={() => setScanning(true)} aria-label="סרוק מתכון">
+                  <CameraIcon />
+                </button>
+              )}
               <button type="button" className="btn btn-icon btn-primary" onClick={() => setAdding(true)} aria-label="הוסף פריט">
                 +
               </button>

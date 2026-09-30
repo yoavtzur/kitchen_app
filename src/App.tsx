@@ -6,6 +6,7 @@ import { BottomNav } from './components/BottomNav';
 import { RouteBoundary } from './components/RouteBoundary';
 import { SentryContext } from './components/SentryContext';
 import { SyncBadge } from './components/SyncBadge';
+import { UpdatePrompt } from './components/UpdatePrompt';
 import { APP_ROUTES } from './routes';
 
 export default function App() {
@@ -13,6 +14,9 @@ export default function App() {
     <HashRouter>
       <AuthProvider>
         <div className="app-shell">
+          {/* Outside every gate: a cook stuck behind a broken bundle on the sign-in screen is
+              exactly who most needs to be offered the update. */}
+          <UpdatePrompt />
           <main className="app-main">
             <AuthGate>
               <MembershipGate>

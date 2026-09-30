@@ -1,4 +1,8 @@
+import { useMemo } from 'react';
 import { NavLink } from 'react-router-dom';
+import { useApp } from '../store/AppContext';
+import { getDisplayTasks, taskProgress } from '../lib/tasks';
+import { todayStr } from '../lib/date';
 
 const ICON_PROPS = {
   width: 20,
@@ -9,13 +13,15 @@ const ICON_PROPS = {
   strokeWidth: 2.2,
   strokeLinecap: 'round' as const,
   strokeLinejoin: 'round' as const,
+  'aria-hidden': true,
 };
 
-function HomeIcon() {
+function OrdersIcon() {
   return (
     <svg {...ICON_PROPS}>
-      <path d="M4 11.5 12 4l8 7.5" />
-      <path d="M6 10v9h5v-5h2v5h5v-9" />
+      <path d="M4 6h2l1.6 9.2a2 2 0 0 0 2 1.7h7.2a2 2 0 0 0 2-1.6L20 9H7" />
+      <circle cx="10" cy="20" r="1.3" fill="currentColor" stroke="none" />
+      <circle cx="17" cy="20" r="1.3" fill="currentColor" stroke="none" />
     </svg>
   );
 }
@@ -67,31 +73,53 @@ function MoreIcon() {
   );
 }
 
+// The "בית" slot is gone with Home itself — '/' now redirects to '/tasks', so a separate entry
+// for it would be a second button leading to the same screen. Orders takes the freed slot,
+// which is what a cook reaches for most often after the ones already here.
 const ITEMS = [
-  { to: '/', Icon: HomeIcon, label: 'בית', end: true },
-  { to: '/tasks', Icon: TasksIcon, label: 'משימות' },
+  { to: '/tasks', Icon: TasksIcon, label: 'משימות', badge: true },
   { to: '/count', Icon: IngredientsIcon, label: 'מצרכים' },
-  { to: '/recipes', Icon: RecipesIcon, label: 'מתכונים' },
   { to: '/morning', Icon: MorningIcon, label: 'בוקר' },
+  { to: '/recipes', Icon: RecipesIcon, label: 'מתכונים' },
+  { to: '/orders', Icon: OrdersIcon, label: 'הזמנות' },
   { to: '/more', Icon: MoreIcon, label: 'עוד' },
 ];
 
 export function BottomNav() {
+  const { state } = useApp();
+  // Both this and the Today screen count through getDisplayTasks -> taskProgress, so there is
+  // no second counting rule to drift.
+  //
+  // Honest cost: this runs getDisplayTasks a second time per render. At this data size a memo
+  // keyed on `state` is plenty; if it ever stops being enough, hoist one memoized call into
+  // AppProvider — not before.
+  const openCount = useMemo(() => taskProgress(getDisplayTasks(todayStr(), state)).open, [state]);
+
   return (
-    <nav className="bottom-nav">
-      {ITEMS.map(({ to, Icon, label, end }) => (
-        <NavLink
-          key={to}
-          to={to}
-          end={end}
-          className={({ isActive }) => (isActive ? 'active' : '')}
-        >
-          <span className="nav-icon-box">
-            <Icon />
-          </span>
-          <span>{label}</span>
-        </NavLink>
-      ))}
+    <nav className="bottom-nav" aria-label="ניווט ראשי">
+      {ITEMS.map(({ to, Icon, label, badge }) => {
+        const count = badge ? openCount : 0;
+        return (
+          <NavLink
+            key={to}
+            to={to}
+            className={({ isActive }) => (isActive ? 'active' : '')}
+            // A bare number read out on its own means nothing, so the count is folded into the
+            // link's accessible name rather than left as a loose digit beside it.
+            aria-label={count > 0 ? `${label}, ${count} פתוחות` : undefined}
+          >
+            <span className="nav-icon-box">
+              <Icon />
+              {count > 0 && (
+                <span className="nav-badge" aria-hidden="true">
+                  {count > 99 ? '99+' : count}
+                </span>
+              )}
+            </span>
+            <span>{label}</span>
+          </NavLink>
+        );
+      })}
     </nav>
   );
 }

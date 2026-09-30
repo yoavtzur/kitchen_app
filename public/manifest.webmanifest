@@ -3,7 +3,7 @@
   "name": "ניהול מטבח",
   "short_name": "מטבח",
   "description": "מעקב מלאי, מתכונים, משימות הכנה יומיות והזמנות ספקים — מסונכרן בין כל המכשירים במטבח.",
-  "start_url": "./#/",
+  "start_url": "./#/tasks",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",

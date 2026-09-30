@@ -1,5 +1,6 @@
-import type { AppState, Priority, RecipeCategory, Task, TaskCompletion } from '../types';
+import type { AppState, Priority, RecipeCategory, Station, Task, TaskCompletion } from '../types';
 import { multiplierForProduct, priorityFor, toPrepare, weightedRecipeItems } from './calc';
+import { stationOptions } from './recipeCategories';
 
 export type DisplayTask = {
   id: string;
@@ -91,6 +92,70 @@ export function getDisplayTasks(date: string, state: AppState): DisplayTask[] {
   }
 
   return [...auto, ...manual];
+}
+
+// ── selectors over a DisplayTask list ────────────────────────────────────────
+//
+// `getDisplayTasks` returns `[...auto, ...manual]` **unsorted** and ungrouped. These three
+// functions are the only place that decides how a task list is counted, ordered and grouped, so
+// the screen and the nav badge can never drift into showing two different numbers for the same
+// day. They are pure and read no wall clock, which is what makes them testable and makes every
+// device agree.
+
+export type TaskProgress = {
+  total: number;
+  done: number;
+  open: number;
+  /** 0..1. **Exactly 1 when `total === 0`** — "nothing to do" should read as complete, not as
+   * 0%, which is what a naive `done / total` would show (or NaN). */
+  ratio: number;
+  /** Open tasks at red priority: the number worth calling out separately from the total. */
+  urgent: number;
+};
+
+export function taskProgress(tasks: readonly DisplayTask[]): TaskProgress {
+  const total = tasks.length;
+  const done = tasks.reduce((n, t) => n + (t.done ? 1 : 0), 0);
+  const urgent = tasks.reduce((n, t) => n + (!t.done && t.priority === 'red' ? 1 : 0), 0);
+  return { total, done, open: total - done, ratio: total === 0 ? 1 : done / total, urgent };
+}
+
+const PRIORITY_ORDER: Record<Priority, number> = { red: 0, yellow: 1, green: 2 };
+
+/**
+ * Open tasks first, then by priority, then stably by id.
+ *
+ * Done tasks sinking to the bottom is the point: a cook working down the screen should never
+ * have to skip over something already finished. The final id tiebreak keeps the order identical
+ * across devices and across renders — without it, two tasks of equal priority could swap places
+ * whenever `getDisplayTasks` rebuilt the array in a different order.
+ */
+export function sortDisplayTasks(tasks: readonly DisplayTask[]): DisplayTask[] {
+  return [...tasks].sort((a, b) => {
+    if (a.done !== b.done) return a.done ? 1 : -1;
+    const byPriority = PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
+    if (byPriority !== 0) return byPriority;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+}
+
+/**
+ * Groups tasks by station, in the kitchen's own station order, dropping empty groups.
+ *
+ * This is Home's exact behavior, now shared and tested rather than living inline in one screen.
+ * Each group's tasks are sorted by the same rule as the flat list, so a station heading never
+ * reorders what is underneath it relative to the ungrouped view.
+ */
+export function groupByStation(
+  tasks: readonly DisplayTask[],
+  stations: Station[] | undefined | null,
+): { value: string; label: string; tasks: DisplayTask[] }[] {
+  return stationOptions(stations)
+    .map((station) => ({
+      ...station,
+      tasks: sortDisplayTasks(tasks.filter((t) => t.category === station.value)),
+    }))
+    .filter((group) => group.tasks.length > 0);
 }
 
 /** Ingredient deltas (positive quantities to deduct) for completing `recipe` at `multiplier`. */

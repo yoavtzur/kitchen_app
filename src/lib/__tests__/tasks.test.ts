@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { autoTaskId, getDisplayTasks } from '../tasks';
+import {
+  autoTaskId,
+  getDisplayTasks,
+  groupByStation,
+  sortDisplayTasks,
+  taskProgress,
+  type DisplayTask,
+} from '../tasks';
 import type { AppState, Product, Recipe } from '../../types';
 
 function baseState(overrides: Partial<AppState> = {}): AppState {
@@ -220,5 +227,115 @@ describe('auto tasks respect the product/recipe unit relationship', () => {
     // A 0 multiplier here means "can't compute", so the task must stay visible to be fixed
     expect(tasks).toHaveLength(1);
     expect(tasks[0]).toMatchObject({ multiplier: 0, unitMismatch: true });
+  });
+});
+
+// ── selectors ────────────────────────────────────────────────────────────────
+// The screen and the nav badge both go through these, so a bug here shows the cook two
+// different numbers for the same day.
+
+function task(overrides: Partial<DisplayTask> & { id: string }): DisplayTask {
+  return {
+    date: '2026-09-28',
+    multiplier: 1,
+    priority: 'yellow',
+    done: false,
+    source: 'manual',
+    category: 'general',
+    ...overrides,
+  };
+}
+
+describe('taskProgress', () => {
+  it('counts total, done, open and urgent', () => {
+    const p = taskProgress([
+      task({ id: 'a', done: true }),
+      task({ id: 'b', priority: 'red' }),
+      task({ id: 'c', priority: 'red', done: true }),
+      task({ id: 'd', priority: 'green' }),
+    ]);
+    expect(p).toEqual({ total: 4, done: 2, open: 2, ratio: 0.5, urgent: 1 });
+  });
+
+  it('counts a done red task as finished, not urgent', () => {
+    expect(taskProgress([task({ id: 'a', priority: 'red', done: true })]).urgent).toBe(0);
+  });
+
+  it('reports an empty list as complete, not as 0% and not as NaN', () => {
+    // "nothing to do" must read as done — a naive done/total gives NaN here and renders an
+    // empty progress bar on a day with no work, which says the opposite of the truth.
+    expect(taskProgress([]).ratio).toBe(1);
+    expect(taskProgress([])).toEqual({ total: 0, done: 0, open: 0, ratio: 1, urgent: 0 });
+  });
+});
+
+describe('sortDisplayTasks', () => {
+  it('puts open tasks before done ones, whatever their priority', () => {
+    const sorted = sortDisplayTasks([
+      task({ id: 'a', priority: 'red', done: true }),
+      task({ id: 'b', priority: 'green' }),
+    ]);
+    expect(sorted.map((t) => t.id)).toEqual(['b', 'a']);
+  });
+
+  it('orders open tasks red, yellow, green', () => {
+    const sorted = sortDisplayTasks([
+      task({ id: 'c', priority: 'green' }),
+      task({ id: 'a', priority: 'red' }),
+      task({ id: 'b', priority: 'yellow' }),
+    ]);
+    expect(sorted.map((t) => t.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('is deterministic for equal priorities, so two devices agree', () => {
+    const input = [task({ id: 'z' }), task({ id: 'm' }), task({ id: 'a' })];
+    expect(sortDisplayTasks(input).map((t) => t.id)).toEqual(['a', 'm', 'z']);
+    // Same answer whatever order getDisplayTasks happened to build the array in.
+    expect(sortDisplayTasks([...input].reverse()).map((t) => t.id)).toEqual(['a', 'm', 'z']);
+  });
+
+  it('does not mutate its input', () => {
+    const input = [task({ id: 'b', priority: 'green' }), task({ id: 'a', priority: 'red' })];
+    sortDisplayTasks(input);
+    expect(input.map((t) => t.id)).toEqual(['b', 'a']);
+  });
+});
+
+describe('groupByStation', () => {
+  const stations = [
+    { id: 'st-hot', name: 'פס חם', createdAt: '2026-01-01' },
+    { id: 'st-cold', name: 'פס קר', createdAt: '2026-01-01' },
+  ];
+
+  it('groups in the kitchen\'s own station order and drops empty stations', () => {
+    const groups = groupByStation(
+      [task({ id: 'a', category: 'st-cold' }), task({ id: 'b', category: 'general' })],
+      stations,
+    );
+    // 'פס חם' has nothing open, so it isn't rendered at all.
+    expect(groups.map((g) => g.value)).toEqual(['st-cold', 'general']);
+    expect(groups.map((g) => g.label)).toEqual(['פס קר', 'כללי']);
+  });
+
+  it('sorts within each group by the same rule as the flat list', () => {
+    const groups = groupByStation(
+      [
+        task({ id: 'a', category: 'st-hot', priority: 'green' }),
+        task({ id: 'b', category: 'st-hot', priority: 'red' }),
+        task({ id: 'c', category: 'st-hot', priority: 'red', done: true }),
+      ],
+      stations,
+    );
+    expect(groups[0].tasks.map((t) => t.id)).toEqual(['b', 'a', 'c']);
+  });
+
+  it('always offers the general bucket, even with no stations at all', () => {
+    const groups = groupByStation([task({ id: 'a', category: 'general' })], []);
+    expect(groups.map((g) => g.value)).toEqual(['general']);
+    expect(groupByStation([task({ id: 'a' })], undefined)).toHaveLength(1);
+  });
+
+  it('returns nothing for an empty task list', () => {
+    expect(groupByStation([], stations)).toEqual([]);
   });
 });

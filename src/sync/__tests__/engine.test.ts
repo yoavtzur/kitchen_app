@@ -462,3 +462,93 @@ describe('OFFLINE / FOCUS', () => {
   });
 });
 
+
+describe('read-only mode (SET_READ_ONLY)', () => {
+  function readOnly(state: SyncState = readyState()): SyncState {
+    const [next] = syncReduce(state, { type: 'SET_READ_ONLY', readOnly: true });
+    return next;
+  }
+
+  it('suppresses APPEND while still applying the op to display', () => {
+    const state = readOnly();
+    expect(state.status).toBe('read-only');
+    const [next, effects] = dispatch(state, 'op-1', setQty(5));
+    // The whole point of read-only rather than a hard gate: reads keep working, the cook's own
+    // screen keeps updating, and the queue simply waits.
+    expect(next.display.ingredients[0].currentQty).toBe(5);
+    expect(next.pending).toHaveLength(1);
+    expect(effectsOfType(effects, 'APPEND')).toHaveLength(0);
+  });
+
+  it('clearing it flushes everything that queued up meanwhile', () => {
+    let state = readOnly();
+    [state] = dispatch(state, 'op-1', setQty(5));
+    [state] = dispatch(state, 'op-2', setQty(6));
+    expect(state.pending).toHaveLength(2);
+
+    const [next, effects] = syncReduce(state, { type: 'SET_READ_ONLY', readOnly: false });
+    expect(next.status).toBe('live');
+    const appends = effectsOfType(effects, 'APPEND');
+    expect(appends).toHaveLength(1);
+    expect(appends[0].ops.map((o) => o.opId)).toEqual(['op-1', 'op-2']);
+  });
+
+  it('clearing it while offline reports offline, not live', () => {
+    const state = readOnly({ ...readyState(), online: false });
+    const [next, effects] = syncReduce(state, { type: 'SET_READ_ONLY', readOnly: false });
+    expect(next.status).toBe('offline');
+    expect(effectsOfType(effects, 'APPEND')).toHaveLength(0);
+  });
+
+  it('never clobbers upgrade-required, in either direction', () => {
+    let state: SyncState = readyState();
+    [state] = syncReduce(state, {
+      type: 'BOOTSTRAP_OK',
+      confirmed: baseState(),
+      confirmedSeq: 0,
+      ops: [],
+      serverSchemaVersion: 99,
+    });
+    expect(state.status).toBe('upgrade-required');
+
+    // Turning read-only ON must not downgrade the stronger, more actionable message...
+    [state] = syncReduce(state, { type: 'SET_READ_ONLY', readOnly: true });
+    expect(state.status).toBe('upgrade-required');
+
+    // ...and turning it OFF must not talk a stale client back into appending.
+    [state] = syncReduce(state, { type: 'SET_READ_ONLY', readOnly: false });
+    expect(state.status).toBe('upgrade-required');
+    const [, effects] = dispatch(state, 'op-1', setQty(5));
+    expect(effectsOfType(effects, 'APPEND')).toHaveLength(0);
+  });
+
+  it('survives events that would otherwise settle the status back to live', () => {
+    let state = readOnly();
+    [state] = syncReduce(state, { type: 'OPS_IN', rows: [] });
+    expect(state.status).toBe('read-only');
+
+    [state] = syncReduce({ ...state, online: false }, { type: 'ONLINE' });
+    expect(state.status).toBe('read-only');
+
+    // Including a fresh bootstrap: the config says read-only until the config says otherwise.
+    [state] = syncReduce(state, {
+      type: 'BOOTSTRAP_OK',
+      confirmed: baseState(),
+      confirmedSeq: 0,
+      ops: [],
+      serverSchemaVersion: 3,
+    });
+    expect(state.status).toBe('read-only');
+  });
+
+  it('is idempotent, and a no-op when it was never on', () => {
+    const state = readyState();
+    const [unchanged, effects] = syncReduce(state, { type: 'SET_READ_ONLY', readOnly: false });
+    expect(unchanged).toBe(state);
+    expect(effects).toHaveLength(0);
+
+    const on = readOnly();
+    const [again] = syncReduce(on, { type: 'SET_READ_ONLY', readOnly: true });
+    expect(again).toBe(on);
+  });
+});

@@ -6,9 +6,26 @@ import { SCHEMA_VERSION } from '../data/seed';
 import { ensureStations } from '../lib/migrateStations';
 import { backoffMs } from './backoff';
 import { applyPending, foldContiguous } from './log';
-import type { OpRow, PendingOp, PersistedSync, SyncEffect, SyncEvent, SyncState } from './types';
+import type { OpRow, PendingOp, PersistedSync, SyncEffect, SyncEvent, SyncState, SyncStatus } from './types';
 
 const MAX_APPEND_BATCH = 200; // append_ops rejects a batch bigger than this server-side
+
+/**
+ * Statuses that suppress outbound appends.
+ *
+ * One predicate rather than the comparisons that used to be repeated at four sites: the fourth
+ * is exactly where a second blocking status would have been forgotten. Reads and incoming ops
+ * keep working in both — only sending stops.
+ */
+export function isBlocked(status: SyncStatus): boolean {
+  return status === 'upgrade-required' || status === 'read-only';
+}
+
+/** The status to settle on once the connection has proved itself. A blocking status survives,
+ * because neither kind is fixed by more ops arriving; anything else becomes 'live'. */
+function healthyStatus(state: SyncState): SyncStatus {
+  return isBlocked(state.status) ? state.status : 'live';
+}
 
 export function initialSyncState(seed: AppState): SyncState {
   return {
@@ -41,7 +58,7 @@ function maybeAppend(state: SyncState): { state: SyncState; effect?: SyncEffect 
     state.inFlight !== null ||
     !state.online ||
     !state.ready ||
-    state.status === 'upgrade-required' ||
+    isBlocked(state.status) ||
     state.pending.length === 0
   ) {
     return { state };
@@ -113,10 +130,12 @@ export function syncReduce(state: SyncState, event: SyncEvent): [SyncState, Sync
       // writes (see the status check in maybeAppend) rather than risk corrupting the op log.
       // There's no way back to 'live' short of a reload picking up a rebuilt client.
       const upgradeRequired = event.serverSchemaVersion > SCHEMA_VERSION;
+      // A bootstrap that lands while writes are switched off must not quietly switch them back
+      // on — the config says read-only until the config says otherwise.
       return settle({
         ...folded,
         ready: true,
-        status: upgradeRequired ? 'upgrade-required' : 'live',
+        status: upgradeRequired ? 'upgrade-required' : healthyStatus(state),
         lastError: undefined,
         retryAttempt: 0,
       });
@@ -130,9 +149,7 @@ export function syncReduce(state: SyncState, event: SyncEvent): [SyncState, Sync
     case 'OPS_IN':
     case 'APPEND_OK': {
       const { state: folded, gap } = foldAndSettle(state, event.rows);
-      // 'upgrade-required' is sticky — a schema mismatch isn't fixed by more ops arriving — so
-      // only fall back to 'live' from any other status.
-      const status = folded.ready ? (state.status === 'upgrade-required' ? 'upgrade-required' : 'live') : folded.status;
+      const status = folded.ready ? healthyStatus(state) : folded.status;
       const withStatus: SyncState = { ...folded, status, lastError: undefined, retryAttempt: 0 };
       const extra: SyncEffect[] = gap ? [{ type: 'FETCH_OPS', sinceSeq: folded.confirmedSeq }] : [];
       return settle(withStatus, extra);
@@ -167,6 +184,22 @@ export function syncReduce(state: SyncState, event: SyncEvent): [SyncState, Sync
       return [next, [{ type: 'RETRY_IN', ms: backoffMs(retryAttempt) }]];
     }
 
+    case 'SET_READ_ONLY': {
+      // Never clobbers 'upgrade-required'. That one means this build cannot safely interpret the
+      // server's schema, which no config flag can make untrue — and a config read saying "writes
+      // are fine" must not talk a stale client back into appending.
+      if (state.status === 'upgrade-required') return [state, []];
+      if (event.readOnly) {
+        return state.status === 'read-only' ? [state, []] : [{ ...state, status: 'read-only' }, []];
+      }
+      if (state.status !== 'read-only') return [state, []];
+      // Coming back: pick the status that describes reality now, then flush whatever the cook
+      // queued up while writes were off.
+      const status: SyncStatus = !state.online ? 'offline' : state.ready ? 'live' : 'syncing';
+      const { state: withAppend, effect } = maybeAppend({ ...state, status });
+      return [withAppend, effect ? [effect] : []];
+    }
+
     case 'RETRY': {
       const { state: withAppend, effect } = maybeAppend(state);
       return [withAppend, effect ? [effect] : []];
@@ -180,7 +213,7 @@ export function syncReduce(state: SyncState, event: SyncEvent): [SyncState, Sync
     }
 
     case 'ONLINE': {
-      const status = state.ready ? (state.status === 'upgrade-required' ? 'upgrade-required' : 'live') : state.status;
+      const status = state.ready ? healthyStatus(state) : state.status;
       const next: SyncState = { ...state, online: true, status, retryAttempt: 0 };
       const { state: withAppend, effect } = maybeAppend(next);
       return [withAppend, effect ? [effect] : []];

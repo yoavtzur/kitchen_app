@@ -1,9 +1,11 @@
-import { createContext, useContext, useSyncExternalStore, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import type { AppState } from '../types';
 import type { Action } from './reducer';
 import { useAuth } from '../auth/AuthContext';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { getDeviceId } from '../lib/ids';
+import { isClientOutdated } from '../lib/appConfig';
+import { useAppConfig } from '../lib/useAppConfig';
 import { localStorageStore } from '../sync/persist';
 import { createSupabaseAdapter } from '../sync/supabaseAdapter';
 import {
@@ -52,9 +54,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <SyncStoreContext.Provider value={store}>
+      <ReadOnlyBridge store={store} />
       <AppContext.Provider value={{ state, dispatch: store.dispatch }}>{children}</AppContext.Provider>
     </SyncStoreContext.Provider>
   );
+}
+
+/**
+ * Pushes `app_config`'s two write-suppressing flags into the sync engine. Renders nothing.
+ *
+ * A component rather than a call inside `AppProvider`'s body because it needs an effect, and
+ * `AppProvider` returns early on `!ready` — a hook above that early return would be a hook-order
+ * bug waiting to happen the next time someone adds a branch.
+ *
+ * Both conditions map to the same `read-only` status, since to a cook they are the same thing:
+ * "reads work, your changes aren't going anywhere yet". Reaching it via SET_READ_ONLY rather
+ * than `upgrade-required` matters — that one tells the cook to refresh, which during a
+ * maintenance window would be a lie.
+ */
+function ReadOnlyBridge({ store }: { store: SyncStore }) {
+  const config = useAppConfig();
+  // `config === null` means we have no trustworthy answer, which is not a reason to stop a
+  // kitchen from working — see the fail-open note at the top of appConfig.ts.
+  const readOnly =
+    config !== null &&
+    (config.readOnlyMode || isClientOutdated(import.meta.env.VITE_APP_VERSION, config.minClientVersion));
+
+  useEffect(() => {
+    store.setReadOnly(readOnly);
+  }, [store, readOnly]);
+
+  return null;
 }
 
 export function useApp(): AppContextValue {

@@ -18,7 +18,27 @@ export type PendingOp = {
   action: Action;
 };
 
-export type SyncStatus = 'boot' | 'syncing' | 'live' | 'offline' | 'error' | 'upgrade-required';
+/**
+ * `upgrade-required` and `read-only` both suppress outbound writes (see `isBlocked`), but they
+ * are cleared by completely different things and must stay separate values:
+ *
+ *   `upgrade-required` — this build can't safely interpret the server's schema. Irreversible by
+ *   design; only a reload picking up a newer bundle fixes it, which is why SyncBadge tells the
+ *   cook to refresh.
+ *
+ *   `read-only` — an operator switched writes off, or this build is below `min_client_version`.
+ *   Reversible: SET_READ_ONLY turns it off again. Telling a cook to refresh during a maintenance
+ *   window would be a lie — refreshing does nothing — and it trains them to ignore the one
+ *   message that genuinely means refresh.
+ */
+export type SyncStatus =
+  | 'boot'
+  | 'syncing'
+  | 'live'
+  | 'offline'
+  | 'error'
+  | 'upgrade-required'
+  | 'read-only';
 
 export type SyncState = {
   /** The log applied up to and including `confirmedSeq`. Ops already folded in are discarded
@@ -60,6 +80,9 @@ export type SyncEvent =
   // `permanent` marks an error that retrying can never fix (e.g. the server rejected the op as
   // forbidden) — see engine.ts's APPEND_ERR handling, which drops the op instead of retrying it.
   | { type: 'APPEND_ERR'; opIds: string[]; message: string; permanent?: boolean }
+  // Writes switched off (or back on) from app_config — see src/lib/appConfig.ts. Unlike
+  // 'upgrade-required' this is reversible, and it never clobbers 'upgrade-required'.
+  | { type: 'SET_READ_ONLY'; readOnly: boolean }
   | { type: 'RETRY' }
   | { type: 'SNAPSHOT_MOVED' }
   | { type: 'ONLINE' }

@@ -304,6 +304,8 @@ p {
 }
 
 .bottom-nav .nav-icon-box {
+  /* positioned so .nav-badge can anchor to its corner */
+  position: relative;
   width: 34px;
   height: 34px;
   border-radius: var(--radius-s);
@@ -979,11 +981,37 @@ textarea {
     page-break-after: avoid;
   }
 
-  .print-check {
-    display: inline-block;
-    border: 2px solid #000;
+  /* `.btn { display: none !important }` above beats any later rule, which is exactly why the
+     checkbox in TaskRow carries `task-check` and not `btn`. Get that wrong and you ship a prep
+     list with no boxes to tick, and nobody finds out until it is on paper. */
+  .print-check,
+  .task-check {
+    display: inline-block !important;
+    border: 2px solid #000 !important;
+    background: none !important;
     width: 18px;
     height: 18px;
+    min-width: 18px;
+    min-height: 18px;
+    padding: 0;
+    border-radius: 0 !important;
+  }
+
+  /* Station headings now carry real information on paper, but render at --color-text-muted. */
+  .section-title {
+    color: #000 !important;
+    page-break-after: avoid;
+  }
+
+  /* Two columns on screen, one on paper — a prep list is read top to bottom. */
+  .tasks-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Only .home-blob was hidden; the hero's own gradient still printed as a grey slab. */
+  .home-hero {
+    background: none !important;
+    padding: 0 !important;
   }
 }
 
@@ -1032,4 +1060,103 @@ textarea {
   50% {
     opacity: 0.7;
   }
+}
+
+/* Promoted from the decorative print-only box to a real checkbox (see TaskRow). Sized to the
+   44px minimum touch target while the visible square stays 18px, so the merged screen looks
+   exactly as it did before this became tappable.
+
+   `display` is declared here and must stay: the element also carries `print-check` so the
+   @media print rule can style it, and `.print-check` is `display: none` on screen — that class
+   existed precisely to hide a print-only decoration. Without this line the one control the core
+   loop depends on is invisible, which is the opposite of the accessibility problem it exists to
+   fix. Caught in the browser, not by any test. */
+.task-check {
+  display: inline-block;
+  position: relative;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  margin-inline-start: -12px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.task-check::before {
+  content: '';
+  position: absolute;
+  inset: 13px;
+  border: 2px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+}
+
+.task-check[aria-checked='true']::before {
+  border-color: var(--color-green);
+  background: var(--color-green);
+}
+
+.task-check[aria-checked='true']::after {
+  content: '';
+  position: absolute;
+  inset-inline-start: 19px;
+  top: 17px;
+  width: 5px;
+  height: 10px;
+  border: solid #fff;
+  border-width: 0 2.5px 2.5px 0;
+  transform: rotate(45deg);
+}
+
+/* Progress for whatever the cook is currently looking at — the whole day under "הכל", one
+   station under a station tab. Static, not sticky: .bottom-nav and .sync-badge already take
+   the fixed real estate a phone has to spare. */
+.task-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.task-progress-track {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.task-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--color-green);
+  transition: width 0.25s ease;
+}
+
+.task-progress-label {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Open-task count on the משימות nav slot. Hidden at 0 (the component doesn't render it), and
+   aria-hidden — the count is folded into the link's accessible name instead, because a loose
+   number read on its own means nothing. */
+.nav-badge {
+  position: absolute;
+  top: -4px;
+  inset-inline-end: -8px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--color-red);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }

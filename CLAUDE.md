@@ -20,10 +20,18 @@ npm run preview   # preview a production build
 
 Run a single test file: `npx vitest run src/lib/__tests__/calc.test.ts`
 
-There are 12 test files (155+ tests), colocated in `__tests__` folders next to what they cover:
-`src/lib/__tests__/{calc,date,ids,integrity,tasks}.test.ts`, `src/store/__tests__/{reducer,storage}.test.ts`,
-`src/sync/__tests__/{backoff,engine,localAdapter,log,persist}.test.ts`. No jsdom, no React Testing Library —
-everything is tested as pure functions in node, including the entire sync protocol (see below).
+There are 19 test files (269 tests), colocated in `__tests__` folders next to what they cover:
+`src/lib/__tests__/` (calc, date, ids, integrity, tasks, swipe, units-adjacent helpers, geminiScanner,
+recipeDraft, migrateStations, sentry, appConfig), `src/store/__tests__/{reducer,storage}.test.ts`,
+`src/sync/__tests__/{backoff,engine,localAdapter,log,persist}.test.ts`, and **`api/__tests__/` — the one
+test directory outside `src/`**, covering the scan endpoint's guards (see "Closing /api/scan-recipe").
+
+No jsdom, no React Testing Library — everything is tested as pure functions in node, including the
+entire sync protocol. **This is a deliberate constraint, not a gap**: anything that needs a browser to
+verify is checked live instead, per the branch workflow below. Several real bugs in this codebase were
+found only that way (a checkbox that was `display: none` on screen, a service-worker cold start that
+looked fine because a same-hash `goto` never reloaded the document) and no unit test would have caught
+either.
 
 ## Git & deployment
 
@@ -114,13 +122,14 @@ Manual tasks (`source: 'manual'`, added via the UI, optionally with no `recipeId
 `getDisplayTasks` merges both kinds into one list. Any UI touching tasks should go through it rather than
 reading `state.tasks` directly, and must branch on `task.source` when dispatching (`SET_TASK_PRIORITY` vs
 `SET_AUTO_TASK_PRIORITY`, `DELETE_TASK` vs `DISMISS_AUTO_TASK`, `CONFIRM_TASK_COMPLETION` vs
-`CONFIRM_AUTO_TASK_COMPLETION`, etc. — see `src/screens/Tasks.tsx`).
+`CONFIRM_AUTO_TASK_COMPLETION`, etc. — see `src/screens/tasks/TaskRow.tsx` and its sibling
+`completeTask.ts`, which is the one function in the task UI that changes inventory).
 
-### "Last edit wins" between Home and Consumption screens
+### "Last edit wins" between the quantity editors and the Consumption screen
 
 A product's "prep needed today" can come from either an automatic calculation or a manual override
 entered on the Consumption screen (`DayPlan.entries[].prepOverride`, set via `SET_DAY_PLAN_ENTRY`).
-Editing a product's current quantity on the Home screen (`SET_PRODUCT_QTY`) deliberately clears *today's*
+Editing a product's current quantity anywhere (`SET_PRODUCT_QTY`) deliberately clears *today's*
 override so the number recomputes — but leaves overrides for other (future-planned) dates untouched.
 Both of these actions also clear a dismissed auto-task's `dismissed` flag for that date, so a task
 hidden earlier reappears if the underlying need changes again. Preserve this behavior when touching
@@ -171,18 +180,98 @@ they're pure functions over `AppState` and don't care where it came from.
   `where seq > lastSeq`, which is exactly what a detected gap, a reconnect, or a tab regaining
   focus all trigger.
 
-**Supabase schema**: `supabase/migrations/0001_init.sql` (already applied to the project in
-`.env.local`) plus `0002_fix_join_restaurant.sql` (a real bug fix, also already applied). Four tables: `restaurants` (name, `join_code`, `last_seq`, `snapshot_seq`),
-`snapshots` (the big jsonb blob, kept off `restaurants` so that table stays realtime-cheap),
-`memberships` (`user_id` ⇄ `restaurant_id` ⇄ `cook_id`, one restaurant per user in v1), `ops`
+**Supabase schema**: `supabase/migrations/0001_init.sql` through `0006_scan_quota_and_app_config.sql`,
+**all applied by hand to the live project**. Nothing in the build applies migrations, so any *future*
+migration needs the same manual step before synced clients can use it — until then they sit at
+`upgrade-required` and refuse to append, which is the expected signal that it hasn't landed yet.
+`LAUNCH-CHECKLIST.md` at the repo root is the operator-facing version of this.
+
+Core tables: `restaurants` (name, `join_code`, `last_seq`, `snapshot_seq`), `snapshots` (the big jsonb
+blob, kept off `restaurants` so that table stays realtime-cheap), `memberships` (`user_id` ⇄
+`restaurant_id` ⇄ `cook_id` ⇄ role + permission flags, one restaurant per user in v1), `ops`
 (append-only, `seq` allocated from `restaurants.last_seq` under a row lock inside `append_ops` —
-**a per-restaurant contiguous sequence, not a `bigserial`**, because gap detection is meaningless
-over a sequence with holes). RLS is SELECT-only everywhere; every write is a `SECURITY DEFINER`
-RPC (`create_restaurant`, `join_restaurant`, `append_ops`, `set_my_cook`, `reset_snapshot`,
-`compact_snapshot`), because RLS alone can't express "insert only once you're already a member"
-or "allocate the next seq under a lock". `scripts/verify-supabase.mjs` and
-`scripts/check-ops.mjs` are manual, throwaway verification tools against the live project — not
-part of the app or the build.
+**a per-restaurant contiguous sequence, not a `bigserial`**, because gap detection is meaningless over
+a sequence with holes). Plus `app_config` (the kill switch, one row) and `scan_usage` (three daily
+counters; **RLS on with no policy and no grant at all**, so a client can neither read its own counter
+nor reset it — `consume_scan_quota()` is the only reachable path).
+
+RLS is SELECT-only everywhere; every write is a `SECURITY DEFINER` RPC (`create_restaurant`,
+`join_restaurant`, `append_ops`, `set_my_cook`, `reset_snapshot`, `compact_snapshot`,
+`set_member_permissions`, `remove_member`, `consume_scan_quota`), because RLS alone can't express
+"insert only once you're already a member", "allocate the next seq under a lock", or "count and judge
+a quota atomically".
+
+`scripts/{verify-supabase,check-ops,second-device-test,verify-remove-member,verify-scan-quota}.mjs` are
+manual, throwaway verification tools against the live project — not part of the app or the build.
+
+### Nothing white-screens: boundaries, the route table, and scrubbed crash reports
+
+`src/routes.tsx` holds the route table **as data** (`{ path, name, element, redirect? }[]`). `App.tsx`
+maps it, so everything that has to happen per route — the error boundary, the `Suspense` fallback for
+lazy screens — is written once instead of repeated across a dozen hand-written `<Route>` elements
+where the next one gets added without it. `path="*"` lives here too.
+
+`RouteBoundary` wraps **one route's element, never `<Routes>` itself**, and that distinction is the
+whole design: `BottomNav` and `SyncBadge` are *siblings* of `<Routes>`, so they survive any screen's
+crash automatically as long as the boundary stays below the router. A boundary around `<Routes>` would
+leave the nav on screen with every tap landing on a dead tree — strictly worse than none. It passes
+`pathname` as a reset key, so navigating away clears the error instead of sticking until a reload.
+`CrashScreen` is the root fallback and **calls no app hook** (`useApp`/`useAuth`/`useSync` are exactly
+what may have thrown), offering three reset tiers ordered by what they destroy — see
+`src/lib/resetLocalData.ts`, which documents every `kitchen-*` localStorage key and what clearing it
+costs.
+
+**`src/lib/sentry.ts` is dormant without `VITE_SENTRY_DSN`**, and the scrubbing is the point rather
+than an afterthought: *every* user-entered value in this app is Hebrew, so every Hebrew run is
+replaced, along with the value Postgres quotes into a constraint violation (a live leak path —
+`supabaseAdapter` builds it into `AppendError.message`, which `Settings` renders). Console breadcrumbs
+are dropped outright, since one stray `console.log(action)` would ship a whole op. `extra` and
+`contexts.state` are deleted structurally, not filtered — a denylist over a growing op log loses
+eventually. SDK v11's `dataCollection` defaults are all `true` and all turned off here; the one that
+matters most is `stackFrameVariables`, which captures local variable *values*, i.e. ingredients and
+recipes. The single breadcrumb added on purpose is `action.type`, a closed enum with no user data,
+recorded from `store.ts`'s `dispatch`; `sentry.test.ts` pins its shape so a payload can't be added
+later.
+
+### Closing `/api/scan-recipe` — the endpoint that costs money
+
+The scan endpoint requires a Supabase access token and draws on a daily quota. `api/_auth.ts` forwards
+the caller's own token to PostgREST with plain `fetch` (no supabase-js in the serverless bundle):
+`consume_scan_quota()` verifies signature, membership **and** quota atomically in one round trip, which
+is why the RPC *is* the authentication check rather than a separate `getUser()` call.
+
+What actually bounds the cost, in order: **membership required** (signup is open and confirmation off,
+so a valid JWT is worth nothing on its own — this makes the attack "obtain a join code"), then the
+per-restaurant cap, then the global one, then the Google Cloud budget cap. The origin check stops a
+malicious website and nothing scripted.
+
+**A deliberate asymmetry, commented in both places:** `api/_auth.ts` **fails closed** (Supabase
+unreachable → 503), because there a wrong answer costs money. `src/lib/appConfig.ts` **fails open**
+(any failure → `null` → no restriction), because there a wrong answer is a stopped kitchen, which is
+worse than the incident the switch exists to contain.
+
+The whole request pipeline lives in `handleScanRequest` (`api/_gemini.ts`), shared by the Vercel
+function and `vite.config.ts`'s dev middleware so the two cannot drift. Order matters: origin, method,
+Content-Length, parse, mime/base64/size all run **with no network** before a quota unit is spent,
+because there is deliberately no refund path.
+
+### The kill switch — three tiers, changed from the dashboard with no deploy
+
+`app_config` is one row, readable by `anon` as well as `authenticated` (a kill switch has to reach a
+client whose *auth path* is the broken thing) and writable by nobody — no write policy, no write
+grant. `src/lib/appConfig.ts` polls it at mount, on focus (throttled) and every 15 min.
+
+1. `maintenance_mode` → `MaintenanceGate` in `Gate.tsx`, placed **above `AppProvider`**, so no sync
+   store is ever constructed and not one op can be dispatched. A check inside `maybeAppend` could only
+   stop ops being *sent* — a cook would keep "completing" tasks into a queue that will never drain.
+2. `read_only_mode`, or a build below `min_client_version` → the sticky `'read-only'` sync status.
+   It reuses `upgrade-required`'s *mechanism* but not its *value*: that one renders "refresh the app",
+   which during a maintenance window is a lie and trains cooks to ignore the one message that means it.
+   `isBlocked(status)` in `engine.ts` is the shared predicate for both.
+3. Otherwise normal.
+
+`min_client_version` does nothing until `VITE_APP_VERSION` carries a numeric version; `isClientOutdated`
+never locks out a version it cannot parse, including the default `dev`.
 
 ### Auth and onboarding — a render gate, not a route
 
@@ -203,15 +292,49 @@ mode on an otherwise-configured build without touching env vars.
 ### Screens and navigation
 
 `src/App.tsx` nests, outermost to innermost: `HashRouter` (works from a `file://`/static host with
-no server routing) → `AuthProvider` → `.app-shell`/`.app-main` (wraps everything, auth/onboarding
-screens included, for consistent styling) → `AuthGate` → `MembershipGate` → `AppProvider` →
-`SyncBadge` + `Routes` + `BottomNav`. `BottomNav` and `SyncBadge` only ever mount once every gate
-has passed. Screens live flat in `src/screens/` (app screens plus `Auth.tsx`/`Onboarding.tsx`);
-shared UI (bottom sheets, number editors, priority dots, sync/gate chrome, etc.) lives in
-`src/components/`. `BottomNav` is the primary navigation — Home, Tasks, Ingredients, Recipes,
-Consumption each have a dedicated icon; anything else (Orders, Settings) is under "עוד" (More). The
-Ingredients slot routes to `/count` — `StockCount.tsx` is both the ingredient database and the
-stock-count walk-through (see below); there is no separate `/ingredients` screen.
+no server routing) → `AuthProvider` → `.app-shell` (with `UpdatePrompt` **outside every gate** — a
+cook stuck behind a broken bundle on the sign-in screen is exactly who needs it) → `.app-main` →
+`AuthGate` → `MembershipGate` → `MaintenanceGate` → `AppProvider` → `CookGate` → `SentryContext` +
+`SyncBadge` + `Routes` + `BottomNav`. `BottomNav` and `SyncBadge` only ever mount once every gate has
+passed, and are siblings of `<Routes>` so a route boundary can never take them down.
+
+Screens live flat in `src/screens/` (app screens plus `Auth.tsx`/`Onboarding.tsx`), except the task UI,
+which is split under `src/screens/tasks/` (`TaskRow`, `TaskDetailSheet`, `AddManualTaskSheet`,
+`completeTask`). Shared UI lives in `src/components/`. Every screen except `Today` is lazily loaded via
+`src/routes.tsx`; `Today` stays eager because it is the PWA's `start_url` and the target of the `/`
+redirect.
+
+**`Today.tsx` is the landing screen and the whole core loop.** It replaced Home and Tasks, which were
+two screens showing the same list — Home was read-only and every card on it merely navigated to Tasks,
+so a cook saw their work twice before touching it once. `/` redirects to `/tasks` (same pattern
+`/ingredients` → `/count` already used), which also retires the `NavLink to="/" end` footgun.
+
+`BottomNav` slots: **משימות** (with an open-task badge) · מצרכים (`/count`) · בוקר · מתכונים ·
+הזמנות · עוד. Anything else (Settings, Consumption) is under "עוד". The Ingredients slot routes to
+`/count` — `StockCount.tsx` is both the ingredient database and the stock-count walk-through (see
+below); there is no separate `/ingredients` screen.
+
+**Grouping vs. filtering on `Today`** — the same shape `Recipes.tsx` uses, so it is one pattern used
+twice rather than two to learn. Tab "הכל" renders station groups with headings; a single station tab
+renders a flat list with **no** heading (the active tab *is* the heading); searching renders flat with
+tabs hidden. They are never redundant, because a heading and the active tab never name the same
+station at once.
+
+`getDisplayTasks` returns `[...auto, ...manual]` **unsorted and ungrouped**. `taskProgress`,
+`sortDisplayTasks` and `groupByStation` (`src/lib/tasks.ts`) are the only place that decides how a task
+list is counted, ordered and grouped — the screen and the nav badge both go through them, so they can
+never show two different numbers for the same day. `taskProgress(...).ratio` is exactly `1` when
+`total === 0`: "nothing to do" must read as complete, where a naive `done / total` gives `NaN`.
+
+**Completion is reachable without a touchscreen.** `SwipeToComplete` listens for touch events only and
+its reveal panel is `aria-hidden`, so the app's single core action used to be unreachable by mouse,
+keyboard and screen reader. `TaskRow` promotes the decorative print-only box already in that slot to a
+real `role="checkbox"`. Two traps live there and are commented in place: it must **not** carry `btn`
+(`@media print` hides `.btn !important`, so the printed prep list would have no boxes to tick, and
+nobody notices until it is on paper), and it must declare its own `display` (it also carries
+`print-check`, which is `display: none` on screen). `SwipeToComplete` swallows the synthetic click a
+touch sequence fires afterwards, or a swipe ending over that checkbox would mark and unmark in one
+gesture.
 
 Editing UI follows one recurring pattern: tap a value to open a `BottomSheet` containing a `NumberEditor`
 or form, dispatch on save. Look at `src/screens/StockCount.tsx` or `Consumption.tsx` before inventing a
@@ -274,7 +397,8 @@ The user asked for real-time sync between phones so every cook at a restaurant s
 data. This is being built in ordered phases against a **real, already-created Supabase project**
 (not a plan on paper) — each phase below was verified live, not just unit-tested, before moving
 to the next. If you're picking this up in a new session: read this whole section before touching
-sync-related code, then jump to "Next: Phase 7" for the concrete next step.
+sync-related code. **The concrete next steps now live in the pre-launch audit section at the very
+bottom of this file**, not here — this section is the record of how sync was built.
 
 **Done — phases 0 through 6, all verified live (Phase 6's new failure-mode paths are unit-tested;
 see its entry below for why those specifically weren't also poked at live):**
@@ -367,6 +491,11 @@ see its entry below for why those specifically weren't also poked at live):**
   mismatch or a real dropped connection, since neither is easy to trigger safely against the shared
   live project.
 
+> **Note on the entries below:** they are the record of what was done at the time and are left as
+> written. `Home.tsx` and `Tasks.tsx` are referenced throughout and no longer exist — the pre-launch
+> audit's phase 4 merged them into `src/screens/Today.tsx` plus `src/screens/tasks/`. Read those
+> references as history, not as a map of the current tree.
+
 **Also done — granular permissions, dated order history, tasks by station (2026-09-09,
 branch `claude/rls-granular-abac-wgbz0z`):** three features layered on top of the sync work
 above, none of which needed a new table:
@@ -448,16 +577,52 @@ change — `UPDATE_INGREDIENT` (unused since it was added) now has its first cal
 name/supplier fields. See the "Screens and navigation" section above for the two-commit-model design
 this required.
 
-**Not started — Phase 7 (optional):**
+**Superseded:** the old "Phase 7" note here proposed `vite-plugin-pwa` for a real offline cold start.
+That landed in the pre-launch audit's phase 3 (below). `compact_snapshot` is still wired in SQL and
+still unused — worth doing if the `ops` table ever grows large enough to matter.
 
-- Wire `compact_snapshot` (already in the SQL, unused) to a client-side threshold. Separately,
-  consider `vite-plugin-pwa`: there is still no service worker, so "offline" today only covers a
-  tab that's *already open* — a cold offline launch won't load the app's JS at all, which
-  undercuts the offline queue's value for a kitchen with patchy wifi.
+---
 
-**Next: Phase 7 (optional — the sync/auth/UI work above is otherwise feature-complete).** Start
-with `compact_snapshot` if the `ops` table is growing large enough to matter, otherwise
-`vite-plugin-pwa` for a real offline cold start.
+## ⚠ Continuing this work: the pre-launch audit (2026-09-30)
+
+A second, separate track from the sync work above: getting the app to a state where it can be handed
+to a real restaurant crew — no white screen mid-shift, no torched Gemini account, no irreversible data
+loss. Run as ordered phases, **one PR per phase, each verified live and merged only on explicit
+approval in chat**. The architecture sections above describe what each landed; this is the status.
+
+**Done — phases 1 to 4:**
+
+1. **Resilience** — error boundaries, the `routes.tsx` route table, the missing 404 screen, Sentry with
+   aggressive scrubbing, the three reset tiers. See "Nothing white-screens" above.
+2. **`/api/scan-recipe` closed** — migration `0006`, token + membership + three-tier quota, the shared
+   request pipeline, and the `app_config` kill switch. See "Closing /api/scan-recipe" and
+   "The kill switch" above.
+3. **Security headers, a real PWA, a smaller bundle** — `vercel.json`, self-hosted fonts, the service
+   worker, route-level lazy loading, `tesseract.js` removed. See "Security headers and the service
+   worker" above. Entry chunk went 405.92 kB → 300.90 kB (124.41 → 95.40 kB gzipped).
+4. **Home merged into Tasks** — `Today.tsx`, the shared task selectors, the accessible completion
+   checkbox, `/` → `/tasks`. See "Screens and navigation" above.
+
+**Not started — phases 5 to 7**, in the order the plan sets:
+
+5. **Tablet, accessibility, polish.** Breakpoints at 768/1024px (the app is currently a hard
+   `max-width: 720px` with none); a global `:focus-visible` rule — there is exactly one in the whole
+   app today (`.assignee-select`), and `-webkit-tap-highlight-color: transparent` on `body` erases
+   what's left, which matters now that phase 4 added a keyboard-reachable checkbox;
+   `prefers-reduced-motion`; `BottomSheet` needs `role="dialog"`, a focus trap and `Escape`; a shared
+   `Toast` replacing six duplicated `useState`+`setTimeout` mechanisms; `autoComplete` on the auth
+   forms (there is none anywhere in `src/` today, so password managers don't recognize them).
+6. **Privacy, accounts, bots.** `delete_my_account()` + the Edge Function, `rotate_join_code()`,
+   rate-limiting `join_restaurant` (6 chars from a 32-char alphabet with no limit today — reuse
+   `scan_usage` with a fourth scope, which needs its `scope` check constraint widened), legal docs
+   outside every gate, Turnstile on signup via Supabase's native support, and **import validation**:
+   `parseImportedState` currently falls through to `return parsed` for any unrecognized version, so
+   `{"schemaVersion":5}` "imports successfully" and wipes a restaurant.
+7. **CI, analytics, process.** There is no `.github/` directory at all. PostHog with
+   `autocapture: false` — non-negotiable, since `$el_text` would capture the visible text of every
+   clicked element, which in this app is ingredient, recipe, cook and task names. Supabase CLI so
+   migrations stop being manual paste. **PostHog also needs adding to `connect-src` in `vercel.json`**,
+   where a missing entry fails as a silent network error rather than a build error.
 
 **Environment reminder:** this dev machine already has a working `.env.local` — running
 `npm run dev` here exercises real Supabase auth, not local mode. Use

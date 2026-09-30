@@ -7,11 +7,22 @@ export type RpcErrorLike = { code?: string; message: string };
 
 export function mapRpcError(err: RpcErrorLike): string {
   if (err.code === 'P0002') return 'קוד לא נמצא';
+  if (err.code === 'P0003') return 'יותר מדי ניסיונות הצטרפות. נסו שוב מחר.';
   if (err.code === '23505') return 'החשבון כבר משויך למטבח';
   if (err.code === '42501') {
+    // Checked before the plain `last_chef` case below, which is a substring of this one: the two
+    // are different situations with different remedies, and the wrong message here tells a chef
+    // to do something that isn't what they were trying to do.
+    if (err.message.includes('last_chef_account')) {
+      return 'את/ה השף היחיד במטבח. מנו שף נוסף לפני מחיקת החשבון.';
+    }
     if (err.message.includes('last_chef')) return 'לא ניתן להוריד את השף האחרון מתפקידו';
     if (err.message.includes('cannot_remove_self')) return 'לא ניתן להסיר את עצמך';
+    if (err.message.includes('chef_only')) return 'רק שף יכול לבצע את הפעולה הזו';
     return 'אין הרשאה לפעולה הזו';
   }
+  // A migration that hasn't been pasted into the SQL editor yet. Says so, rather than showing
+  // PostgREST's "Could not find the function public.x in the schema cache" to a cook.
+  if (err.code === 'PGRST202') return 'הפעולה עדיין לא זמינה בשרת. יש להשלים את עדכון מסד הנתונים.';
   return err.message;
 }

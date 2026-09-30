@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { mapRpcError } from '../lib/rpcErrors';
 import { readCachedMembership, writeCachedMembership, type CachedMembership } from './authCache';
+import { fullReset } from '../lib/resetLocalData';
 
 type Membership = CachedMembership;
 
@@ -20,10 +21,13 @@ type AuthContextValue = {
    * reset link, not a normal sign-in, so the user still owes us a new password. */
   recovering: boolean;
   clearRecovering(): void;
-  signUp(email: string, password: string): Promise<ActionResult>;
-  signIn(email: string, password: string): Promise<ActionResult>;
+  // `captchaToken` is undefined whenever Turnstile is dormant (the default), which is exactly
+  // what supabase-js expects when the dashboard's CAPTCHA setting is off. See lib/turnstile.ts
+  // for why all three take one rather than only signUp.
+  signUp(email: string, password: string, captchaToken?: string): Promise<ActionResult>;
+  signIn(email: string, password: string, captchaToken?: string): Promise<ActionResult>;
   signOut(): Promise<void>;
-  resetPassword(email: string): Promise<ActionResult>;
+  resetPassword(email: string, captchaToken?: string): Promise<ActionResult>;
   updatePassword(password: string): Promise<ActionResult>;
   createRestaurant(name: string, snapshot: unknown, schemaVersion: number): Promise<ActionResult>;
   joinRestaurant(code: string): Promise<ActionResult>;
@@ -35,6 +39,11 @@ type AuthContextValue = {
     canDeleteRecipes: boolean,
   ): Promise<ActionResult>;
   removeMember(userId: string): Promise<ActionResult>;
+  /** Chef-only. Returns the new code on success, so the caller can show it without refetching. */
+  rotateJoinCode(): Promise<{ code: string | null; error: string | null }>;
+  /** Irreversible. On success the account no longer exists server-side, so this also wipes every
+   * local `kitchen-*` key and reloads — there is no session left to sign out of. */
+  deleteMyAccount(): Promise<ActionResult>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -45,6 +54,10 @@ function mapAuthError(message: string): string {
   // Checked before the generic 'email'/'password' substring cases below, which would otherwise
   // mislabel a delivery failure or a throttle as "invalid address".
   if (message.includes('Error sending')) return 'שליחת המייל נכשלה, נסה שוב';
+  // Supabase's CAPTCHA setting is on but this build carries no VITE_TURNSTILE_SITE_KEY, so no
+  // token is being sent at all — see the ordering note in lib/turnstile.ts. Without this the
+  // user reads a raw English "captcha protection: request disallowed" and can do nothing.
+  if (message.toLowerCase().includes('captcha')) return 'אימות האבטחה נכשל. רעננו את הדף ונסו שוב.';
   if (message.includes('For security purposes') || message.toLowerCase().includes('rate limit'))
     return 'יותר מדי ניסיונות — נסה שוב בעוד רגע';
   if (message.toLowerCase().includes('password')) return 'הסיסמה חייבת להכיל לפחות 6 תווים';
@@ -119,15 +132,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [session]);
 
-  async function signUp(email: string, password: string): Promise<ActionResult> {
+  async function signUp(email: string, password: string, captchaToken?: string): Promise<ActionResult> {
     if (!supabase) return { error: 'Supabase אינו מוגדר' };
-    const { error } = await supabase.auth.signUp({ email, password });
+    const { error } = await supabase.auth.signUp({ email, password, options: { captchaToken } });
     return { error: error ? mapAuthError(error.message) : null };
   }
 
-  async function signIn(email: string, password: string): Promise<ActionResult> {
+  async function signIn(email: string, password: string, captchaToken?: string): Promise<ActionResult> {
     if (!supabase) return { error: 'Supabase אינו מוגדר' };
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await supabase.auth.signInWithPassword({ email, password, options: { captchaToken } });
     return { error: error ? mapAuthError(error.message) : null };
   }
 
@@ -136,7 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
   }
 
-  async function resetPassword(email: string): Promise<ActionResult> {
+  async function resetPassword(email: string, captchaToken?: string): Promise<ActionResult> {
     if (!supabase) return { error: 'Supabase אינו מוגדר' };
     // Supabase emails a link back to `redirectTo` with its own `#access_token=...&type=recovery`
     // fragment appended. This app uses HashRouter, so redirectTo deliberately carries no `#/...`
@@ -144,6 +157,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // and clears it, leaving an empty hash that HashRouter resolves to "/".
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: window.location.origin + window.location.pathname,
+      captchaToken,
     });
     return { error: error ? mapAuthError(error.message) : null };
   }
@@ -231,6 +245,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: null };
   }
 
+  async function rotateJoinCode(): Promise<{ code: string | null; error: string | null }> {
+    if (!supabase) return { code: null, error: 'Supabase אינו מוגדר' };
+    const { data, error } = await supabase.rpc('rotate_join_code');
+    if (error) return { code: null, error: mapRpcError(error) };
+    return { code: typeof data === 'string' ? data : null, error: null };
+  }
+
+  /**
+   * The account is gone server-side the moment this returns, so there is no "signed in but
+   * deleted" state to render: everything local goes with it and the page reloads into a clean
+   * sign-in screen. `fullReset` is the same tier-3 wipe the crash screen offers, reused here
+   * because the list of `kitchen-*` keys belongs in exactly one place.
+   */
+  async function deleteMyAccount(): Promise<ActionResult> {
+    if (!supabase) return { error: 'Supabase אינו מוגדר' };
+    const { error } = await supabase.rpc('delete_my_account');
+    if (error) return { error: mapRpcError(error) };
+    // fullReset ends in softReset(), which reloads — so nothing after this line runs, and
+    // nothing needs to: there is no session to update state from.
+    await fullReset(signOut);
+    return { error: null };
+  }
+
   async function setMyCook(cookId: string): Promise<ActionResult> {
     if (!supabase || !membership) return { error: 'לא ניתן כרגע' };
     const { error } = await supabase.rpc('set_my_cook', {
@@ -263,6 +300,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setMyCook,
         setMemberPermissions,
         removeMember,
+        rotateJoinCode,
+        deleteMyAccount,
       }}
     >
       {children}

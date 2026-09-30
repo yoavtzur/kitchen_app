@@ -1,5 +1,7 @@
 import { useId, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import { Turnstile } from '../components/Turnstile';
 
 type Mode = 'signin' | 'signup';
 
@@ -12,6 +14,8 @@ export function Auth({ onForgotPassword }: { onForgotPassword: () => void }) {
   const [busy, setBusy] = useState(false);
   const emailId = useId();
   const passwordId = useId();
+  const [captcha, setCaptcha] = useState<string | null>(null);
+  const [captchaNonce, setCaptchaNonce] = useState(0);
 
   async function submit() {
     setError('');
@@ -20,10 +24,20 @@ export function Auth({ onForgotPassword }: { onForgotPassword: () => void }) {
       return;
     }
     setBusy(true);
+    const token = captcha ?? undefined;
     const { error: err } =
-      mode === 'signup' ? await signUp(email.trim(), password) : await signIn(email.trim(), password);
+      mode === 'signup'
+        ? await signUp(email.trim(), password, token)
+        : await signIn(email.trim(), password, token);
     setBusy(false);
-    if (err) setError(err);
+    if (err) {
+      setError(err);
+      // A Turnstile token is single use and is spent even on a rejected attempt, so without this
+      // the second try fails on the captcha rather than on the password, and every message after
+      // the first is the wrong one. No-op while Turnstile is dormant.
+      setCaptcha(null);
+      setCaptchaNonce((n) => n + 1);
+    }
   }
 
   return (
@@ -71,6 +85,10 @@ export function Auth({ onForgotPassword }: { onForgotPassword: () => void }) {
             onChange={(e) => setPassword(e.target.value)}
           />
         </div>
+        {/* Renders nothing unless VITE_TURNSTILE_SITE_KEY is set. Deliberately does NOT gate the
+            submit button: a challenge that fails to load must not lock the kitchen out of its
+            own app — see lib/turnstile.ts. */}
+        <Turnstile onToken={setCaptcha} resetKey={captchaNonce} />
         {error && <p style={{ color: 'var(--color-red)' }}>{error}</p>}
         <button type="submit" className="btn btn-primary" disabled={busy}>
           {busy ? 'רגע...' : mode === 'signup' ? 'הרשמה' : 'התחברות'}
@@ -93,6 +111,13 @@ export function Auth({ onForgotPassword }: { onForgotPassword: () => void }) {
           {mode === 'signup' ? 'יש לי כבר חשבון — התחברות' : 'משתמש חדש? הרשמה'}
         </button>
       </form>
+      {/* The only screen a person sees before an account exists, so it is the only place these
+          links can be given *before* the processing they describe begins. Both routes render
+          outside every gate — see LEGAL_ROUTES. */}
+      <p className="muted" style={{ marginTop: 'var(--space-3)', textAlign: 'center' }}>
+        בהרשמה ובשימוש באפליקציה אתם מאשרים את <Link to="/legal/terms">תנאי השימוש</Link> ואת{' '}
+        <Link to="/legal/privacy">מדיניות הפרטיות</Link>.
+      </p>
     </div>
   );
 }

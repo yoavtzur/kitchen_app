@@ -19,6 +19,8 @@ const Orders = lazy(() => import('./screens/Orders').then((m) => ({ default: m.O
 const Settings = lazy(() => import('./screens/Settings').then((m) => ({ default: m.Settings })));
 const More = lazy(() => import('./screens/More').then((m) => ({ default: m.More })));
 const NotFound = lazy(() => import('./screens/NotFound').then((m) => ({ default: m.NotFound })));
+const Privacy = lazy(() => import('./screens/Legal').then((m) => ({ default: m.Privacy })));
+const Terms = lazy(() => import('./screens/Legal').then((m) => ({ default: m.Terms })));
 
 export type AppRoute = {
   path: string;
@@ -56,4 +58,21 @@ export const APP_ROUTES: AppRoute[] = [
   { path: '/more', name: 'more', element: <More /> },
   // Without this, an unmatched hash rendered nothing at all: chrome, no content, no explanation.
   { path: '*', name: 'not-found', element: <NotFound /> },
+];
+
+/**
+ * The two routes that render **outside every gate** — no session, no membership, no sync store.
+ *
+ * Kept as a separate table rather than a flag on `AppRoute` because the difference is not a
+ * property of the route, it is which `<Route>` parent it is declared under: `App.tsx` lists
+ * these directly and puts everything in `APP_ROUTES` under a pathless layout route that holds
+ * the gates. A flag would have to be read at render time by something that cannot act on it.
+ *
+ * They must be reachable before sign-up, which is the entire point: a privacy notice a person
+ * can only read after creating the account is given after the processing it describes began.
+ * `Auth.tsx` and `Onboarding.tsx` link here.
+ */
+export const LEGAL_ROUTES: AppRoute[] = [
+  { path: '/legal/privacy', name: 'privacy', element: <Privacy /> },
+  { path: '/legal/terms', name: 'terms', element: <Terms /> },
 ];

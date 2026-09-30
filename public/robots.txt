@@ -1,0 +1,4 @@
+# A private restaurant's kitchen app, not a marketing site. There is nothing here to index, and
+# an indexed sign-in page is an invitation to probe it.
+User-agent: *
+Disallow: /

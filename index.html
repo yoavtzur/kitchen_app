@@ -3,16 +3,40 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-    <meta name="theme-color" content="#ff5c7a" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <!--
+      No maximum-scale: pinning it to 1.0 disabled pinch-to-zoom, which is a WCAG 1.4.4 failure
+      and a real problem on a greasy kitchen tablet where someone wants a closer look at a
+      quantity. viewport-fit=cover is what lets the bottom nav's env(safe-area-inset-bottom)
+      padding do anything at all on a notched phone.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#090a0f" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="מטבח" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <title>ניהול מטבח</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800;900&display=swap"
-      rel="stylesheet"
+    <meta
+      name="description"
+      content="ניהול מטבח מקצועי: מעקב מלאי, מתכונים, משימות הכנה יומיות והזמנות ספקים — מסונכרן בין כל המכשירים במטבח."
     />
+    <!--
+      Open Graph and Twitter tags so a link shared into a kitchen's WhatsApp group renders as
+      something recognizable instead of a bare URL. Deliberately paired with robots.txt's
+      Disallow: / — this is a private restaurant app, so it should preview well when shared
+      on purpose and never be indexed.
+    -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="ניהול מטבח" />
+    <meta property="og:description" content="מעקב מלאי, מתכונים ומשימות הכנה יומיות — מסונכרן בין כל המכשירים במטבח." />
+    <meta property="og:image" content="/icon-512.png" />
+    <meta property="og:locale" content="he_IL" />
+    <meta name="twitter:card" content="summary" />
+    <!--
+      The three Google Fonts <link> tags that used to sit here are gone; Rubik is now bundled
+      and self-hosted from main.tsx. See the comment there for why.
+    -->
   </head>
   <body>
     <div id="root"></div>

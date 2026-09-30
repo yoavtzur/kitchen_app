@@ -1,6 +1,7 @@
+import { Suspense, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
-import type { ReactNode } from 'react';
 import { ErrorBoundary, type ErrorFallbackProps } from './ErrorBoundary';
+import { ScreenSkeleton } from './ScreenSkeleton';
 
 /**
  * Wraps **one route's element** — never `<Routes>` itself.
@@ -13,12 +14,18 @@ import { ErrorBoundary, type ErrorFallbackProps } from './ErrorBoundary';
  *
  * `pathname` is passed as a reset key, so navigating to another tab clears the error rather
  * than leaving the app stuck behind it until a reload.
+ *
+ * `Suspense` lives inside the boundary, not outside it: a chunk that fails to download (a
+ * stale deploy, a dead connection mid-navigation) throws, and this is what catches it — the
+ * cook gets "this screen got stuck, try again" with a working nav, rather than a blank page.
+ * Nothing ever flashes over the nav, because the nav is a sibling of `<Routes>` and never
+ * unmounts.
  */
 export function RouteBoundary({ name, children }: { name: string; children: ReactNode }) {
   const { pathname } = useLocation();
   return (
     <ErrorBoundary boundary={name} resetKeys={[pathname]} fallback={(props) => <ScreenError {...props} />}>
-      {children}
+      <Suspense fallback={<ScreenSkeleton />}>{children}</Suspense>
     </ErrorBoundary>
   );
 }

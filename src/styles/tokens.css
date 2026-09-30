@@ -44,4 +44,9 @@
      since that element already sits on --color-primary. */
   --shadow-pop: 0 0 20px -4px rgba(0, 255, 135, 0.4), 0 6px 16px rgba(0, 0, 0, 0.5);
   --nav-height: 64px;
+  /* The bar's own height plus whatever the device reserves below it (the iPhone home
+     indicator). Every consumer of a "how tall is the nav" measurement uses THIS, not
+     --nav-height, so nothing ends up underneath the indicator. Needs viewport-fit=cover in
+     index.html to be anything other than 0. */
+  --nav-total-height: calc(var(--nav-height) + env(safe-area-inset-bottom, 0px));
 }

@@ -46,7 +46,7 @@ p {
 
 .app-main {
   flex: 1;
-  padding: var(--space-4) var(--space-4) calc(var(--nav-height) + var(--space-5));
+  padding: var(--space-4) var(--space-4) calc(var(--nav-total-height) + var(--space-5));
   max-width: 720px;
   margin: 0 auto;
   width: 100%;
@@ -264,7 +264,7 @@ p {
 
 .sync-badge {
   position: fixed;
-  bottom: calc(var(--nav-height) + var(--space-2));
+  bottom: calc(var(--nav-total-height) + var(--space-2));
   inset-inline-start: var(--space-3);
   z-index: 20;
   opacity: 0.92;
@@ -274,7 +274,10 @@ p {
   position: fixed;
   inset-inline: 0;
   bottom: 0;
-  height: var(--nav-height);
+  height: var(--nav-total-height);
+  /* The extra height is padding, not empty space: the icons stay where they were and the bar
+     simply extends under the home indicator instead of being overlapped by it. */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   background: var(--color-surface);
   border-top: 1px solid var(--color-border);
   display: flex;
@@ -779,7 +782,7 @@ textarea {
 .count-save-bar {
   position: fixed;
   inset-inline: 0;
-  bottom: calc(var(--nav-height) + var(--space-3));
+  bottom: calc(var(--nav-total-height) + var(--space-3));
   display: flex;
   justify-content: center;
   padding: 0 var(--space-4);
@@ -987,4 +990,46 @@ textarea {
 .print-only,
 .print-check {
   display: none;
+}
+
+/* The "new version is ready" banner. Deliberately on the opposite inline edge from
+   .sync-badge at the same `bottom`, so the two can never cover each other — they are the only
+   two pieces of fixed chrome that can be on screen at once. */
+.update-prompt {
+  position: fixed;
+  bottom: calc(var(--nav-total-height) + var(--space-2));
+  inset-inline-end: var(--space-3);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-card);
+  font-size: 13px;
+}
+
+.update-prompt .btn {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+/* Skeleton shown while a lazily-loaded screen's chunk arrives. */
+.skeleton-block {
+  background: var(--color-border);
+  border-radius: var(--radius-s);
+  opacity: 0.55;
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.7;
+  }
 }

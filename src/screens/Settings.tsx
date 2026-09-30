@@ -7,8 +7,10 @@ import { mapRpcError } from '../lib/rpcErrors';
 import { exportStateAsJson, parseImportedState } from '../store/storage';
 import { SCHEMA_VERSION } from '../data/seed';
 import { newId } from '../lib/ids';
+import { useTimedFlag, useTimedMessage } from '../lib/useTimedFlag';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { CookPill } from '../components/CookPill';
+import { Toast } from '../components/Toast';
 import type { Cook, MemberRole, RoundTo } from '../types';
 
 type MemberRow = {
@@ -52,10 +54,10 @@ export function Settings() {
   // first paint of this screen genuinely is loading, and deriving that is both more honest and
   // one fewer cascading render than announcing it afterwards.
   const [membersLoading, setMembersLoading] = useState(() => isSupabaseConfigured && Boolean(membership));
-  const [copied, setCopied] = useState(false);
+  const [copied, flagCopied] = useTimedFlag(1500);
   const [deleteCandidate, setDeleteCandidate] = useState<Cook | null>(null);
   const [removeCandidate, setRemoveCandidate] = useState<MemberRow | null>(null);
-  const [removedMessage, setRemovedMessage] = useState('');
+  const [removedMessage, showRemovedMessage] = useTimedMessage(1500);
 
   const boundCookIds = new Set(members.map((m) => m.cookId).filter((id): id is string => !!id));
 
@@ -135,8 +137,7 @@ export function Settings() {
     if (removeCandidate.cookId) dispatch({ type: 'REMOVE_COOK', id: removeCandidate.cookId });
     reloadMembers();
     setRemoveCandidate(null);
-    setRemovedMessage('הוסר!');
-    setTimeout(() => setRemovedMessage(''), 1500);
+    showRemovedMessage('הוסר!');
   }
 
   function handleExport() {
@@ -193,8 +194,7 @@ export function Settings() {
     if (!restaurant) return;
     try {
       await navigator.clipboard.writeText(restaurant.joinCode);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      flagCopied();
     } catch {
       // clipboard unavailable — the code is still shown on screen to copy by hand
     }
@@ -261,7 +261,6 @@ export function Settings() {
           <h2 className="section-title">הרשאות צוות</h2>
           <div className="card stack-gap-2">
             {permError && <p style={{ color: 'var(--color-red)' }}>{permError}</p>}
-            {removedMessage && <p style={{ color: 'var(--color-green)' }}>{removedMessage}</p>}
             {membersLoading && members.length === 0 && <p className="muted">טוען צוות...</p>}
             {membersError && (
               <div className="stack-gap-2">
@@ -455,6 +454,10 @@ export function Settings() {
           </p>
         </ConfirmDialog>
       )}
+
+      {/* At the end of the screen rather than inside the team card that triggers it: Settings is
+          long enough that the card is usually scrolled past by the time the removal returns. */}
+      {removedMessage && <Toast message={removedMessage} />}
     </div>
   );
 }

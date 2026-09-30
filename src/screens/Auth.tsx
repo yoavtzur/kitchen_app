@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 
 type Mode = 'signin' | 'signup';
@@ -10,6 +10,8 @@ export function Auth({ onForgotPassword }: { onForgotPassword: () => void }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const emailId = useId();
+  const passwordId = useId();
 
   async function submit() {
     setError('');
@@ -32,30 +34,49 @@ export function Auth({ onForgotPassword }: { onForgotPassword: () => void }) {
       <p className="muted" style={{ marginBottom: 'var(--space-3)' }}>
         {mode === 'signup' ? 'צור חשבון כדי להתחיל' : 'התחבר לחשבון שלך'}
       </p>
-      <div className="card stack-gap-3">
+      {/* A real <form> with a real submit button, not a div full of inputs and a click handler.
+          That is what a password manager looks for before it offers to fill or to save a
+          credential — and it also gives Enter-to-submit for free, which this screen previously
+          hand-rolled with an onKeyDown on each input. */}
+      <form
+        className="card stack-gap-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+      >
         <div className="field" style={{ marginBottom: 0 }}>
-          <label>אימייל</label>
+          <label htmlFor={emailId}>אימייל</label>
           <input
+            id={emailId}
+            name="email"
             type="email"
+            autoComplete="username"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             autoFocus
-            onKeyDown={(e) => e.key === 'Enter' && submit()}
           />
         </div>
         <div className="field" style={{ marginBottom: 0 }}>
-          <label>סיסמה</label>
+          <label htmlFor={passwordId}>סיסמה</label>
           <input
+            id={passwordId}
+            name="password"
             type="password"
+            // The distinction a manager acts on: `new-password` makes it offer to generate and
+            // then save, `current-password` makes it fill the one already stored. Getting this
+            // backwards on signup is how a manager ends up saving nothing at all.
+            autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && submit()}
           />
         </div>
         {error && <p style={{ color: 'var(--color-red)' }}>{error}</p>}
-        <button type="button" className="btn btn-primary" onClick={submit} disabled={busy}>
+        <button type="submit" className="btn btn-primary" disabled={busy}>
           {busy ? 'רגע...' : mode === 'signup' ? 'הרשמה' : 'התחברות'}
         </button>
+        {/* Both stay type="button": inside a form, a bare <button> submits, so either one would
+            try to sign in on its way to doing something else entirely. */}
         {mode === 'signin' && (
           <button type="button" className="btn" onClick={onForgotPassword}>
             שכחתי סיסמה
@@ -71,7 +92,7 @@ export function Auth({ onForgotPassword }: { onForgotPassword: () => void }) {
         >
           {mode === 'signup' ? 'יש לי כבר חשבון — התחברות' : 'משתמש חדש? הרשמה'}
         </button>
-      </div>
+      </form>
     </div>
   );
 }

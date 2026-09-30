@@ -8,6 +8,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { SearchInput } from '../components/SearchInput';
 import { CategoryTabs } from '../components/CategoryTabs';
 import { matchesQuery } from '../lib/search';
+import { useTimedFlag } from '../lib/useTimedFlag';
 import type { AppState, Ingredient } from '../types';
 
 const NO_SUPPLIER = 'ללא ספק';
@@ -77,8 +78,8 @@ function CurrentOrder() {
   const date = todayStr();
   const [query, setQuery] = useState('');
   const [receiving, setReceiving] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [copied, flagCopied] = useTimedFlag(2000);
+  const [submitted, flagSubmitted] = useTimedFlag(2000);
 
   const groups = useMemo(() => {
     const filtered = state.ingredients.filter((ing) => matchesQuery(query, ing.name, ing.supplier));
@@ -99,10 +100,7 @@ function CurrentOrder() {
     const text = buildOrderText(date, state);
     navigator.clipboard
       ?.writeText(text)
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      })
+      .then(flagCopied)
       .catch(() => {});
   }
 
@@ -117,8 +115,7 @@ function CurrentOrder() {
       .filter((l) => l.qty > 0);
     if (lines.length === 0) return;
     dispatch({ type: 'SUBMIT_ORDER', date, lines });
-    setSubmitted(true);
-    setTimeout(() => setSubmitted(false), 2000);
+    flagSubmitted();
   }
 
   return (

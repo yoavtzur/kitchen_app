@@ -47,7 +47,7 @@ p {
 .app-main {
   flex: 1;
   padding: var(--space-4) var(--space-4) calc(var(--nav-total-height) + var(--space-5));
-  max-width: 720px;
+  max-width: var(--content-max);
   margin: 0 auto;
   width: 100%;
 }
@@ -159,8 +159,9 @@ p {
 .assignee-select:hover {
   background: rgba(255, 255, 255, 0.1);
 }
+/* The colour and width now come from the global :focus-visible rule at the bottom of this
+   file; all this needs is a tighter offset, because the select sits in a crowded task row. */
 .assignee-select:focus-visible {
-  outline: 2px solid var(--color-primary);
   outline-offset: 1px;
 }
 
@@ -281,7 +282,7 @@ p {
   background: var(--color-surface);
   border-top: 1px solid var(--color-border);
   display: flex;
-  max-width: 720px;
+  max-width: var(--content-max);
   margin: 0 auto;
   z-index: 10;
 }
@@ -378,7 +379,7 @@ p {
   background: var(--color-surface);
   border-radius: var(--radius-l) var(--radius-l) 0 0;
   width: 100%;
-  max-width: 720px;
+  max-width: var(--content-max);
   max-height: 88vh;
   overflow-y: auto;
   padding: var(--space-5) var(--space-4) var(--space-6);
@@ -793,10 +794,44 @@ textarea {
 }
 
 .count-save-bar > button {
-  max-width: 720px;
+  max-width: var(--content-max);
   width: 100%;
+  /* Here rather than as an inline style on each of the two screens that render a save bar —
+     .toast's offset is derived from this, so a bar that was taller on one screen than the other
+     would push the toast onto the button on exactly one of them. */
+  min-height: var(--save-bar-height);
   box-shadow: var(--shadow-card);
   pointer-events: auto;
+}
+
+/* Transient confirmation, floated above the nav rather than left in document flow — see the
+   comment in components/Toast.tsx for the bug that caused.
+
+   Three things already live on the strip above the bottom nav: .sync-badge (pinned to the start
+   edge), .count-save-bar (full width, centered) and this. The toast sits above the save bar's
+   shelf rather than beside it, because on StockCount and MorningDashboard the two are driven by
+   the same save: the bar is what the cook just tapped and the toast is the answer, and a toast
+   that landed on top of it would cover the control it is confirming. z-index clears the badge's
+   20 so a reconnect warning can never be drawn over the confirmation; the badge stays visible
+   beside it, since the toast is only as wide as its text. pointer-events: none so a message
+   floating over the list never eats a tap meant for a row underneath. */
+.toast {
+  position: fixed;
+  inset-inline: 0;
+  bottom: calc(var(--nav-total-height) + var(--space-3) + var(--save-bar-height) + var(--space-2));
+  display: flex;
+  justify-content: center;
+  padding: 0 var(--space-4);
+  z-index: 30;
+  pointer-events: none;
+}
+
+.toast > .pill {
+  box-shadow: var(--shadow-card);
+  /* The pill's own padding is sized for an inline tag; as a floating message it needs to read as
+     a distinct surface, not as a label borrowed from a table cell. */
+  padding: var(--space-2) var(--space-4);
+  font-size: 14px;
 }
 
 .count-row-changed td {
@@ -952,6 +987,7 @@ textarea {
   .overlay,
   .sheet,
   .count-save-bar,
+  .toast,
   .btn,
   .home-blob,
   .swipe-action,
@@ -1159,4 +1195,106 @@ textarea {
   line-height: 16px;
   text-align: center;
   font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------------------
+   Tablet. The app was a hard 720px column with no breakpoint at all, which on
+   the 10" tablet a kitchen actually props up next to the stove meant two thirds
+   of the screen was empty background. Only two things change: the column gets
+   wider (via --content-max, so the nav and the save bar stay in line with the
+   content — see tokens.css), and the task grid gets more columns, because
+   "how many prep tasks can a cook see without scrolling" is the whole point of
+   the extra width.
+
+   Deliberately NOT widened: .keypad-grid stays 3 across (a numeric keypad is a
+   keypad at any size) and .stat-grid stays 3 (it holds exactly three stats).
+   .weekday-usage-grid stays 7 for the same reason — there are seven weekdays.
+   --------------------------------------------------------------------------- */
+@media (min-width: 768px) {
+  :root {
+    --content-max: 900px;
+  }
+
+  .tasks-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  /* The full-row stretch below .tasks-grid is written for exactly two columns
+     (`:last-child:nth-child(odd)` is "alone on its row" only when rows hold two).
+     At three and four columns it fires on the wrong cards, and a lone task card
+     stretched across a 1040px row would tower over its siblings anyway, so the
+     stretch is simply dropped rather than re-derived per column count. */
+  .tasks-grid > :last-child:nth-child(odd) {
+    grid-column: auto;
+  }
+
+  .nav-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --content-max: 1040px;
+  }
+
+  .tasks-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Focus. There was exactly one :focus-visible rule in this whole stylesheet
+   (.assignee-select, below) — fine while every control was touch-only, and a
+   real hole the moment phase 4 gave the completion checkbox a keyboard path:
+   a cook tabbing through a prep list could not see where they were. `body` sets
+   -webkit-tap-highlight-color: transparent, which removes the touch flash, so
+   nothing else was left to show focus either.
+
+   :focus-visible rather than :focus on purpose — a plain :focus would ring
+   every control on touch and on mouse-down too, which is exactly the noise that
+   got outlines removed from stylesheets in the first place. The ring is drawn
+   with outline, not border or box-shadow, so it never reflows the element it is
+   on and it follows the element's own border-radius. --------------------------------------------------------------------------- */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* The nav's links fill their slot edge to edge, so an outline offset outwards is
+   clipped by the bar. Pull it inside instead. */
+.bottom-nav a:focus-visible {
+  outline-offset: -3px;
+}
+
+/* ---------------------------------------------------------------------------
+   Reduced motion. Everything below is decoration: the pulsing priority dot, the
+   drifting blobs and the wiggling mascot on the task screen. None of it carries
+   information — the priority dot is also colour-coded, the blobs are background
+   art — so under prefers-reduced-motion they simply stop.
+
+   The skeleton's pulse stops too and is replaced by a flat surface: a loading
+   placeholder that no longer shimmers still reads as "not content yet" because
+   of its shape, and a cook who asked the OS for less motion should not get an
+   animation running on every screen entry. Transitions are cut to ~0 rather
+   than to 0s, because a handful of them fire :active feedback that a cook does
+   rely on feeling — at 10ms it lands instantly instead of not at all.
+   --------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .priority-dot,
+  .home-blob-a,
+  .home-blob-b,
+  .home-mascot,
+  .skeleton-block {
+    animation: none !important;
+  }
 }

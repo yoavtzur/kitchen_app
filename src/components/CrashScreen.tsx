@@ -1,6 +1,8 @@
-import { useState } from 'react';
 import type { ErrorFallbackProps } from './ErrorBoundary';
 import { ResetDataControls } from './ResetDataControls';
+// Safe here despite the "calls no app hook" rule below: useTimedFlag imports nothing but React,
+// so it cannot re-enter whatever threw.
+import { useTimedFlag } from '../lib/useTimedFlag';
 
 /**
  * The root-level fallback: what a cook sees instead of a white screen.
@@ -37,7 +39,7 @@ export function CrashScreen({ eventId }: ErrorFallbackProps) {
 /** The report id, copyable. A support conversation that starts with a number instead of a
  * description is a different conversation. */
 function EventId({ id }: { id: string }) {
-  const [copied, setCopied] = useState(false);
+  const [copied, flagCopied] = useTimedFlag(1500);
   return (
     <div className="row-item">
       <span className="muted">מזהה תקלה</span>
@@ -46,15 +48,9 @@ function EventId({ id }: { id: string }) {
         className="pill"
         style={{ background: 'transparent', border: '1px solid var(--color-border)', cursor: 'pointer' }}
         onClick={() => {
-          navigator.clipboard?.writeText(id).then(
-            () => {
-              setCopied(true);
-              setTimeout(() => setCopied(false), 1500);
-            },
-            () => {
-              // clipboard blocked — the id is on screen to copy by hand, same as the join code
-            },
-          );
+          navigator.clipboard?.writeText(id).then(flagCopied, () => {
+            // clipboard blocked — the id is on screen to copy by hand, same as the join code
+          });
         }}
       >
         {copied ? 'הועתק!' : id}

@@ -43,6 +43,18 @@
   /* Only consumer is .home-mascot (global.css) — a green glow, not a colorless "pop" shadow,
      since that element already sits on --color-primary. */
   --shadow-pop: 0 0 20px -4px rgba(0, 255, 135, 0.4), 0 6px 16px rgba(0, 0, 0, 0.5);
+  /* How wide the app is allowed to get. Every consumer of a "how wide is the content column"
+     measurement uses THIS rather than repeating a number, because there are four of them
+     (.app-main, .sheet, .count-save-bar's button, .bottom-nav) and a tablet breakpoint that
+     widened only three would put the nav out of line with the content above it. Widened at the
+     two breakpoints at the bottom of global.css. */
+  --content-max: 720px;
+
+  /* The save bar's button height. A token because two unrelated rules need to agree on it:
+     .count-save-bar sizes its button to it, and .toast has to clear that bar to sit above it
+     without covering the control it is confirming. */
+  --save-bar-height: 48px;
+
   --nav-height: 64px;
   /* The bar's own height plus whatever the device reserves below it (the iPhone home
      indicator). Every consumer of a "how tall is the nav" measurement uses THIS, not

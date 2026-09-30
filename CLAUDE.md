@@ -20,9 +20,9 @@ npm run preview   # preview a production build
 
 Run a single test file: `npx vitest run src/lib/__tests__/calc.test.ts`
 
-There are 19 test files (269 tests), colocated in `__tests__` folders next to what they cover:
+There are 20 test files (278 tests), colocated in `__tests__` folders next to what they cover:
 `src/lib/__tests__/` (calc, date, ids, integrity, tasks, swipe, units-adjacent helpers, geminiScanner,
-recipeDraft, migrateStations, sentry, appConfig), `src/store/__tests__/{reducer,storage}.test.ts`,
+recipeDraft, migrateStations, sentry, appConfig, focusTrap), `src/store/__tests__/{reducer,storage}.test.ts`,
 `src/sync/__tests__/{backoff,engine,localAdapter,log,persist}.test.ts`, and **`api/__tests__/` — the one
 test directory outside `src/`**, covering the scan endpoint's guards (see "Closing /api/scan-recipe").
 
@@ -32,6 +32,13 @@ verify is checked live instead, per the branch workflow below. Several real bugs
 found only that way (a checkbox that was `display: none` on screen, a service-worker cold start that
 looked fine because a same-hash `goto` never reloaded the document) and no unit test would have caught
 either.
+
+The browser half of that is not ad hoc any more: `scripts/verify-a11y-ui.mjs` and
+`scripts/verify-auth-forms.mjs` drive a real Chromium over the things no node test can see — the
+focus ring, the sheet's scroll lock and trapped Tab, one `Escape` closing only the innermost of two
+nested sheets, the toast landing on screen rather than off the bottom of a long document, and the
+column counts at each breakpoint. They need `npm install --no-save playwright` (deliberately not a
+dependency) and a dev server; each file's header says exactly how to run it.
 
 ## Git & deployment
 
@@ -203,6 +210,8 @@ a quota atomically".
 
 `scripts/{verify-supabase,check-ops,second-device-test,verify-remove-member,verify-scan-quota}.mjs` are
 manual, throwaway verification tools against the live project — not part of the app or the build.
+`scripts/{verify-a11y-ui,verify-auth-forms}.mjs` are the same idea against a local dev server and a
+real browser instead (see "Commands" above).
 
 ### Nothing white-screens: boundaries, the route table, and scrubbed crash reports
 
@@ -347,6 +356,81 @@ delete) dispatches immediately. Tapping an ingredient's name flushes that one ro
 a single-item `BULK_UPDATE_QUANTITIES` before opening the sheet, so the sheet always shows committed
 truth — otherwise a unit change made inside the sheet would silently reinterpret a draft quantity
 still typed in the old unit.
+
+### `BottomSheet` is a real dialog, and sheets nest
+
+Every editing surface in this app is a `BottomSheet`, so everything true of dialogs is true of it
+exactly once: `role="dialog"`, `aria-modal`, `aria-labelledby` wired to its own title, `Escape` to
+close, `body` scroll-locked behind it, focus moved in on open and handed back to the control that
+opened it on close.
+
+**The part that isn't boilerplate is that sheets nest.** `RecipeEditor`'s edit sheet opens a
+`ConfirmDialog` — itself a `BottomSheet` — over itself, `StockCount`'s ingredient sheet opens two,
+and a `NumberEditor` anywhere inside any sheet opens another. Written naively, every one of those
+pairs breaks the same way: one `Escape` closes both, and the outer focus trap fights the inner one
+for focus. So `BottomSheet` keeps a module-level stack and gates both behaviours on *being the
+topmost sheet*, not on being a sheet. The scroll lock is stack-scoped for the same reason, and the
+value to restore is saved when the stack goes empty → 1 rather than per instance — a sheet saving
+what it happened to see on mount saves `'hidden'` whenever another is already open, and two
+sheets closed in the wrong order would leave the page permanently unable to scroll.
+
+The trap's actual decision lives in `src/lib/focusTrap.ts` as `nextFocusTarget(ring, active,
+shiftKey)`, a pure function returning `null` for "let the browser do what it would anyway" — only
+the two ends of the ring need intercepting, and re-implementing forward tabbing would mean
+re-deriving the browser's own order and getting it subtly wrong in the middle. Splitting it out is
+what makes a focus trap testable at all under this repo's no-jsdom rule: the component keeps only
+the parts that genuinely need a browser (querying candidates, reading `activeElement`, calling
+`.focus()`).
+
+### Transient confirmations: one timer hook, one `Toast`
+
+Seven screens had grown their own `useState` + bare `setTimeout` for "הועתק ✓" / "נשמר ✓", and all
+seven shared two bugs: the timer was never cleared on unmount, and triggering twice in quick
+succession left the first timer running to switch the flag off mid-way through the second message.
+`src/lib/useTimedFlag.ts` (`useTimedFlag`, `useTimedMessage`) owns the timer once. It imports
+nothing but React on purpose — `CrashScreen` uses it, and `CrashScreen` must call no app hook.
+
+There are deliberately **two shapes**, not one:
+
+- **A label swap**, where the confirmation replaces the text of the button just pressed (`Orders`'s
+  copy and submit, `Settings`'s join-code pill, `CrashScreen`'s crash id). The answer belongs where
+  the tap was; a floating message would be strictly worse.
+- **`components/Toast.tsx`**, fixed above the nav, for confirmations with no button to live in
+  (`StockCount`, `MorningDashboard`, `Settings`'s member removal). These used to render in document
+  flow — on `StockCount` that put "הספירה נשמרה ✓" *below a full ingredient table*, off the bottom
+  of the document, where the cook who just tapped the sticky save bar never saw it. `role="status"`
+  because a message that appears silently and removes itself is invisible to a screen reader, and
+  "did that save?" is the question it exists to answer.
+
+The strip above the bottom nav now holds three things — `.sync-badge` (start edge), `.count-save-bar`
+(centered) and `.toast`. The toast clears the save bar rather than sitting beside it, because on both
+screens that render one the two are driven by the same tap: the bar is the control, the toast is its
+answer, and a toast drawn over it would cover what it is confirming. `--save-bar-height` in
+`tokens.css` is what keeps those two rules agreeing.
+
+### Tablet, focus, motion
+
+Three rules at the bottom of `global.css`, each fixing something that was invisible on the phone
+this app was built against:
+
+- **Breakpoints at 768/1024px.** `--content-max` (720 → 900 → 1040) is the single width every
+  consumer reads — `.app-main`, `.sheet`, `.count-save-bar`'s button and `.bottom-nav` — because a
+  breakpoint that widened three of the four would put the nav out of line with the content above it.
+  `.tasks-grid` goes 2 → 3 → 4 columns, since "how many prep tasks fit without scrolling" is what
+  the extra width is *for*. `.keypad-grid`, `.stat-grid` and `.weekday-usage-grid` deliberately do
+  not move — a keypad is a keypad, there are three stats, and there are seven weekdays. Note that
+  `.tasks-grid`'s trailing-card full-row stretch is written for exactly two columns
+  (`:last-child:nth-child(odd)` means "alone on its row" only when rows hold two) and is reset above
+  768px rather than re-derived per column count.
+- **A global `:focus-visible` ring.** There was exactly one focus rule in the whole stylesheet, which
+  was fine while every control was touch-only and a real hole the moment phase 4 gave the completion
+  checkbox a keyboard path — `body` sets `-webkit-tap-highlight-color: transparent`, so nothing else
+  was left to show focus either. `:focus-visible` rather than `:focus`, and `outline` rather than a
+  border or box-shadow so it never reflows what it is on.
+- **`prefers-reduced-motion`.** Everything animated in this app is decoration (the pulsing priority
+  dot, the drifting blobs, the wiggling mascot, the skeleton's shimmer) and none of it carries
+  information the colour or shape doesn't, so it all simply stops. Transitions are cut to ~0 rather
+  than to `0s`, because a few of them are `:active` feedback a cook does rely on feeling.
 
 ### Security headers and the service worker — the bits `vercel.json` can't comment on
 
@@ -590,7 +674,7 @@ to a real restaurant crew — no white screen mid-shift, no torched Gemini accou
 loss. Run as ordered phases, **one PR per phase, each verified live and merged only on explicit
 approval in chat**. The architecture sections above describe what each landed; this is the status.
 
-**Done — phases 1 to 4:**
+**Done — phases 1 to 5:**
 
 1. **Resilience** — error boundaries, the `routes.tsx` route table, the missing 404 screen, Sentry with
    aggressive scrubbing, the three reset tiers. See "Nothing white-screens" above.
@@ -602,16 +686,12 @@ approval in chat**. The architecture sections above describe what each landed; t
    worker" above. Entry chunk went 405.92 kB → 300.90 kB (124.41 → 95.40 kB gzipped).
 4. **Home merged into Tasks** — `Today.tsx`, the shared task selectors, the accessible completion
    checkbox, `/` → `/tasks`. See "Screens and navigation" above.
+5. **Tablet, accessibility, polish** — breakpoints, the focus ring, reduced motion, `BottomSheet`
+   as a real dialog, the shared `Toast`, and auth forms a password manager recognizes. See
+   "Tablet, focus, motion" and "Transient confirmations" above.
 
-**Not started — phases 5 to 7**, in the order the plan sets:
+**Not started — phases 6 and 7**, in the order the plan sets:
 
-5. **Tablet, accessibility, polish.** Breakpoints at 768/1024px (the app is currently a hard
-   `max-width: 720px` with none); a global `:focus-visible` rule — there is exactly one in the whole
-   app today (`.assignee-select`), and `-webkit-tap-highlight-color: transparent` on `body` erases
-   what's left, which matters now that phase 4 added a keyboard-reachable checkbox;
-   `prefers-reduced-motion`; `BottomSheet` needs `role="dialog"`, a focus trap and `Escape`; a shared
-   `Toast` replacing six duplicated `useState`+`setTimeout` mechanisms; `autoComplete` on the auth
-   forms (there is none anywhere in `src/` today, so password managers don't recognize them).
 6. **Privacy, accounts, bots.** `delete_my_account()` + the Edge Function, `rotate_join_code()`,
    rate-limiting `join_restaurant` (6 chars from a 32-char alphabet with no limit today — reuse
    `scan_usage` with a fourth scope, which needs its `scope` check constraint widened), legal docs
@@ -629,5 +709,6 @@ approval in chat**. The architecture sections above describe what each landed; t
 `localStorage.setItem('kitchen-force-local','1')` in the browser to get local-only behavior back
 for a quick check. `scripts/{verify-supabase,check-ops,second-device-test,verify-remove-member}.mjs` are throwaway
 manual verification tools (`node scripts/<name>.mjs`) — not part of the build, safe to delete or
-extend as needed. A few demo accounts/restaurants exist in the live project from this testing
+extend as needed; `scripts/{verify-a11y-ui,verify-auth-forms}.mjs` are the browser-driving ones
+added in phase 5 and need `npm install --no-save playwright` first. A few demo accounts/restaurants exist in the live project from this testing
 (e.g. `browser-test-1@example.com`) — the user has said to leave that data as-is.

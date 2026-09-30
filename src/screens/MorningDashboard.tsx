@@ -8,7 +8,9 @@ import { EmptyState } from '../components/EmptyState';
 import { SearchInput } from '../components/SearchInput';
 import { CategoryTabs } from '../components/CategoryTabs';
 import { NumberEditor } from '../components/NumberEditor';
+import { Toast } from '../components/Toast';
 import { matchesQuery } from '../lib/search';
+import { useTimedFlag } from '../lib/useTimedFlag';
 import type { AppState, Ingredient } from '../types';
 
 const NO_CATEGORY = 'ללא קטגוריה';
@@ -155,7 +157,7 @@ export function MorningDashboard() {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState(ALL_CATEGORIES);
   const [drafts, setDrafts] = useState<Draft>({});
-  const [submitted, setSubmitted] = useState(false);
+  const [submitted, flagSubmitted] = useTimedFlag(2000);
 
   const today = todayStr();
   const title = membership?.restaurantName?.trim() || 'בוקר במטבח';
@@ -196,8 +198,7 @@ export function MorningDashboard() {
       dispatch({ type: 'SUBMIT_ORDER', date: today, lines });
     }
     setDrafts({});
-    setSubmitted(true);
-    setTimeout(() => setSubmitted(false), 2000);
+    flagSubmitted();
   }
 
   return (
@@ -232,17 +233,12 @@ export function MorningDashboard() {
         </div>
       )}
 
-      {submitted && (
-        <p className="pill green" style={{ marginTop: 'var(--space-4)' }}>
-          הספירה וההזמנה נשמרו ✓
-        </p>
-      )}
+      {submitted && <Toast message="הספירה וההזמנה נשמרו ✓" />}
 
       <div className="count-save-bar">
         <button
           type="button"
           className="btn btn-primary"
-          style={{ minHeight: 48 }}
           disabled={changedCounts.length === 0}
           onClick={approve}
         >

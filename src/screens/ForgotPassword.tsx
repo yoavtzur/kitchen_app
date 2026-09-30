@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -12,6 +12,7 @@ export function ForgotPassword({ onBack }: { onBack: () => void }) {
   const [error, setError] = useState('');
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
+  const emailId = useId();
 
   async function submit() {
     setError('');
@@ -46,15 +47,25 @@ export function ForgotPassword({ onBack }: { onBack: () => void }) {
       <p className="muted" style={{ marginBottom: 'var(--space-3)' }}>
         נשלח אליך קישור לאיפוס הסיסמה
       </p>
-      <div className="card stack-gap-3">
+      <form
+        className="card stack-gap-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+      >
         <div className="field" style={{ marginBottom: 0 }}>
-          <label>אימייל</label>
+          <label htmlFor={emailId}>אימייל</label>
           <input
+            id={emailId}
+            name="email"
             type="email"
+            // Same `username` as the sign-in form: a manager matches a reset form to the stored
+            // credential by this, so a cook gets their address filled instead of typed.
+            autoComplete="username"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             autoFocus
-            onKeyDown={(e) => e.key === 'Enter' && submit()}
           />
         </div>
         {error && <p style={{ color: 'var(--color-red)' }}>{error}</p>}
@@ -63,13 +74,13 @@ export function ForgotPassword({ onBack }: { onBack: () => void }) {
             אם קיים חשבון עם הכתובת הזו, נשלח אליו קישור לאיפוס סיסמה
           </p>
         )}
-        <button type="button" className="btn btn-primary" onClick={submit} disabled={busy}>
+        <button type="submit" className="btn btn-primary" disabled={busy}>
           {busy ? 'שולח...' : 'שליחת קישור לאיפוס'}
         </button>
         <button type="button" className="btn" onClick={onBack}>
           חזרה להתחברות
         </button>
-      </div>
+      </form>
     </div>
   );
 }

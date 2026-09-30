@@ -7,7 +7,9 @@ import { NumberEditor } from '../components/NumberEditor';
 import { BottomSheet } from '../components/BottomSheet';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { WeekdayUsageEditor } from '../components/WeekdayUsageEditor';
+import { Toast } from '../components/Toast';
 import { matchesQuery } from '../lib/search';
+import { useTimedFlag } from '../lib/useTimedFlag';
 import { todayStr } from '../lib/date';
 import { newId } from '../lib/ids';
 import { canConvert, unitLabel } from '../lib/units';
@@ -457,7 +459,7 @@ export function StockCount() {
   const [query, setQuery] = useState('');
   const [ingredientDrafts, setIngredientDrafts] = useState<Draft>({});
   const [productDrafts, setProductDrafts] = useState<Draft>({});
-  const [justSaved, setJustSaved] = useState(false);
+  const [justSaved, flagSaved] = useTimedFlag(2500);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
@@ -489,8 +491,7 @@ export function StockCount() {
     });
     setIngredientDrafts({});
     setProductDrafts({});
-    setJustSaved(true);
-    setTimeout(() => setJustSaved(false), 2500);
+    flagSaved();
   }
 
   function openDetail(id: string) {
@@ -576,11 +577,7 @@ export function StockCount() {
         </>
       )}
 
-      {justSaved && changeCount === 0 && (
-        <p className="pill green" style={{ marginTop: 'var(--space-4)' }}>
-          הספירה נשמרה ✓
-        </p>
-      )}
+      {justSaved && changeCount === 0 && <Toast message="הספירה נשמרה ✓" />}
 
       {changeCount > 0 && (
         <div className="count-save-bar">

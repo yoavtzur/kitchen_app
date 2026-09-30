@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { createSeedState, SCHEMA_VERSION } from '../data/seed';
 
@@ -11,6 +11,8 @@ export function Onboarding() {
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const nameId = useId();
+  const codeId = useId();
 
   function selectTab(next: Tab) {
     setTab(next);
@@ -67,23 +69,54 @@ export function Onboarding() {
       </div>
 
       {tab === 'create' ? (
-        <div className="card stack-gap-3">
+        <form
+          className="card stack-gap-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            create();
+          }}
+        >
           <p className="muted">ייפתח מרחב עבודה חדש למסעדה שלך, עם נתוני דוגמה שאפשר לערוך מיד.</p>
           <div className="field" style={{ marginBottom: 0 }}>
-            <label>שם המסעדה</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+            <label htmlFor={nameId}>שם המסעדה</label>
+            <input
+              id={nameId}
+              name="organization"
+              // The one field here a browser can usefully prefill from a saved profile.
+              autoComplete="organization"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              autoFocus
+            />
           </div>
           {error && <p style={{ color: 'var(--color-red)' }}>{error}</p>}
-          <button type="button" className="btn btn-primary" onClick={create} disabled={busy}>
+          <button type="submit" className="btn btn-primary" disabled={busy}>
             {busy ? 'רגע...' : 'צור מטבח'}
           </button>
-        </div>
+        </form>
       ) : (
-        <div className="card stack-gap-3">
+        <form
+          className="card stack-gap-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            join();
+          }}
+        >
           <p className="muted">הזן את קוד ההצטרפות שקיבלת מהטבח שכבר פתח את המטבח.</p>
           <div className="field" style={{ marginBottom: 0 }}>
-            <label>קוד הצטרפות</label>
+            <label htmlFor={codeId}>קוד הצטרפות</label>
             <input
+              id={codeId}
+              name="join-code"
+              // Explicitly off: a six-character code belongs to a restaurant, not to the person
+              // typing it, so a browser offering the last one they used would be wrong every time
+              // they join a second kitchen. `one-time-code` would be worse still — it invites the
+              // OS to go looking for an SMS that does not exist.
+              autoComplete="off"
+              // `characters` so a phone keyboard stops capitalizing per word and inserting the
+              // corrections that made a code look mistyped.
+              autoCapitalize="characters"
+              spellCheck={false}
               value={code}
               onChange={(e) => setCode(e.target.value.toUpperCase())}
               maxLength={6}
@@ -92,10 +125,10 @@ export function Onboarding() {
             />
           </div>
           {error && <p style={{ color: 'var(--color-red)' }}>{error}</p>}
-          <button type="button" className="btn btn-primary" onClick={join} disabled={busy}>
+          <button type="submit" className="btn btn-primary" disabled={busy}>
             {busy ? 'רגע...' : 'הצטרף'}
           </button>
-        </div>
+        </form>
       )}
 
       <button type="button" className="btn" style={{ marginTop: 'var(--space-4)' }} onClick={() => signOut()}>

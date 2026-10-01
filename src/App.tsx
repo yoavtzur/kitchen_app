@@ -8,7 +8,7 @@ import { RouteBoundary } from './components/RouteBoundary';
 import { SentryContext } from './components/SentryContext';
 import { SyncBadge } from './components/SyncBadge';
 import { UpdatePrompt } from './components/UpdatePrompt';
-import { APP_ROUTES, LEGAL_ROUTES } from './routes';
+import { APP_ROUTES, INVITE_ROUTES, LEGAL_ROUTES } from './routes';
 
 /**
  * The gate stack, as a **pathless layout route**.
@@ -55,7 +55,7 @@ export default function App() {
           <main className="app-main">
             <Routes>
               {/* Declared above the layout route, so they never reach a gate. */}
-              {LEGAL_ROUTES.map(({ path, name, element }) => (
+              {[...LEGAL_ROUTES, ...INVITE_ROUTES].map(({ path, name, element }) => (
                 <Route key={path} path={path} element={<RouteBoundary name={name}>{element}</RouteBoundary>} />
               ))}
               <Route element={<GatedApp />}>

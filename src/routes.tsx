@@ -20,6 +20,7 @@ const Settings = lazy(() => import('./screens/Settings').then((m) => ({ default:
 const Menu = lazy(() => import('./screens/Menu').then((m) => ({ default: m.Menu })));
 const Stations = lazy(() => import('./screens/Stations').then((m) => ({ default: m.Stations })));
 const NotFound = lazy(() => import('./screens/NotFound').then((m) => ({ default: m.NotFound })));
+const JoinRoute = lazy(() => import('./screens/JoinRoute').then((m) => ({ default: m.JoinRoute })));
 const Privacy = lazy(() => import('./screens/Legal').then((m) => ({ default: m.Privacy })));
 const Terms = lazy(() => import('./screens/Legal').then((m) => ({ default: m.Terms })));
 
@@ -79,4 +80,12 @@ export const APP_ROUTES: AppRoute[] = [
 export const LEGAL_ROUTES: AppRoute[] = [
   { path: '/legal/privacy', name: 'privacy', element: <Privacy /> },
   { path: '/legal/terms', name: 'terms', element: <Terms /> },
+];
+
+/**
+ * An invitation link (`#/join/<token>`), also **outside every gate**: whoever opens it has no
+ * account yet. It banks the token and redirects to `/`, where the gates take over — see JoinRoute.
+ */
+export const INVITE_ROUTES: AppRoute[] = [
+  { path: '/join/:token', name: 'join-invite', element: <JoinRoute /> },
 ];

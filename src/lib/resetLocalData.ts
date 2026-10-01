@@ -26,6 +26,10 @@ export const FORCE_LOCAL_KEY = 'kitchen-force-local';
 export const ANALYTICS_OPT_OUT_KEY = 'kitchen-analytics-optout';
 /** `ops.client_id`, debugging only. Regenerates on next use. */
 export const DEVICE_KEY = 'kitchen-device-id';
+/** An invite token from a `#/join/<token>` link, held between opening the link and finishing
+ * sign-up (lib/invite.ts). Clearing it just means asking the chef for a new link; it is cleared
+ * on its own as soon as it is used or the account turns out to be a member already. */
+export const INVITE_KEY = 'kitchen-pending-invite';
 
 const ALL_PREFIX = 'kitchen-';
 

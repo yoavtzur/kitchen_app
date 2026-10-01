@@ -6,7 +6,15 @@
 export type RpcErrorLike = { code?: string; message: string };
 
 export function mapRpcError(err: RpcErrorLike): string {
-  if (err.code === 'P0002') return 'קוד לא נמצא';
+  if (err.code === 'P0002') {
+    // `resolve_join_request` raises this when two devices (or a double tap) race to answer the
+    // same request. It is not a code problem, and "code not found" would send the chef looking
+    // for one.
+    if (err.message.includes('no_such_request')) return 'הבקשה כבר טופלה';
+    return 'קוד לא נמצא';
+  }
+  // `create_invite` caps open invitations per kitchen.
+  if (err.code === '54000') return 'יש יותר מדי הזמנות פתוחות. אפשר ליצור חדשה כשאחת מהן תפוג או תנוצל.';
   if (err.code === '23505') return 'החשבון כבר משויך למטבח';
   if (err.code === '42501') {
     // Checked before the plain `last_chef` case below, which is a substring of this one: the two
@@ -27,31 +35,33 @@ export function mapRpcError(err: RpcErrorLike): string {
 }
 
 /**
- * `join_restaurant`'s `status` column → Hebrew, or `null` when the join succeeded.
+ * `request_join`'s `status` column → Hebrew, or `null` when the request was recorded (`pending`).
  *
  * Separate from `mapRpcError` because these are not errors: the RPC **returns** them rather than
  * raising, and that is load-bearing rather than stylistic. Raising aborts the transaction, which
  * would roll back the attempt counter the refusal was based on — so a rate limiter that refused by
- * raising counted nothing and limited nothing. See the long comment on `join_restaurant` in
- * migration 0007, and `scripts/verify-migrations-local.sh`, which is what caught it.
+ * raising counted nothing and limited nothing. See the long comments in migrations 0007 and 0008,
+ * and `scripts/verify-migrations-local.sh`, which is what caught it the first time.
  *
- * `restaurantId` is read only to stay compatible with a server that **does not have 0007 yet**.
- * That matters because merging to `main` deploys immediately while migrations are applied by hand:
- * for the window in between, this build talks to the old two-column function, where there is no
- * `status` at all. The old function signalled every refusal by raising — which surfaces as `error`
- * and never reaches here — so a returned row carrying a real restaurant id is unambiguously a
- * success. Checking the id rather than merely the row's presence is what keeps that from
- * degenerating back into "trust anything that came back": under the *new* shape a refusal does
- * return a row, and its id is null.
+ * `pending` is the only success, and an unrecognised status is a refusal: it means a server newer
+ * than this build, and the one thing known about it is that it did not say `pending`. Treating it
+ * as success would put someone on a waiting screen for a request that was never recorded.
  */
-export function mapJoinStatus(status: unknown, restaurantId: unknown): string | null {
-  if (status === null || status === undefined) {
-    return restaurantId ? null : 'ההצטרפות נכשלה. נסו שוב.';
-  }
-  if (status === 'ok') return null;
+export function mapRequestJoinStatus(status: unknown): string | null {
+  if (status === 'pending') return null;
   if (status === 'invalid_code') return 'קוד לא נמצא';
+  if (status === 'invalid_invite') return 'הקישור כבר לא תקף. בקשו מהשף קישור חדש.';
+  if (status === 'invalid_name') return 'נא למלא שם פרטי ושם משפחה.';
+  if (status === 'already_member') return 'החשבון כבר משויך למטבח';
+  if (status === 'full') return 'יש כרגע יותר מדי בקשות ממתינות במטבח הזה. בקשו מהשף לטפל בהן ונסו שוב.';
   if (status === 'rate_limited') return 'יותר מדי ניסיונות הצטרפות. נסו שוב מאוחר יותר.';
-  // An unrecognised status means a server newer than this build. Refusing is the safe read: the
-  // one thing we know is that it did not say 'ok'.
   return 'ההצטרפות נכשלה. נסו שוב.';
+}
+
+/** `peek_invite`'s status → what to tell someone about to use a link, or `null` for a usable one. */
+export function mapInviteStatus(status: unknown): string | null {
+  if (status === 'valid') return null;
+  if (status === 'expired') return 'הקישור פג תוקף. בקשו מהשף קישור חדש.';
+  if (status === 'used') return 'הקישור כבר נוצל. בקשו מהשף קישור חדש.';
+  return 'הקישור אינו תקין. בקשו מהשף קישור חדש.';
 }

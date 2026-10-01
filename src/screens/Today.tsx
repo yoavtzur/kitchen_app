@@ -10,6 +10,7 @@ import { SearchInput } from '../components/SearchInput';
 import { CategoryTabs } from '../components/CategoryTabs';
 import { PrintStationButton } from '../components/PrintStationButton';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { JoinRequestsBanner } from '../components/JoinRequestsBanner';
 import { categoryTabs, UNASSIGNED_CATEGORY, UNASSIGNED_LABEL, type CategoryFilter } from '../lib/recipeCategories';
 import { TaskRow } from './tasks/TaskRow';
 import { AddManualTaskSheet } from './tasks/AddManualTaskSheet';
@@ -104,6 +105,11 @@ export function Today() {
             </div>
           }
         />
+      </div>
+
+      {/* Only ever renders for a chef in synced mode, and only while someone is waiting. */}
+      <div className="no-print">
+        <JoinRequestsBanner />
       </div>
 
       <div className="print-only print-banner">

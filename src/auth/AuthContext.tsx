@@ -1,13 +1,33 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import { mapJoinStatus, mapRpcError } from '../lib/rpcErrors';
+import { mapInviteStatus, mapRequestJoinStatus, mapRpcError } from '../lib/rpcErrors';
+import { writePendingInvite } from '../lib/invite';
+import type { JoinDetails } from '../lib/cookName';
 import { readCachedMembership, writeCachedMembership, type CachedMembership } from './authCache';
 import { fullReset } from '../lib/resetLocalData';
 
 type Membership = CachedMembership;
 
 type ActionResult = { error: string | null };
+
+/** Where a signed-in person without a membership stands. `none` is the ordinary new account; the
+ * other two are a request waiting on a chef, or one a chef turned down. */
+export type JoinStatus = {
+  status: 'none' | 'pending' | 'rejected';
+  restaurantName: string | null;
+  firstName: string | null;
+  lastName: string | null;
+};
+
+/** One person waiting for a chef's answer. */
+export type JoinRequestRow = {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  phone: string | null;
+  createdAt: string;
+};
 
 type AuthContextValue = {
   /** Still resolving the initial session on first load. */
@@ -17,6 +37,13 @@ type AuthContextValue = {
    * last-known cached value while a fresh membership fetch is in flight or fails offline. */
   membership: Membership | null;
   membershipLoading: boolean;
+  /** For an account with no membership: whether it has asked to join somewhere. `null` while
+   * unknown (not yet fetched, or the fetch failed offline). */
+  joinStatus: JoinStatus | null;
+  /** Re-reads the request status. Returns `'member'` when the chef has approved it — the caller
+   * (the waiting screen) then calls `refreshMembership`. Never throws; offline yields `null`. */
+  refreshJoinStatus(): Promise<JoinStatus['status'] | 'member' | null>;
+  refreshMembership(): void;
   /** True once Supabase has reported a PASSWORD_RECOVERY event — i.e. the session came from a
    * reset link, not a normal sign-in, so the user still owes us a new password. */
   recovering: boolean;
@@ -30,7 +57,20 @@ type AuthContextValue = {
   resetPassword(email: string, captchaToken?: string): Promise<ActionResult>;
   updatePassword(password: string): Promise<ActionResult>;
   createRestaurant(name: string, snapshot: unknown, schemaVersion: number): Promise<ActionResult>;
-  joinRestaurant(code: string): Promise<ActionResult>;
+  /** Asks to join a kitchen — by invite token or by the six-character code — and records who is
+   * asking. Does NOT make the caller a member: a chef has to approve first. */
+  requestJoin(args: { code?: string; token?: string; details: JoinDetails }): Promise<ActionResult>;
+  /** Which kitchen a link is for, before committing to it. `error` is set for a link that cannot
+   * be used (expired, already used, unknown). */
+  peekInvite(token: string): Promise<{ restaurantName: string | null; error: string | null }>;
+  /** The requester acknowledging a rejection, or withdrawing a pending request. */
+  dismissJoinRequest(): Promise<ActionResult>;
+  /** Chef-only. A link good for 72 hours; the token is only ever visible in this return value. */
+  createInvite(): Promise<{ token: string | null; error: string | null }>;
+  /** Chef-only. People waiting at the door, oldest first. */
+  listJoinRequests(): Promise<{ requests: JoinRequestRow[]; error: string | null }>;
+  /** Chef-only. Approving makes the person a `cook` bound to `cookId`. */
+  resolveJoinRequest(userId: string, approve: boolean, cookId?: string): Promise<ActionResult>;
   setMyCook(cookId: string): Promise<ActionResult>;
   setMemberPermissions(
     userId: string,
@@ -75,6 +115,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [membership, setMembership] = useState<Membership | null>(() => readCachedMembership());
   const [membershipLoading, setMembershipLoading] = useState(false);
   const [recovering, setRecovering] = useState(false);
+  const [joinStatus, setJoinStatus] = useState<JoinStatus | null>(null);
+  // Bumped to re-run the membership fetch on demand (a chef just approved this person).
+  const [membershipNonce, setMembershipNonce] = useState(0);
+
+  const refreshJoinStatus = useCallback(async (): Promise<JoinStatus['status'] | 'member' | null> => {
+    if (!supabase) return null;
+    const { data, error } = await supabase.rpc('my_join_status');
+    if (error) return null; // offline or transient: keep what is on screen
+    const row = data?.[0];
+    if (!row) return null;
+    if (row.status === 'member') return 'member';
+    const next: JoinStatus = {
+      status: row.status === 'pending' || row.status === 'rejected' ? row.status : 'none',
+      restaurantName: row.restaurant_name ?? null,
+      firstName: row.first_name ?? null,
+      lastName: row.last_name ?? null,
+    };
+    setJoinStatus(next);
+    return next.status;
+  }, []);
 
   useEffect(() => {
     if (!supabase) {
@@ -90,6 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (event === 'SIGNED_OUT') {
         setMembership(null);
         writeCachedMembership(null);
+        setJoinStatus(null);
         setRecovering(false);
       }
       // A reset link signs the user straight in, so `session` alone can't tell a recovery apart
@@ -108,10 +169,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .select('restaurant_id, cook_id, role, can_edit_recipes, can_delete_recipes, restaurants(name)')
       .eq('user_id', session.user.id)
       .maybeSingle()
-      .then(({ data, error }) => {
+      .then(async ({ data, error }) => {
         if (cancelled) return;
-        setMembershipLoading(false);
-        if (error) return; // offline/transient: keep whatever was cached rather than bounce out
+        if (error) {
+          setMembershipLoading(false);
+          return; // offline/transient: keep whatever was cached rather than bounce out
+        }
         const restaurant = data?.restaurants as { name?: string } | { name?: string }[] | null | undefined;
         const restaurantName = Array.isArray(restaurant) ? restaurant[0]?.name : restaurant?.name;
         const next: Membership | null = data
@@ -124,13 +187,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               canDeleteRecipes: Boolean(data.can_delete_recipes),
             }
           : null;
+        // No membership: find out whether this account is waiting on a chef *before* reporting the
+        // fetch as finished, so a returning pending cook is never shown the onboarding form for a
+        // moment on the way to the waiting screen.
+        if (!next) await refreshJoinStatus();
+        if (cancelled) return;
+        setMembershipLoading(false);
         setMembership(next);
         writeCachedMembership(next);
+        // A member has no use for the invitation they arrived with.
+        if (next) writePendingInvite(null);
       });
     return () => {
       cancelled = true;
     };
-  }, [session]);
+  }, [session, membershipNonce, refreshJoinStatus]);
 
   async function signUp(email: string, password: string, captchaToken?: string): Promise<ActionResult> {
     if (!supabase) return { error: 'Supabase אינו מוגדר' };
@@ -194,28 +265,96 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: null };
   }
 
-  /** `join_restaurant` reports a refusal in its `status` column instead of raising — see
-   * `mapJoinStatus`, which also covers a server that does not have migration 0007 yet. Only a
-   * success may write a membership: the old code trusted the mere presence of a row, which under
-   * the new shape would cache a membership with a null restaurant id. */
-  async function joinRestaurant(code: string): Promise<ActionResult> {
+  /** `request_join` reports a refusal in its `status` column instead of raising — see
+   * `mapRequestJoinStatus`. A success records a *request*, never a membership: the caller waits
+   * for a chef, and `MembershipGate` swaps to the waiting screen on `joinStatus`. */
+  async function requestJoin({
+    code,
+    token,
+    details,
+  }: {
+    code?: string;
+    token?: string;
+    details: JoinDetails;
+  }): Promise<ActionResult> {
     if (!supabase) return { error: 'Supabase אינו מוגדר' };
-    const { data, error } = await supabase.rpc('join_restaurant', { p_code: code });
+    const { data, error } = await supabase.rpc('request_join', {
+      p_code: code ?? null,
+      p_token: token ?? null,
+      p_first: details.first,
+      p_last: details.last,
+      p_phone: details.phone ?? null,
+    });
     if (error) return { error: mapRpcError(error) };
     const row = data?.[0];
     if (!row) return { error: 'ההצטרפות נכשלה. נסו שוב.' };
-    const refusal = mapJoinStatus(row.status, row.restaurant_id);
-    if (refusal) return { error: refusal };
-    const next: Membership = {
-      restaurantId: row.restaurant_id,
-      restaurantName: row.name,
-      cookId: null,
-      role: 'cook',
-      canEditRecipes: false,
-      canDeleteRecipes: false,
+    const refusal = mapRequestJoinStatus(row.status);
+    if (refusal) {
+      // A link the server will not take again is no use to keep: drop it so the form falls back
+      // to the code field instead of failing the same way on every attempt.
+      if (row.status === 'invalid_invite') writePendingInvite(null);
+      return { error: refusal };
+    }
+    writePendingInvite(null);
+    setJoinStatus({
+      status: 'pending',
+      restaurantName: row.restaurant_name ?? null,
+      firstName: details.first,
+      lastName: details.last,
+    });
+    return { error: null };
+  }
+
+  async function peekInvite(token: string): Promise<{ restaurantName: string | null; error: string | null }> {
+    if (!supabase) return { restaurantName: null, error: 'Supabase אינו מוגדר' };
+    const { data, error } = await supabase.rpc('peek_invite', { p_token: token });
+    if (error) return { restaurantName: null, error: mapRpcError(error) };
+    const row = data?.[0];
+    const refusal = mapInviteStatus(row?.status);
+    return { restaurantName: row?.restaurant_name ?? null, error: refusal };
+  }
+
+  async function dismissJoinRequest(): Promise<ActionResult> {
+    if (!supabase) return { error: 'Supabase אינו מוגדר' };
+    const { error } = await supabase.rpc('dismiss_join_rejection');
+    if (error) return { error: mapRpcError(error) };
+    setJoinStatus({ status: 'none', restaurantName: null, firstName: null, lastName: null });
+    return { error: null };
+  }
+
+  async function createInvite(): Promise<{ token: string | null; error: string | null }> {
+    if (!supabase) return { token: null, error: 'Supabase אינו מוגדר' };
+    const { data, error } = await supabase.rpc('create_invite');
+    if (error) return { token: null, error: mapRpcError(error) };
+    return typeof data === 'string' && data
+      ? { token: data, error: null }
+      : { token: null, error: 'יצירת הקישור נכשלה. נסו שוב.' };
+  }
+
+  async function listJoinRequests(): Promise<{ requests: JoinRequestRow[]; error: string | null }> {
+    if (!supabase) return { requests: [], error: 'Supabase אינו מוגדר' };
+    const { data, error } = await supabase.rpc('list_join_requests');
+    if (error) return { requests: [], error: mapRpcError(error) };
+    return {
+      requests: ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+        userId: r.user_id as string,
+        firstName: r.first_name as string,
+        lastName: r.last_name as string,
+        phone: (r.phone as string | null) ?? null,
+        createdAt: r.created_at as string,
+      })),
+      error: null,
     };
-    setMembership(next);
-    writeCachedMembership(next);
+  }
+
+  async function resolveJoinRequest(userId: string, approve: boolean, cookId?: string): Promise<ActionResult> {
+    if (!supabase) return { error: 'Supabase אינו מוגדר' };
+    const { error } = await supabase.rpc('resolve_join_request', {
+      p_user_id: userId,
+      p_approve: approve,
+      p_cook_id: cookId ?? null,
+    });
+    if (error) return { error: mapRpcError(error) };
     return { error: null };
   }
 
@@ -293,6 +432,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         session,
         membership,
         membershipLoading,
+        joinStatus,
+        refreshJoinStatus,
+        refreshMembership: () => setMembershipNonce((n) => n + 1),
         recovering,
         clearRecovering: () => setRecovering(false),
         signUp,
@@ -301,7 +443,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         resetPassword,
         updatePassword,
         createRestaurant,
-        joinRestaurant,
+        requestJoin,
+        peekInvite,
+        dismissJoinRequest,
+        createInvite,
+        listJoinRequests,
+        resolveJoinRequest,
         setMyCook,
         setMemberPermissions,
         removeMember,

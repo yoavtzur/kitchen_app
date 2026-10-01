@@ -1630,3 +1630,40 @@ textarea {
 .save-bar-spacer {
   height: calc(var(--save-bar-height) + var(--space-5));
 }
+
+/* A chef's prompt to let someone in: amber dot, the name, two answers. Sits above the task list,
+   so it has to read as a request, not as one more task card. */
+.join-requests {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.join-request {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-yellow-bg);
+  border: 1px solid var(--color-yellow);
+  border-radius: var(--radius-card);
+}
+
+.join-request-text {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.join-request-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.join-request-actions .btn {
+  min-height: 44px;
+  min-width: 72px;
+}

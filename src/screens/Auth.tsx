@@ -2,12 +2,16 @@ import { useId, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { Turnstile } from '../components/Turnstile';
+import { readPendingInvite } from '../lib/invite';
 
 type Mode = 'signin' | 'signup';
 
 export function Auth({ onForgotPassword }: { onForgotPassword: () => void }) {
   const { signUp, signIn } = useAuth();
-  const [mode, setMode] = useState<Mode>('signin');
+  // Opened from an invitation link (see JoinRoute): this person has no account yet, so start on
+  // sign-up and say why they are here. A returning cook can still flip to sign-in.
+  const [invited] = useState(() => readPendingInvite() !== null);
+  const [mode, setMode] = useState<Mode>(invited ? 'signup' : 'signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -45,6 +49,12 @@ export function Auth({ onForgotPassword }: { onForgotPassword: () => void }) {
       <div className="screen-header">
         <h1 className="screen-title">ניהול מטבח</h1>
       </div>
+      {invited && (
+        <p className="card" style={{ marginBottom: 'var(--space-3)' }}>
+          הוזמנת להצטרף למטבח. {mode === 'signup' ? 'צרו חשבון' : 'התחברו'} כדי להמשיך — אחר כך תמלאו שם, והשף יאשר את
+          הבקשה.
+        </p>
+      )}
       <p className="muted" style={{ marginBottom: 'var(--space-3)' }}>
         {mode === 'signup' ? 'צור חשבון כדי להתחיל' : 'התחבר לחשבון שלך'}
       </p>

@@ -12,6 +12,7 @@ import { BottomSheet } from '../components/BottomSheet';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { WeekdayUsageEditor } from '../components/WeekdayUsageEditor';
 import { Toast } from '../components/Toast';
+import { ExpiryField, ExpiryPill } from '../components/ExpiryField';
 import { matchesQuery } from '../lib/search';
 import {
   ALL_CATEGORIES,
@@ -84,18 +85,22 @@ function CoverageCell({ ingredient, qty, today }: { ingredient: Ingredient; qty:
   return <span className={`pill ${coverageColor(days)}`}>{Math.round(days * 10) / 10} ימים</span>;
 }
 
-type CountRow = { id: string; name: string; currentQty: number; unit: Unit };
+type CountRow = { id: string; name: string; currentQty: number; unit: Unit; expiresOn?: string };
 
 function CountTable({
   label,
   rows,
   drafts,
+  today,
   onDraftChange,
+  onOpenDetail,
 }: {
   label: string;
   rows: CountRow[];
   drafts: Draft;
+  today: string;
   onDraftChange: (id: string, value: string) => void;
+  onOpenDetail: (id: string) => void;
 }) {
   return (
     <table className="data-table">
@@ -108,7 +113,17 @@ function CountTable({
       <tbody>
         {rows.map((row) => (
           <tr key={row.id} className={isChanged(row.id, row.currentQty, drafts) ? 'count-row-changed' : undefined}>
-            <td>{row.name}</td>
+            <td>
+              <button
+                type="button"
+                className="count-name-btn"
+                onClick={() => onOpenDetail(row.id)}
+                aria-label={`תוקף — ${row.name}`}
+              >
+                <span>{row.name}</span>
+                <ExpiryPill expiresOn={row.expiresOn} today={today} />
+              </button>
+            </td>
             <td>
               <div className="count-qty-cell">
                 <NumberEditor
@@ -128,7 +143,28 @@ function CountTable({
 }
 
 function toRows(items: (Ingredient | Product)[]): CountRow[] {
-  return items.map((item) => ({ id: item.id, name: item.name, currentQty: item.currentQty, unit: item.unit }));
+  return items.map((item) => ({
+    id: item.id,
+    name: item.name,
+    currentQty: item.currentQty,
+    unit: item.unit,
+    expiresOn: item.expiresOn,
+  }));
+}
+
+/** A product has no detail screen of its own, so this is the whole of it: its expiry date. */
+function ProductDetailSheet({ product, onClose }: { product: Product; onClose: () => void }) {
+  return (
+    <BottomSheet title={product.name} onClose={onClose}>
+      <div className="row-item">
+        <span>כמות במלאי</span>
+        <span className="muted">
+          {product.currentQty} {unitLabel(product.unit)}
+        </span>
+      </div>
+      <ExpiryField itemType="product" id={product.id} name={product.name} expiresOn={product.expiresOn} />
+    </BottomSheet>
+  );
 }
 
 function IngredientCountTable({
@@ -166,6 +202,7 @@ function IngredientCountTable({
                   aria-label={`פרטי ${ing.name}`}
                 >
                   <span>{ing.name}</span>
+                  <ExpiryPill expiresOn={ing.expiresOn} today={today} />
                 </button>
               ) : (
                 <span style={{ fontWeight: 600 }}>{ing.name}</span>
@@ -339,6 +376,7 @@ function IngredientDetailSheet({ ingredient, onClose }: { ingredient: Ingredient
           onChange={(parLevel) => dispatch({ type: 'SET_INGREDIENT_PAR', id: ingredient.id, parLevel })}
         />
       </div>
+      <ExpiryField itemType="ingredient" id={ingredient.id} name={ingredient.name} expiresOn={ingredient.expiresOn} />
       <div className="row-item">
         <span>יחידת מידה</span>
         <button type="button" className="btn" onClick={() => setPickingUnit(true)}>
@@ -506,6 +544,8 @@ export function StockCount() {
   const today = todayStr();
 
   const detailIngredient = state.ingredients.find((i) => i.id === detailId) ?? null;
+  const [productDetailId, setProductDetailId] = useState<string | null>(null);
+  const detailProduct = state.products.find((p) => p.id === productDetailId) ?? null;
 
   const ingredientTabs = useMemo(() => ingredientCategoryTabs(state.ingredients), [state.ingredients]);
   const stationTabs = useMemo(
@@ -634,6 +674,8 @@ export function StockCount() {
                   label="מנה"
                   rows={toRows(menuProducts)}
                   drafts={productDrafts}
+                  today={today}
+                  onOpenDetail={setProductDetailId}
                   onDraftChange={(id, value) => setProductDrafts((prev) => ({ ...prev, [id]: value }))}
                 />
               </div>
@@ -647,6 +689,8 @@ export function StockCount() {
                   label="מוצר"
                   rows={toRows(componentProducts)}
                   drafts={productDrafts}
+                  today={today}
+                  onOpenDetail={setProductDetailId}
                   onDraftChange={(id, value) => setProductDrafts((prev) => ({ ...prev, [id]: value }))}
                 />
               </div>
@@ -673,6 +717,7 @@ export function StockCount() {
       {isChef && detailIngredient && (
         <IngredientDetailSheet ingredient={detailIngredient} onClose={() => setDetailId(null)} />
       )}
+      {detailProduct && <ProductDetailSheet product={detailProduct} onClose={() => setProductDetailId(null)} />}
       {isChef && adding && <AddIngredientSheet onClose={() => setAdding(false)} />}
     </div>
   );

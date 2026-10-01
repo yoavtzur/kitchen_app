@@ -12,6 +12,7 @@ import { CategoryTabs } from '../components/CategoryTabs';
 import { PrintStationButton } from '../components/PrintStationButton';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { JoinRequestsBanner } from '../components/JoinRequestsBanner';
+import { ExpiryBanner } from '../components/ExpiryBanner';
 import { readStoredStation, resolveStation, writeStoredStation } from '../lib/todayFilter';
 import { categoryTabs, UNASSIGNED_CATEGORY, UNASSIGNED_LABEL, type CategoryFilter } from '../lib/recipeCategories';
 import { TaskRow } from './tasks/TaskRow';
@@ -129,6 +130,7 @@ export function Today() {
       {/* Only ever renders for a chef in synced mode, and only while someone is waiting. */}
       <div className="no-print">
         <JoinRequestsBanner />
+        <ExpiryBanner />
       </div>
 
       <div className="print-only print-banner">

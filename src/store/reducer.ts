@@ -15,6 +15,8 @@ import type {
   Task,
   TaskCompletion,
   Unit,
+  WasteEntry,
+  WasteItemType,
   Weekday,
   WeekdayUsage,
 } from '../types';
@@ -131,6 +133,14 @@ export type Action =
   // Absolute set (idempotent under replay), mirroring SET_ORDER_LINE_ORDERED's own reasoning:
   // submits the whole current-day sheet as one op instead of one op per ingredient.
   | { type: 'SUBMIT_ORDER'; date: string; lines: { ingredientId: string; qty: number }[] }
+  /** Sets (or, with null, clears) an item's last-good day. Absolute, so extending twice agrees. */
+  | { type: 'SET_EXPIRY'; itemType: WasteItemType; id: string; expiresOn: string | null }
+  /** Something was thrown away: appends the log row and takes `entry.qty` out of stock. The row's
+   * id is made by the dispatcher, and a row already in the log is ignored, so a replayed or
+   * retried op never throws the same food away twice. */
+  | { type: 'LOG_WASTE'; entry: WasteEntry }
+  /** "בטל" for LOG_WASTE: removes that row and puts its quantity (and expiry date) back. */
+  | { type: 'UNDO_WASTE'; id: string }
   | { type: 'UPDATE_SETTINGS'; settings: Partial<Settings> }
   | { type: 'IMPORT_STATE'; state: AppState };
 
@@ -334,6 +344,32 @@ function withQty(ingredient: Ingredient, qty: number): Ingredient {
   if (!ingredient.shortFlag || qty <= ingredient.currentQty) return { ...ingredient, currentQty: qty };
   const { shortFlag: _cleared, ...rest } = ingredient;
   return { ...rest, currentQty: qty };
+}
+
+/** Drops the key without leaving `undefined` behind (JSON would drop it too, and a replay must match). */
+function withoutExpiry<T extends { expiresOn?: string }>(item: T): T {
+  const { expiresOn: _cleared, ...rest } = item;
+  return rest as T;
+}
+
+function withExpiry<T extends { expiresOn?: string }>(item: T, expiresOn: string | null): T {
+  return expiresOn === null ? withoutExpiry(item) : { ...item, expiresOn };
+}
+
+/** Moves one item's stock by `delta` (never below zero). Products go through
+ * applyProductQtyUpdate so a stale "prep needed today" is recomputed like any other edit. */
+function adjustStock(state: AppState, itemType: WasteItemType, id: string, delta: number, today: string): AppState {
+  const round = (n: number) => Math.round(n * 1000) / 1000;
+  if (itemType === 'ingredient') {
+    return {
+      ...state,
+      ingredients: state.ingredients.map((i) =>
+        i.id === id ? { ...i, currentQty: Math.max(0, round(i.currentQty + delta)) } : i,
+      ),
+    };
+  }
+  const product = state.products.find((p) => p.id === id);
+  return product ? applyProductQtyUpdate(state, id, Math.max(0, round(product.currentQty + delta)), today) : state;
 }
 
 export function reducer(state: AppState, action: Action): AppState {
@@ -784,6 +820,45 @@ export function reducer(state: AppState, action: Action): AppState {
           o.assigneeId === action.id && !o.done ? { ...o, assigneeId: undefined } : o,
         ),
       };
+
+    case 'SET_EXPIRY':
+      return action.itemType === 'ingredient'
+        ? { ...state, ingredients: state.ingredients.map((i) => (i.id === action.id ? withExpiry(i, action.expiresOn) : i)) }
+        : { ...state, products: state.products.map((p) => (p.id === action.id ? withExpiry(p, action.expiresOn) : p)) };
+
+    case 'LOG_WASTE': {
+      const { entry } = action;
+      if (state.wasteLog?.some((e) => e.id === entry.id)) return state;
+      let next = adjustStock(state, entry.itemType, entry.itemId, -entry.qty, entry.date);
+      // An expired item that is now used up has nothing left to expire. A partial throw leaves the
+      // rest still past its date, so the banner keeps asking about it.
+      if (entry.reason === 'expired') {
+        const left =
+          entry.itemType === 'ingredient'
+            ? next.ingredients.find((i) => i.id === entry.itemId)?.currentQty
+            : next.products.find((p) => p.id === entry.itemId)?.currentQty;
+        if (left !== undefined && left <= 0) {
+          next =
+            entry.itemType === 'ingredient'
+              ? { ...next, ingredients: next.ingredients.map((i) => (i.id === entry.itemId ? withoutExpiry(i) : i)) }
+              : { ...next, products: next.products.map((p) => (p.id === entry.itemId ? withoutExpiry(p) : p)) };
+        }
+      }
+      return { ...next, wasteLog: [...(state.wasteLog ?? []), entry] };
+    }
+    case 'UNDO_WASTE': {
+      const entry = state.wasteLog?.find((e) => e.id === action.id);
+      if (!entry) return state;
+      let next = adjustStock(state, entry.itemType, entry.itemId, entry.qty, entry.date);
+      if (entry.expiredOn) {
+        const restore = <T extends { id: string; expiresOn?: string }>(item: T): T =>
+          item.id === entry.itemId && !item.expiresOn ? { ...item, expiresOn: entry.expiredOn } : item;
+        next = entry.itemType === 'ingredient'
+          ? { ...next, ingredients: next.ingredients.map(restore) }
+          : { ...next, products: next.products.map(restore) };
+      }
+      return { ...next, wasteLog: (state.wasteLog ?? []).filter((e) => e.id !== action.id) };
+    }
 
     case 'SET_ORDER_LINE_QTY':
       return upsertOrderLine(state, action.ingredientId, action.date, {

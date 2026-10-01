@@ -1584,6 +1584,18 @@ textarea {
   white-space: nowrap;
 }
 
+/* The ingredient name is itself the tap target for its details sheet. */
+.name-btn {
+  min-height: 44px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
 .morning-row-sub {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1624,20 +1636,6 @@ textarea {
   border-color: var(--color-primary);
   background: transparent;
   font-weight: 700;
-}
-
-.info-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--color-text-muted);
 }
 
 .save-bar-spacer {
@@ -2078,4 +2076,29 @@ textarea {
   color: var(--color-text-muted);
   font-size: 13px;
   font-weight: 600;
+}
+
+/* "N items past their date" at the top of the task list. A single full-width tap target: the
+   details and the two answers live in the sheet it opens. Red, because unlike the join-request
+   prompt (amber) this is food safety. */
+.expiry-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 48px;
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-red-bg);
+  border: 1px solid var(--color-red);
+  border-radius: var(--radius-card);
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-align: start;
+  cursor: pointer;
+}
+
+.expiry-banner-text {
+  flex: 1;
 }

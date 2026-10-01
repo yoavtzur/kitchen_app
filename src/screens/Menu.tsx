@@ -15,6 +15,7 @@ import {
   SettingsIcon,
   StationsIcon,
   TeamIcon,
+  WasteIcon,
 } from '../components/icons';
 
 function MenuLink({ to, icon, label }: { to: string; icon: ReactNode; label: string }) {
@@ -80,6 +81,7 @@ export function Menu() {
         {isChef && <MenuLink to="/recipes" icon={<RecipesIcon size={22} />} label="מתכונים" />}
         {isChef && <MenuLink to="/recurring" icon={<RepeatIcon size={22} />} label="משימות קבועות" />}
         {isChef && <MenuLink to="/receiving" icon={<ReceivingIcon size={22} />} label="קבלת סחורה" />}
+        {isChef && <MenuLink to="/waste" icon={<WasteIcon size={22} />} label="יומן זריקות" />}
         {isChef && <MenuLink to="/stations" icon={<StationsIcon size={22} />} label="ניהול פסים" />}
         <MenuLink to="/team" icon={<TeamIcon size={22} />} label={!isSupabaseConfigured ? 'צוות' : isChef ? 'צוות והזמנות' : 'צוות ויצירת קשר'} />
         <MenuLink

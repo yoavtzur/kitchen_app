@@ -63,3 +63,9 @@ export function weekDates(dateStr: string, weekStartsOn: 0 | 1): string[] {
     return toDateStr(day);
   });
 }
+
+/** "3/10" — a date as a cook writes it on a label, with no year. */
+export function formatDayMonth(dateStr: string): string {
+  const [, m, d] = dateStr.split('-').map(Number);
+  return `${d}/${m}`;
+}

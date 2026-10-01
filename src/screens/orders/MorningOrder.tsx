@@ -1,6 +1,5 @@
 import { memo, useMemo, useState } from 'react';
 import { useApp, useSync } from '../../store/AppContext';
-import { InfoIcon } from '../../components/icons';
 import { BottomSheet } from '../../components/BottomSheet';
 import { CategoryTabs } from '../../components/CategoryTabs';
 import { EmptyState } from '../../components/EmptyState';
@@ -132,7 +131,14 @@ const MorningRow = memo(function MorningRow({
     <div className="morning-row">
       <div className="morning-row-main">
         <div className="morning-row-name">
-          <span className="morning-row-text">{ingredient.name}</span>
+          <button
+            type="button"
+            className="morning-row-text name-btn"
+            aria-label={`פרטים — ${ingredient.name}`}
+            onClick={() => onInfo(ingredient)}
+          >
+            {ingredient.name}
+          </button>
           {tone && (
             <span
               className={`dot ${tone}`}
@@ -140,14 +146,6 @@ const MorningRow = memo(function MorningRow({
               aria-label={tone === 'red' ? 'המלאי עומד להיגמר' : 'מלאי נמוך'}
             />
           )}
-          <button
-            type="button"
-            className="info-btn"
-            aria-label={`פרטים — ${ingredient.name}`}
-            onClick={() => onInfo(ingredient)}
-          >
-            <InfoIcon size={18} />
-          </button>
         </div>
         <div className="morning-row-sub">
           {categoryOf(ingredient)} · {unitLabel(ingredient.unit)}

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useApp } from '../../store/AppContext';
 import type { DisplayTask } from '../../lib/tasks';
 import { PriorityDot, PriorityPill } from '../../components/PriorityDot';
+import { AlertIcon } from '../../components/icons';
 import { SwipeToComplete } from '../../components/SwipeToComplete';
 import { completeTask } from './completeTask';
 import { TaskDetailSheet } from './TaskDetailSheet';
@@ -83,7 +84,9 @@ export function TaskRow({ task }: { task: DisplayTask }) {
       // Left is quick actions on a recipe-backed task; a free-text one has no ingredients to report.
       onAction={recipe ? () => setActionsOpen(true) : undefined}
     >
-      <div className={`card priority-card task-card-compact ${task.priority}${task.done ? ' done' : ''}`}>
+      <div
+        className={`card priority-card task-card-compact ${task.priority}${task.done ? ' done' : ''}${task.blocked ? ' critical' : ''}`}
+      >
         <div className="row">
           <div className="row" style={{ gap: 6 }}>
             {/*
@@ -135,6 +138,12 @@ export function TaskRow({ task }: { task: DisplayTask }) {
             ✕
           </button>
         </div>
+        {task.blocked && (
+          <p className="critical-note">
+            <AlertIcon size={18} />
+            חסר: {task.blocked.join(', ')}
+          </p>
+        )}
         {task.unitMismatch && (
           <p className="pill red" style={{ marginTop: 'var(--space-2)' }}>
             יחידת המלאי לא תואמת ליחידת המתכון — צריך לתקן בעריכת הפריט

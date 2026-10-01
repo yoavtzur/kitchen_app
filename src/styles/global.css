@@ -1991,3 +1991,20 @@ textarea {
   flex-direction: column;
   min-width: 0;
 }
+
+/* A task that cannot be made with what is on the shelf: a thick red stripe down the start edge and a
+   warning line, so urgency reads without reading. It sits on top of the priority border rather than
+   replacing it — priority is about the product's stock, this is about its ingredients. */
+.priority-card.critical {
+  border-inline-start: 10px solid var(--color-red-bright);
+}
+
+.critical-note {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  color: var(--color-red);
+  font-size: 14px;
+  font-weight: 700;
+}

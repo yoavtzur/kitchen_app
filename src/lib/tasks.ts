@@ -1,6 +1,7 @@
 import type { AppState, Priority, RecipeCategory, Station, Task, TaskCompletion } from '../types';
 import { multiplierForProduct, priorityFor, toPrepare, weightedRecipeItems } from './calc';
 import { stationOptions } from './recipeCategories';
+import { convert } from './units';
 
 export type DisplayTask = {
   id: string;
@@ -23,7 +24,41 @@ export type DisplayTask = {
   /** The product's stock unit cannot be converted to the recipe's yield unit — the
    * multiplier is meaningless until the user fixes one of the two units. */
   unitMismatch?: boolean;
+  /** Names of raw ingredients this task cannot be made with right now — stock below what its
+   * multiplier needs, or flagged short by a cook. Absent when nothing is missing, and always
+   * absent on a finished task. Drives the red stripe and the jump to the top of the list. */
+  blocked?: string[];
 };
+
+/**
+ * The raw ingredients of `recipe` that are not there in the quantity `multiplier` calls for, plus
+ * any a cook flagged short ("חסר") even though the numbers look fine.
+ *
+ * Quantities are compared in the ingredient's own unit; a line whose unit cannot be converted
+ * (weight vs count) is skipped rather than guessed at — that is already flagged as a unit
+ * mismatch, and a wrong "missing" is worse than none on a screen cooks are meant to trust at a
+ * glance. Only direct raw ingredients count: a prepared product the recipe consumes has its own
+ * task, and that is where its shortage shows.
+ */
+export function blockedIngredients(
+  recipe: Parameters<typeof weightedRecipeItems>[0],
+  multiplier: number,
+  state: Parameters<typeof weightedRecipeItems>[2],
+): string[] {
+  const names: string[] = [];
+  for (const line of weightedRecipeItems(recipe, multiplier, state)) {
+    if (line.refType !== 'ingredient') continue;
+    const ing = state.ingredients.find((i) => i.id === line.refId);
+    if (!ing) continue;
+    const needed = convert(line.qty, line.unit, ing.unit);
+    const short = needed !== null && needed > 0 && ing.currentQty < needed;
+    if (short || ing.shortFlag) names.push(ing.name);
+  }
+  return names;
+}
+
+const withBlocked = <T extends DisplayTask>(task: T, names: string[]): T =>
+  names.length > 0 && !task.done ? { ...task, blocked: names } : task;
 
 export function autoTaskId(productId: string, date: string): string {
   return `auto-${productId}-${date}`;
@@ -36,7 +71,7 @@ export function getDisplayTasks(date: string, state: AppState): DisplayTask[] {
     .filter((t) => t.date === date)
     .map((t: Task) => {
       const recipe = t.recipeId ? state.recipes.find((r) => r.id === t.recipeId) : undefined;
-      return {
+      const display: DisplayTask = {
         id: t.id,
         date: t.date,
         recipeId: t.recipeId,
@@ -51,6 +86,7 @@ export function getDisplayTasks(date: string, state: AppState): DisplayTask[] {
         note: t.note,
         appliedCompletion: t.appliedCompletion,
       };
+      return recipe ? withBlocked(display, blockedIngredients(recipe, t.multiplier, state)) : display;
     });
 
   const auto: DisplayTask[] = [];
@@ -74,7 +110,7 @@ export function getDisplayTasks(date: string, state: AppState): DisplayTask[] {
     // surface a unit mismatch — its 0 multiplier is a data problem, not "nothing to do".
     if (multiplier <= 0 && !override?.done && !unitMismatch) continue;
 
-    auto.push({
+    const displayTask: DisplayTask = {
       id,
       date,
       recipeId: recipe.id,
@@ -88,7 +124,8 @@ export function getDisplayTasks(date: string, state: AppState): DisplayTask[] {
       category: recipe.category,
       appliedCompletion: override?.appliedCompletion,
       unitMismatch: unitMismatch || undefined,
-    });
+    };
+    auto.push(withBlocked(displayTask, blockedIngredients(recipe, multiplier, state)));
   }
 
   return [...auto, ...manual];
@@ -123,7 +160,7 @@ export function taskProgress(tasks: readonly DisplayTask[]): TaskProgress {
 const PRIORITY_ORDER: Record<Priority, number> = { red: 0, yellow: 1, green: 2 };
 
 /**
- * Open tasks first, then by priority, then stably by id.
+ * Open tasks first, then ones missing a raw ingredient, then by priority, then stably by id.
  *
  * Done tasks sinking to the bottom is the point: a cook working down the screen should never
  * have to skip over something already finished. The final id tiebreak keeps the order identical
@@ -133,6 +170,11 @@ const PRIORITY_ORDER: Record<Priority, number> = { red: 0, yellow: 1, green: 2 }
 export function sortDisplayTasks(tasks: readonly DisplayTask[]): DisplayTask[] {
   return [...tasks].sort((a, b) => {
     if (a.done !== b.done) return a.done ? 1 : -1;
+    // Tasks that cannot be made with what is on the shelf jump the queue: they need a decision
+    // (flag, reorder, substitute) before anything else, and a cook should not have to read to find them.
+    const aBlocked = a.blocked && a.blocked.length > 0;
+    const bBlocked = b.blocked && b.blocked.length > 0;
+    if (aBlocked !== bBlocked) return aBlocked ? -1 : 1;
     const byPriority = PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
     if (byPriority !== 0) return byPriority;
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;

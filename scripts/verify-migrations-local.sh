@@ -90,14 +90,23 @@ ck() { if [ "$2" = "$3" ]; then echo "PASS  $1"; pass=$((pass+1)); else echo "FA
 newuser() { $Q -c "insert into auth.users(email) values ('$1') returning id"; }
 # One psql -c, therefore one transaction — the whole point of this harness.
 as() { $Q -c "set request.jwt.claim.sub = '$1'; $2"; }
+# Same, but as the `authenticated` role, so row-level security applies (the default connection is
+# a superuser, which bypasses it — fine for calling SECURITY DEFINER functions, useless for
+# proving what a signed-in client can and cannot read).
+asrls() { $Q -c "set request.jwt.claim.sub = '$1'; set role authenticated; $2"; }
+# Joining is request + chef approval since 0008. Echoes the request's status.
+ask() { as "$1" "select status from public.request_join('$2', null, 'שם', 'משפחה', null)"; }
+approve() { as "$CHEF" "select public.resolve_join_request('$1'::uuid, true, 'cook-$1')"; }
+joinas() { ask "$1" "$2" >/dev/null; approve "$1" >/dev/null; }
 
 echo; echo "== rotate_join_code =="
 CHEF=$(newuser chef@t); COOK=$(newuser cook@t); OUT=$(newuser out@t)
 CODE1=$(as "$CHEF" "select join_code from public.create_restaurant('מטבח','{\"schemaVersion\":5}'::jsonb,5)")
 CODE2=$(as "$CHEF" "select public.rotate_join_code()")
 ck "the rotated code differs from the original" "$([ -n "$CODE2" ] && [ "$CODE1" != "$CODE2" ] && echo y)" "y"
-ck "the OLD code no longer joins" "$(as "$COOK" "select status from public.join_restaurant('$CODE1')")" "invalid_code"
-ck "the NEW code does" "$(as "$COOK" "select status from public.join_restaurant('$CODE2')")" "ok"
+ck "the OLD code no longer joins" "$(ask "$COOK" "$CODE1")" "invalid_code"
+ck "the NEW code is accepted as a request" "$(ask "$COOK" "$CODE2")" "pending"
+approve "$COOK" >/dev/null
 ck "a cook cannot rotate" "$(as "$COOK" "select public.rotate_join_code()" 2>&1 >/dev/null | grep -c chef_only)" "1"
 ck "a non-member cannot rotate" "$(as "$OUT" "select public.rotate_join_code()" 2>&1 >/dev/null | grep -c not_a_member)" "1"
 
@@ -105,29 +114,166 @@ echo; echo "== join-attempt limiting, one transaction per call =="
 $Q -c "update public.app_config set join_quota_user = 3, join_quota_global = 4 where id;" >/dev/null
 GUESS=$(newuser guess@t)
 for i in 1 2 3; do
-  st=$(as "$GUESS" "select status from public.join_restaurant('ZZZZZZ')")
+  st=$(ask "$GUESS" "ZZZZZZ")
   ck "wrong guess $i is reported as an invalid code" "$st" "invalid_code"
 done
 ck "the per-account counter SURVIVED three refusals" \
    "$($Q -c "select used from public.scan_usage where scope='join_user' and scope_id='$GUESS'")" "3"
-ck "the 4th guess is cut off" "$(as "$GUESS" "select status from public.join_restaurant('ZZZZZZ')")" "rate_limited"
+ck "the 4th guess is cut off" "$(ask "$GUESS" "ZZZZZZ")" "rate_limited"
 ck "the global failure counter SURVIVED too" \
    "$($Q -c "select used>=3 from public.scan_usage where scope='join_global'")" "t"
 
 echo; echo "== the asymmetry: a correct code must work with the global bucket full =="
 $Q -c "update public.scan_usage set used = 999 where scope='join_global';" >/dev/null
 LATE=$(newuser late@t)
-ck "a CORRECT code still joins" "$(as "$LATE" "select status from public.join_restaurant('$CODE2')")" "ok"
-ck "and the membership really exists" "$($Q -c "select count(*) from public.memberships where user_id='$LATE'")" "1"
+ck "a CORRECT code is still accepted" "$(ask "$LATE" "$CODE2")" "pending"
+ck "and approving it makes a real membership" "$(approve "$LATE" >/dev/null; $Q -c "select count(*) from public.memberships where user_id='$LATE'")" "1"
 STRANGER=$(newuser stranger@t)
 ck "a wrong code is refused on the global cap, not reported as invalid" \
-   "$(as "$STRANGER" "select status from public.join_restaurant('QQQQQQ')")" "rate_limited"
+   "$(ask "$STRANGER" "QQQQQQ")" "rate_limited"
+
+
+echo; echo "== 0008: joining needs a chef's approval =="
+RID1=$($Q -c "select restaurant_id from public.memberships where user_id='$CHEF'")
+$Q -c "update public.app_config set join_quota_user = 1000, join_quota_global = 100000 where id;" >/dev/null
+$Q -c "update public.scan_usage set used = 0 where scope in ('join_user','join_global');" >/dev/null
+
+P1=$(newuser p1@t)
+ck "the legacy join_restaurant creates nothing and says so" \
+   "$(as "$P1" "select status from public.join_restaurant('$CODE2')")" "approval_required"
+ck "...and no request exists after it" "$($Q -c "select count(*) from public.join_requests where user_id='$P1'")" "0"
+ck "a request by code is pending" "$(ask "$P1" "$CODE2")" "pending"
+ck "asking twice is idempotent, not an error" "$(ask "$P1" "$CODE2")" "pending"
+ck "pending is NOT a membership" "$($Q -c "select count(*) from public.memberships where user_id='$P1'")" "0"
+ck "my_join_status reports pending with the kitchen name" \
+   "$(as "$P1" "select status||'|'||restaurant_name from public.my_join_status()")" "pending|מטבח"
+
+echo; echo "== 0008: a pending person can read nothing of the kitchen =="
+ck "control: the chef can read their snapshot under RLS" "$(asrls "$CHEF" "select count(*) from public.snapshots")" "1"
+ck "pending: no snapshot rows" "$(asrls "$P1" "select count(*) from public.snapshots")" "0"
+ck "pending: no restaurant rows" "$(asrls "$P1" "select count(*) from public.restaurants")" "0"
+ck "pending: no ops" "$(asrls "$P1" "select count(*) from public.ops")" "0"
+ck "pending: no membership rows" "$(asrls "$P1" "select count(*) from public.memberships")" "0"
+ck "pending: cannot append ops" \
+   "$(as "$P1" "select 1 from public.append_ops('$RID1'::uuid,'x','[]'::jsonb)" 2>&1 >/dev/null | grep -c not_a_member)" "1"
+ck "join_requests is unreachable by a client" \
+   "$(asrls "$P1" "select count(*) from public.join_requests" 2>&1 >/dev/null | grep -c 'permission denied')" "1"
+ck "invites is unreachable by a client" \
+   "$(asrls "$CHEF" "select count(*) from public.invites" 2>&1 >/dev/null | grep -c 'permission denied')" "1"
+
+echo; echo "== 0008: the chef's side =="
+ck "a cook cannot list requests" "$(as "$COOK" "select * from public.list_join_requests()" 2>&1 >/dev/null | grep -c chef_only)" "1"
+ck "the chef sees the pending request with the typed name" \
+   "$(as "$CHEF" "select first_name||' '||last_name from public.list_join_requests() where user_id='$P1'")" "שם משפחה"
+ck "a cook cannot resolve a request" \
+   "$(as "$COOK" "select public.resolve_join_request('$P1'::uuid, true, 'c1')" 2>&1 >/dev/null | grep -c chef_only)" "1"
+ck "approving needs a cook id" \
+   "$(as "$CHEF" "select public.resolve_join_request('$P1'::uuid, true, '')" 2>&1 >/dev/null | grep -c cook_id_required)" "1"
+ck "approve returns approved" "$(as "$CHEF" "select public.resolve_join_request('$P1'::uuid, true, 'cook-p1')")" "approved"
+ck "the membership exists as a cook bound to that cook id" \
+   "$($Q -c "select role||'|'||cook_id||'|'||can_edit_recipes::text||'|'||can_delete_recipes::text from public.memberships where user_id='$P1'")" "cook|cook-p1|false|false"
+ck "the request row is gone" "$($Q -c "select count(*) from public.join_requests where user_id='$P1'")" "0"
+ck "approving again finds no request" \
+   "$(as "$CHEF" "select public.resolve_join_request('$P1'::uuid, true, 'cook-p1')" 2>&1 >/dev/null | grep -c no_such_request)" "1"
+ck "the approved cook can now read the snapshot" "$(asrls "$P1" "select count(*) from public.snapshots")" "1"
+ck "my_join_status now says member" "$(as "$P1" "select status from public.my_join_status()")" "member"
+ck "a member asking to join again is told so" "$(ask "$P1" "$CODE2")" "already_member"
+
+echo; echo "== 0008: rejection =="
+P2=$(newuser p2@t)
+ask "$P2" "$CODE2" >/dev/null
+ck "reject returns rejected" "$(as "$CHEF" "select public.resolve_join_request('$P2'::uuid, false, null)")" "rejected"
+ck "the rejected person sees rejected" "$(as "$P2" "select status from public.my_join_status()")" "rejected"
+ck "a rejected request is not a to-do for the chef" \
+   "$(as "$CHEF" "select count(*) from public.list_join_requests() where user_id='$P2'")" "0"
+ck "a rejected person is still not a member" "$($Q -c "select count(*) from public.memberships where user_id='$P2'")" "0"
+as "$P2" "select public.dismiss_join_rejection()" >/dev/null
+ck "after dismissing, the status is none" "$(as "$P2" "select status from public.my_join_status()")" "none"
+ck "and they can ask again" "$(ask "$P2" "$CODE2")" "pending"
+as "$CHEF" "select public.resolve_join_request('$P2'::uuid, false, null)" >/dev/null
+ck "asking again over a rejection replaces it" "$(ask "$P2" "$CODE2")" "pending"
+ck "...without leaving two rows" "$($Q -c "select count(*) from public.join_requests where user_id='$P2'")" "1"
+as "$P2" "select public.dismiss_join_rejection()" >/dev/null
+
+echo; echo "== 0008: invites =="
+ck "a cook cannot create an invite" "$(as "$COOK" "select public.create_invite()" 2>&1 >/dev/null | grep -c chef_only)" "1"
+ck "a non-member cannot" "$(as "$OUT" "select public.create_invite()" 2>&1 >/dev/null | grep -c not_a_member)" "1"
+TOK=$(as "$CHEF" "select public.create_invite()")
+ck "the token is 32 hex characters" "$(echo "$TOK" | grep -Ec '^[0-9a-f]{32}$')" "1"
+ck "only a hash is stored, never the token" "$($Q -c "select count(*) from public.invites where token_hash = '$TOK'")" "0"
+ck "peek says valid and names the kitchen" "$(as "$P2" "select status||'|'||restaurant_name from public.peek_invite('$TOK')")" "valid|מטבח"
+ck "peek on garbage says invalid" "$(as "$P2" "select status from public.peek_invite('nope')")" "invalid"
+ck "a bad name is refused WITHOUT burning the link" \
+   "$(as "$P2" "select status from public.request_join(null, '$TOK', '', 'x', null)")" "invalid_name"
+ck "...the invite is still unused" "$($Q -c "select count(*) from public.invites where used_at is null and token_hash <> ''")" "1"
+ck "a valid token yields a pending request" \
+   "$(as "$P2" "select status from public.request_join(null, '$TOK', 'יוסי', 'כהן', ' 050-1234567 ')")" "pending"
+ck "the invite is now used, by that person" "$($Q -c "select used_by='$P2' from public.invites where used_at is not null")" "t"
+ck "the phone is stored trimmed" "$($Q -c "select phone from public.join_requests where user_id='$P2'")" "050-1234567"
+ck "peek on the used link says used" "$(as "$OUT" "select status from public.peek_invite('$TOK')")" "used"
+ck "a second person cannot reuse the link" \
+   "$(as "$OUT" "select status from public.request_join(null, '$TOK', 'א', 'ב', null)")" "invalid_invite"
+as "$CHEF" "select public.resolve_join_request('$P2'::uuid, true, 'cook-p2')" >/dev/null
+
+TOK2=$(as "$CHEF" "select public.create_invite()")
+$Q -c "update public.invites set expires_at = now() - interval '1 hour' where token_hash = encode(sha256(convert_to('$TOK2','UTF8')),'hex');" >/dev/null
+ck "an expired link is reported expired" "$(as "$OUT" "select status from public.peek_invite('$TOK2')")" "expired"
+ck "an expired link cannot be used" \
+   "$(as "$OUT" "select status from public.request_join(null, '$TOK2', 'א', 'ב', null)")" "invalid_invite"
+
+echo; echo "== 0008: a failed lookup counts, and a live invite beats a full global bucket =="
+$Q -c "update public.app_config set join_quota_global = 2 where id;" >/dev/null
+$Q -c "update public.scan_usage set used = 0 where scope = 'join_global';" >/dev/null
+for i in 1 2; do
+  U=$(newuser "g$i@t")
+  as "$U" "select status from public.request_join(null, 'badtoken$i', 'א', 'ב', null)" >/dev/null
+done
+ck "a failed token lookup bumps the global counter" \
+   "$($Q -c "select used from public.scan_usage where scope='join_global'")" "2"
+U3=$(newuser g3@t)
+ck "past the ceiling, a bad lookup is rate limited" \
+   "$(as "$U3" "select status from public.request_join(null, 'badtoken3', 'א', 'ב', null)")" "rate_limited"
+TOK3=$(as "$CHEF" "select public.create_invite()")
+ck "...but a LIVE invite still works with the bucket full" \
+   "$(as "$U3" "select status from public.request_join(null, '$TOK3', 'א', 'ב', null)")" "pending"
+as "$CHEF" "select public.resolve_join_request('$U3'::uuid, false, null)" >/dev/null
+$Q -c "update public.app_config set join_quota_global = 100000 where id;" >/dev/null
+
+echo; echo "== 0008: a cap on waiting requests =="
+$Q -c "delete from public.join_requests;" >/dev/null
+for i in $(seq 20); do
+  U=$(newuser "f$i@t")
+  $Q -c "insert into public.join_requests(user_id, restaurant_id, first_name, last_name) values ('$U','$RID1','א','ב')" >/dev/null
+done
+OVER=$(newuser over@t)
+ck "the 21st waiting request is refused as full" "$(ask "$OVER" "$CODE2")" "full"
+ck "and nothing was written" "$($Q -c "select count(*) from public.join_requests where user_id='$OVER'")" "0"
+$Q -c "delete from public.join_requests;" >/dev/null
+
+echo; echo "== 0008: station actions are chef-only =="
+op() { echo "jsonb_build_array(jsonb_build_object('op_id', gen_random_uuid(), 'action', '{\"type\":\"$1\"}'::jsonb))"; }
+ck "a cook cannot rename a station" \
+   "$(as "$COOK" "select 1 from public.append_ops('$RID1'::uuid,'c',$(op RENAME_STATION))" 2>&1 >/dev/null | grep -c forbidden_action)" "1"
+ck "a cook cannot delete a station" \
+   "$(as "$COOK" "select 1 from public.append_ops('$RID1'::uuid,'c',$(op DELETE_STATION))" 2>&1 >/dev/null | grep -c forbidden_action)" "1"
+ck "a cook can still add one" "$(as "$COOK" "select count(*) from public.append_ops('$RID1'::uuid,'c',$(op ADD_STATION))")" "1"
+ck "a chef can rename one" "$(as "$CHEF" "select count(*) from public.append_ops('$RID1'::uuid,'c',$(op RENAME_STATION))")" "1"
+ck "a chef can delete one" "$(as "$CHEF" "select count(*) from public.append_ops('$RID1'::uuid,'c',$(op DELETE_STATION))")" "1"
+ck "a forbidden batch took no sequence numbers" \
+   "$($Q -c "select last_seq = (select max(seq) from public.ops where restaurant_id='$RID1') from public.restaurants where id='$RID1'")" "t"
+
+echo; echo "== 0008: a pending person's account can be erased, and takes the request with it =="
+PD=$(newuser pd@t)
+ask "$PD" "$CODE2" >/dev/null
+ck "the request exists" "$($Q -c "select count(*) from public.join_requests where user_id='$PD'")" "1"
+as "$PD" "select public.delete_my_account()" >/dev/null
+ck "the request went with the account" "$($Q -c "select count(*) from public.join_requests where user_id='$PD'")" "0"
 
 echo; echo "== delete_my_account =="
 # The cook authors an op first, so we can see what deletion does to the restaurant's history.
 as "$COOK" "select 1 from public.append_ops('$(as "$CHEF" "select restaurant_id from public.memberships where user_id='$CHEF'")'::uuid, 'dev-cook', jsonb_build_array(jsonb_build_object('op_id', gen_random_uuid(), 'action', '{\"type\":\"SET_PRODUCT_QTY\"}'::jsonb)))" >/dev/null
 RID=$($Q -c "select restaurant_id from public.memberships where user_id='$CHEF'")
-ck "the cook authored an op" "$($Q -c "select count(*) from public.ops where restaurant_id='$RID' and user_id='$COOK'")" "1"
+ck "the cook authored an op" "$($Q -c "select count(*) from public.ops where restaurant_id='$RID' and client_id='dev-cook'")" "1"
 ck "the last chef of a staffed kitchen is refused" \
    "$(as "$CHEF" "select public.delete_my_account()" 2>&1 >/dev/null | grep -c last_chef_account)" "1"
 ck "a cook can delete their own account" \
@@ -137,8 +283,8 @@ ck "the op SURVIVES — history is the restaurant's, not the person's" \
    "$($Q -c "select count(*) from public.ops where restaurant_id='$RID' and client_id='dev-cook'")" "1"
 ck "but its author link is severed" \
    "$($Q -c "select user_id is null from public.ops where client_id='dev-cook'")" "t"
-# LATE joined earlier, so remove them to leave the chef alone.
-as "$LATE" "select public.delete_my_account()" >/dev/null
+# Everyone approved along the way has to go too, to leave the chef alone.
+for U in "$LATE" "$P1" "$P2"; do as "$U" "select public.delete_my_account()" >/dev/null; done
 ck "the last member takes the restaurant with them" \
    "$(as "$CHEF" "select public.delete_my_account()->>'restaurantDeleted'")" "true"
 ck "the restaurant row is gone" "$($Q -c "select count(*) from public.restaurants where id='$RID'")" "0"

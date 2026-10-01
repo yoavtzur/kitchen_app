@@ -2,6 +2,7 @@ import type { AppState, OrderLine } from '../types';
 import { createSeedState, SCHEMA_VERSION } from '../data/seed';
 import { todayStr } from '../lib/date';
 import { ensureStations } from '../lib/migrateStations';
+import { checkShape, checkVersion, summarize, type ImportResult } from './importValidation';
 
 /** A v4 state: everything the current AppState has except the station list. */
 type V4State = Omit<AppState, 'stations'>;
@@ -147,23 +148,34 @@ function migrateV2toV3(old: V2State): V3State {
   };
 }
 
+/**
+ * Runs the migration chain for a version this build knows, oldest first.
+ *
+ * Shared by `loadState` and the backup importer so the two can never recognise a different set
+ * of versions — which is exactly how the importer came to accept an unknown one: it carried its
+ * own copy of this ladder, and its copy ended in `return parsed` instead of a rejection.
+ *
+ * Callers must have established that `version` is in 1..SCHEMA_VERSION first (see
+ * `checkVersion`). An unrecognised version returns `null` rather than the input, so there is no
+ * path through this function that hands back something it did not migrate.
+ */
+function migrateToCurrent(parsed: unknown, version: number): AppState | null {
+  if (version === SCHEMA_VERSION) return parsed as AppState;
+  if (version === 4) return migrateV4toV5(parsed as V4State);
+  if (version === 3) return migrateV4toV5(migrateV3toV4(parsed as V3State));
+  if (version === 2) return migrateV4toV5(migrateV3toV4(migrateV2toV3(parsed as V2State)));
+  if (version === 1) {
+    return migrateV4toV5(migrateV3toV4(migrateV2toV3(migrateV1toV2(parsed as Record<string, unknown>))));
+  }
+  return null;
+}
+
 export function loadState(): AppState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return createSeedState();
     const parsed = JSON.parse(raw) as AppState;
-    if (parsed.schemaVersion === SCHEMA_VERSION) return parsed;
-    if (parsed.schemaVersion === 4) return migrateV4toV5(parsed as unknown as V4State);
-    if (parsed.schemaVersion === 3) return migrateV4toV5(migrateV3toV4(parsed as unknown as V3State));
-    if (parsed.schemaVersion === 2) {
-      return migrateV4toV5(migrateV3toV4(migrateV2toV3(parsed as unknown as V2State)));
-    }
-    if (parsed.schemaVersion === 1) {
-      return migrateV4toV5(
-        migrateV3toV4(migrateV2toV3(migrateV1toV2(parsed as unknown as Record<string, unknown>))),
-      );
-    }
-    return createSeedState();
+    return migrateToCurrent(parsed, parsed.schemaVersion) ?? createSeedState();
   } catch {
     return createSeedState();
   }
@@ -181,20 +193,41 @@ export function exportStateAsJson(state: AppState): string {
   return JSON.stringify(state, null, 2);
 }
 
-export function parseImportedState(json: string): AppState {
-  const parsed = JSON.parse(json) as AppState;
-  if (typeof parsed !== 'object' || parsed === null || !('schemaVersion' in parsed)) {
-    throw new Error('קובץ לא תקין');
+/**
+ * Parses, migrates and *validates* a backup file.
+ *
+ * Returns a result rather than throwing, because the caller has something to do with both
+ * outcomes: a failure is a Hebrew sentence to render, and a success carries the summary the
+ * confirm dialog shows before replacing a restaurant's entire state. See
+ * `store/importValidation.ts` for why every step here is a rejection rather than a repair.
+ */
+export function parseImportedState(json: string): ImportResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    return { ok: false, error: 'הקובץ אינו קובץ JSON תקין.' };
   }
-  if (parsed.schemaVersion === 4) return migrateV4toV5(parsed as unknown as V4State);
-  if (parsed.schemaVersion === 3) return migrateV4toV5(migrateV3toV4(parsed as unknown as V3State));
-  if (parsed.schemaVersion === 2) {
-    return migrateV4toV5(migrateV3toV4(migrateV2toV3(parsed as unknown as V2State)));
+
+  const version = checkVersion(parsed);
+  if (!version.ok) return version;
+
+  let migrated: AppState | null;
+  try {
+    migrated = migrateToCurrent(parsed, version.version);
+  } catch {
+    // A migration reading a field the file doesn't have. Reaching here means the file declared a
+    // version whose shape it does not actually match, which is a corrupt backup, not a bug.
+    return { ok: false, error: 'הגיבוי פגום ולא ניתן לשחזור.' };
   }
-  if (parsed.schemaVersion === 1) {
-    return migrateV4toV5(
-      migrateV3toV4(migrateV2toV3(migrateV1toV2(parsed as unknown as Record<string, unknown>))),
-    );
-  }
-  return parsed;
+  if (!migrated) return { ok: false, error: 'הגיבוי פגום ולא ניתן לשחזור.' };
+
+  const shape = checkShape(migrated);
+  if (!shape.ok) return shape;
+
+  // Settings is the one thing filled in rather than rejected — see the module comment on
+  // importValidation.ts. Every field has a meaningful default and `migrateV1toV2` has always
+  // done this, so a v1 backup missing a setting stays importable.
+  const state: AppState = { ...shape.state, settings: { ...createSeedState().settings, ...shape.state.settings } };
+  return { ok: true, state, summary: summarize(state, version.version) };
 }

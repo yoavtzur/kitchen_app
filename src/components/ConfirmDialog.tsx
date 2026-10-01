@@ -7,6 +7,9 @@ type Props = {
   onConfirm: () => void;
   confirmLabel?: string;
   destructive?: boolean;
+  /** Blocks confirmation until the caller says otherwise — for a dialog whose `children` ask the
+   * user to type something first. Cancel always stays live. */
+  confirmDisabled?: boolean;
   children: ReactNode;
 };
 
@@ -16,6 +19,7 @@ export function ConfirmDialog({
   onConfirm,
   confirmLabel = 'אישור',
   destructive = false,
+  confirmDisabled = false,
   children,
 }: Props) {
   return (
@@ -31,6 +35,7 @@ export function ConfirmDialog({
           type="button"
           className={`btn ${destructive ? 'btn-danger' : 'btn-primary'}`}
           style={{ flex: 1 }}
+          disabled={confirmDisabled}
           onClick={onConfirm}
         >
           {confirmLabel}

@@ -1,5 +1,6 @@
 import { useId, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
+import { Turnstile } from '../components/Turnstile';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -13,6 +14,8 @@ export function ForgotPassword({ onBack }: { onBack: () => void }) {
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const emailId = useId();
+  const [captcha, setCaptcha] = useState<string | null>(null);
+  const [captchaNonce, setCaptchaNonce] = useState(0);
 
   async function submit() {
     setError('');
@@ -28,10 +31,13 @@ export function ForgotPassword({ onBack }: { onBack: () => void }) {
       return;
     }
     setBusy(true);
-    const { error: err } = await resetPassword(value);
+    const { error: err } = await resetPassword(value, captcha ?? undefined);
     setBusy(false);
     if (err) {
       setError(err);
+      // Single-use token, spent even on a rejection — see the same reset in Auth.tsx.
+      setCaptcha(null);
+      setCaptchaNonce((n) => n + 1);
       return;
     }
     // Deliberately non-committal wording: the screen must not reveal which addresses have accounts.
@@ -68,6 +74,8 @@ export function ForgotPassword({ onBack }: { onBack: () => void }) {
             autoFocus
           />
         </div>
+        {/* Supabase's CAPTCHA setting covers password reset too, not only signup. */}
+        <Turnstile onToken={setCaptcha} resetKey={captchaNonce} />
         {error && <p style={{ color: 'var(--color-red)' }}>{error}</p>}
         {sent && (
           <p style={{ color: 'var(--color-green)' }}>

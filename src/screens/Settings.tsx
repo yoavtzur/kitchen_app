@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useApp, useSync } from '../store/AppContext';
 import { useAuth } from '../auth/AuthContext';
 import { usePermissions } from '../auth/usePermissions';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { mapRpcError } from '../lib/rpcErrors';
 import { exportStateAsJson, parseImportedState } from '../store/storage';
+import type { ImportSummary } from '../store/importValidation';
 import { SCHEMA_VERSION } from '../data/seed';
 import { newId } from '../lib/ids';
 import { useTimedFlag, useTimedMessage } from '../lib/useTimedFlag';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { CookPill } from '../components/CookPill';
 import { Toast } from '../components/Toast';
-import type { Cook, MemberRole, RoundTo } from '../types';
+import type { AppState, Cook, MemberRole, RoundTo } from '../types';
 
 type MemberRow = {
   userId: string;
@@ -40,7 +42,8 @@ const SYNC_STATUS_LABEL: Record<string, string> = {
 
 export function Settings() {
   const { state, dispatch } = useApp();
-  const { session, membership, signOut, setMemberPermissions, removeMember } = useAuth();
+  const { session, membership, signOut, setMemberPermissions, removeMember, rotateJoinCode, deleteMyAccount } =
+    useAuth();
   const { isChef } = usePermissions();
   const sync = useSync();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -58,6 +61,16 @@ export function Settings() {
   const [deleteCandidate, setDeleteCandidate] = useState<Cook | null>(null);
   const [removeCandidate, setRemoveCandidate] = useState<MemberRow | null>(null);
   const [removedMessage, showRemovedMessage] = useTimedMessage(1500);
+  const [importCandidate, setImportCandidate] = useState<{ state: AppState; summary: ImportSummary } | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importedMessage, showImportedMessage] = useTimedMessage(2000);
+  const [rotating, setRotating] = useState(false);
+  const [confirmRotate, setConfirmRotate] = useState(false);
+  const [accountError, setAccountError] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteTyped, setDeleteTyped] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [rotatedMessage, showRotatedMessage] = useTimedMessage(2500);
 
   const boundCookIds = new Set(members.map((m) => m.cookId).filter((id): id is string => !!id));
 
@@ -151,24 +164,42 @@ export function Settings() {
     URL.revokeObjectURL(url);
   }
 
+  /** Parses and validates, but commits nothing: an import replaces everything, so it goes
+   * through a confirmation showing what is in the file first. See `store/importValidation.ts`
+   * for why a file that doesn't validate is refused outright rather than partly applied. */
   function handleImportFile(file: File) {
     setImportError('');
     file
       .text()
-      .then(async (text) => {
-        const imported = parseImportedState(text);
-        if (isSupabaseConfigured && supabase && membership) {
-          const { error } = await supabase.rpc('reset_snapshot', {
-            p_restaurant_id: membership.restaurantId,
-            p_snapshot: imported,
-            p_schema_version: SCHEMA_VERSION,
-          });
-          if (error) setImportError(mapRpcError(error));
+      .then((text) => {
+        const result = parseImportedState(text);
+        if (!result.ok) {
+          setImportError(result.error);
           return;
         }
-        dispatch({ type: 'IMPORT_STATE', state: imported });
+        setImportCandidate({ state: result.state, summary: result.summary });
       })
-      .catch(() => setImportError('הקובץ אינו תקין.'));
+      .catch(() => setImportError('לא ניתן לקרוא את הקובץ.'));
+  }
+
+  async function confirmImport() {
+    if (!importCandidate) return;
+    const { state: imported } = importCandidate;
+    setImportCandidate(null);
+    if (isSupabaseConfigured && supabase && membership) {
+      setImporting(true);
+      const { error } = await supabase.rpc('reset_snapshot', {
+        p_restaurant_id: membership.restaurantId,
+        p_snapshot: imported,
+        p_schema_version: SCHEMA_VERSION,
+      });
+      setImporting(false);
+      if (error) setImportError(mapRpcError(error));
+      else showImportedMessage('הגיבוי שוחזר ✓');
+      return;
+    }
+    dispatch({ type: 'IMPORT_STATE', state: imported });
+    showImportedMessage('הגיבוי שוחזר ✓');
   }
 
   function addCook() {
@@ -188,6 +219,35 @@ export function Settings() {
       return;
     }
     dispatch({ type: 'DELETE_COOK', id: cook.id });
+  }
+
+  /** Replacing the code is what makes it possible to remove someone's access to the kitchen
+   * without deleting their account — the old code stops working the instant this returns. */
+  async function doRotateJoinCode() {
+    setConfirmRotate(false);
+    setAccountError('');
+    setRotating(true);
+    const { code, error } = await rotateJoinCode();
+    setRotating(false);
+    if (error) {
+      setAccountError(error);
+      return;
+    }
+    if (code) setRestaurant((prev) => (prev ? { ...prev, joinCode: code } : prev));
+    showRotatedMessage('קוד חדש נוצר ✓');
+  }
+
+  /** On success this never returns to render: deleteMyAccount wipes local storage and reloads. */
+  async function doDeleteAccount() {
+    setAccountError('');
+    setDeleting(true);
+    const { error } = await deleteMyAccount();
+    setDeleting(false);
+    if (error) {
+      setAccountError(error);
+      setConfirmDelete(false);
+      setDeleteTyped('');
+    }
   }
 
   async function copyJoinCode() {
@@ -221,19 +281,26 @@ export function Settings() {
             {restaurant && (
               <div className="row-item">
                 <span className="muted">קוד הצטרפות</span>
-                <button
-                  type="button"
-                  className="pill"
-                  style={{
-                    letterSpacing: 2,
-                    background: 'transparent',
-                    border: '1px solid var(--color-border)',
-                    cursor: 'pointer',
-                  }}
-                  onClick={copyJoinCode}
-                >
-                  {copied ? 'הועתק!' : restaurant.joinCode}
-                </button>
+                <div className="row" style={{ gap: 8, width: 'auto', alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    className="pill"
+                    style={{
+                      letterSpacing: 2,
+                      background: 'transparent',
+                      border: '1px solid var(--color-border)',
+                      cursor: 'pointer',
+                    }}
+                    onClick={copyJoinCode}
+                  >
+                    {copied ? 'הועתק!' : restaurant.joinCode}
+                  </button>
+                  {isChef && (
+                    <button type="button" className="btn" disabled={rotating} onClick={() => setConfirmRotate(true)}>
+                      {rotating ? 'מחליף...' : 'החלף קוד'}
+                    </button>
+                  )}
+                </div>
               </div>
             )}
             <div className="row-item">
@@ -393,6 +460,30 @@ export function Settings() {
         </div>
       </div>
 
+      <h2 className="section-title">פרטיות וחשבון</h2>
+      <div className="card stack-gap-3">
+        <div className="row" style={{ gap: 8 }}>
+          <Link className="btn" style={{ flex: 1, textAlign: 'center' }} to="/legal/privacy">
+            מדיניות פרטיות
+          </Link>
+          <Link className="btn" style={{ flex: 1, textAlign: 'center' }} to="/legal/terms">
+            תנאי שימוש
+          </Link>
+        </div>
+        {accountError && <p style={{ color: 'var(--color-red)' }}>{accountError}</p>}
+        {isSupabaseConfigured && session && (
+          <>
+            <p className="muted">
+              מחיקת החשבון מסירה לצמיתות את כתובת האימייל והסיסמה שלכם. אם אתם האחרונים במטבח — גם נתוני המטבח
+              יימחקו. מומלץ לייצא גיבוי קודם.
+            </p>
+            <button type="button" className="btn btn-danger" disabled={deleting} onClick={() => setConfirmDelete(true)}>
+              {deleting ? 'מוחק...' : 'מחיקת החשבון'}
+            </button>
+          </>
+        )}
+      </div>
+
       <h2 className="section-title">גיבוי ושחזור</h2>
       <div className="card stack-gap-3">
         <p className="muted">
@@ -404,8 +495,14 @@ export function Settings() {
           <button type="button" className="btn" style={{ flex: 1 }} onClick={handleExport}>
             ייצוא גיבוי
           </button>
-          <button type="button" className="btn" style={{ flex: 1 }} onClick={() => fileInputRef.current?.click()}>
-            ייבוא גיבוי
+          <button
+            type="button"
+            className="btn"
+            style={{ flex: 1 }}
+            disabled={importing}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {importing ? 'משחזר...' : 'ייבוא גיבוי'}
           </button>
         </div>
         {importError && <p style={{ color: 'var(--color-red)' }}>{importError}</p>}
@@ -455,9 +552,83 @@ export function Settings() {
         </ConfirmDialog>
       )}
 
+      {confirmRotate && (
+        <ConfirmDialog
+          title="החלפת קוד ההצטרפות"
+          confirmLabel="צור קוד חדש"
+          destructive
+          onClose={() => setConfirmRotate(false)}
+          onConfirm={doRotateJoinCode}
+        >
+          <p>
+            הקוד הנוכחי יפסיק לעבוד מיד. טבחים שכבר הצטרפו אינם מושפעים — אבל כל מי שקיבל את הקוד ועדיין לא הצטרף
+            יצטרך את הקוד החדש.
+          </p>
+        </ConfirmDialog>
+      )}
+
+      {confirmDelete && (
+        <ConfirmDialog
+          title="מחיקת החשבון"
+          confirmLabel="מחק את החשבון"
+          destructive
+          // Typing the address is the friction this deserves: the action is irreversible, it can
+          // take a whole restaurant's data with it, and there is no copy to restore from.
+          confirmDisabled={deleteTyped.trim().toLowerCase() !== (session?.user.email ?? '').toLowerCase()}
+          onClose={() => {
+            setConfirmDelete(false);
+            setDeleteTyped('');
+          }}
+          onConfirm={doDeleteAccount}
+        >
+          <p>
+            הפעולה אינה הפיכה. החשבון, כתובת האימייל והסיסמה יימחקו לצמיתות
+            {members.length <= 1 ? ', ויחד איתם כל נתוני המטבח' : ''}.
+          </p>
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label htmlFor="delete-confirm-email">להמשך, הקלידו את כתובת האימייל שלכם</label>
+            <input
+              id="delete-confirm-email"
+              type="email"
+              autoComplete="off"
+              value={deleteTyped}
+              onChange={(e) => setDeleteTyped(e.target.value)}
+              placeholder={session?.user.email ?? ''}
+            />
+          </div>
+        </ConfirmDialog>
+      )}
+
+      {importCandidate && (
+        <ConfirmDialog
+          title="שחזור גיבוי"
+          confirmLabel="שחזר והחלף הכל"
+          destructive
+          onClose={() => setImportCandidate(null)}
+          onConfirm={confirmImport}
+        >
+          <p>
+            {isSupabaseConfigured
+              ? 'הגיבוי יחליף את כל הנתונים של המטבח — בכל המכשירים, לא רק בזה. לא ניתן לבטל את הפעולה.'
+              : 'הגיבוי יחליף את כל הנתונים השמורים בדפדפן הזה. לא ניתן לבטל את הפעולה.'}
+          </p>
+          <p className="muted">
+            בקובץ: {importCandidate.summary.ingredients} מצרכים · {importCandidate.summary.products} מוצרים ·{' '}
+            {importCandidate.summary.recipes} מתכונים · {importCandidate.summary.cooks} טבחים
+          </p>
+          {importCandidate.summary.fromVersion < SCHEMA_VERSION && (
+            <p className="muted">
+              הגיבוי נוצר בגרסה ישנה יותר (גרסה {importCandidate.summary.fromVersion}) ויעודכן אוטומטית בשחזור.
+            </p>
+          )}
+        </ConfirmDialog>
+      )}
+
       {/* At the end of the screen rather than inside the team card that triggers it: Settings is
           long enough that the card is usually scrolled past by the time the removal returns. */}
       {removedMessage && <Toast message={removedMessage} />}
+      {importedMessage && <Toast message={importedMessage} />}
+      {rotatedMessage && <Toast message={rotatedMessage} />}
     </div>
   );
 }

@@ -20,9 +20,10 @@ npm run preview   # preview a production build
 
 Run a single test file: `npx vitest run src/lib/__tests__/calc.test.ts`
 
-There are 20 test files (278 tests), colocated in `__tests__` folders next to what they cover:
+There are 22 test files (319 tests), colocated in `__tests__` folders next to what they cover:
 `src/lib/__tests__/` (calc, date, ids, integrity, tasks, swipe, units-adjacent helpers, geminiScanner,
-recipeDraft, migrateStations, sentry, appConfig, focusTrap), `src/store/__tests__/{reducer,storage}.test.ts`,
+recipeDraft, migrateStations, sentry, appConfig, focusTrap, rpcErrors),
+`src/store/__tests__/{reducer,storage,importValidation}.test.ts`,
 `src/sync/__tests__/{backoff,engine,localAdapter,log,persist}.test.ts`, and **`api/__tests__/` — the one
 test directory outside `src/`**, covering the scan endpoint's guards (see "Closing /api/scan-recipe").
 
@@ -37,8 +38,15 @@ The browser half of that is not ad hoc any more: `scripts/verify-a11y-ui.mjs` an
 `scripts/verify-auth-forms.mjs` drive a real Chromium over the things no node test can see — the
 focus ring, the sheet's scroll lock and trapped Tab, one `Escape` closing only the innermost of two
 nested sheets, the toast landing on screen rather than off the bottom of a long document, and the
-column counts at each breakpoint. They need `npm install --no-save playwright` (deliberately not a
-dependency) and a dev server; each file's header says exactly how to run it.
+column counts at each breakpoint. `scripts/verify-legal-and-account.mjs` is the third, and differs in one way worth copying: it
+starts **its own two dev servers**, one with placeholder Supabase env vars and one without,
+because "this route renders above the auth gate" can only be proved on a build where the gate is
+actually on. It also pins the layout route by DOM node identity — `.bottom-nav` must be the same
+node after two navigations, which is exactly what a per-route wrapper would break.
+
+They need `npm install --no-save playwright` (deliberately not a
+dependency); each file's header says exactly how to run it, and the phase 5 pair also needs a
+dev server already running.
 
 ## Git & deployment
 
@@ -187,8 +195,10 @@ they're pure functions over `AppState` and don't care where it came from.
   `where seq > lastSeq`, which is exactly what a detected gap, a reconnect, or a tab regaining
   focus all trigger.
 
-**Supabase schema**: `supabase/migrations/0001_init.sql` through `0006_scan_quota_and_app_config.sql`,
-**all applied by hand to the live project**. Nothing in the build applies migrations, so any *future*
+**Supabase schema**: `supabase/migrations/0001_init.sql` through
+`0007_privacy_join_code_and_rate_limits.sql`, **applied by hand to the live project** (0007 is the
+one to check first if account deletion, code rotation or join rate limiting misbehaves — see
+LAUNCH-CHECKLIST.md). Nothing in the build applies migrations, so any *future*
 migration needs the same manual step before synced clients can use it — until then they sit at
 `upgrade-required` and refuse to append, which is the expected signal that it hasn't landed yet.
 `LAUNCH-CHECKLIST.md` at the repo root is the operator-facing version of this.
@@ -198,20 +208,39 @@ blob, kept off `restaurants` so that table stays realtime-cheap), `memberships` 
 `restaurant_id` ⇄ `cook_id` ⇄ role + permission flags, one restaurant per user in v1), `ops`
 (append-only, `seq` allocated from `restaurants.last_seq` under a row lock inside `append_ops` —
 **a per-restaurant contiguous sequence, not a `bigserial`**, because gap detection is meaningless over
-a sequence with holes). Plus `app_config` (the kill switch, one row) and `scan_usage` (three daily
+a sequence with holes). Plus `app_config` (the kill switch, one row) and `scan_usage` (daily
 counters; **RLS on with no policy and no grant at all**, so a client can neither read its own counter
-nor reset it — `consume_scan_quota()` is the only reachable path).
+nor reset it — the RPCs are the only reachable path). Despite the name `scan_usage` is now the
+generic counter table: 0007 widened its `scope` check to carry join-attempt counters too, because
+"count and judge atomically, per day, unreadable by the client" is the same problem twice.
+
+Both foreign keys into `auth.users` (`ops.user_id`, `restaurants.created_by`) are `on delete set
+null`, **not cascade** — see the block at the top of 0007. An op is the restaurant's data, so
+cascading would delete a departing cook's contribution to a kitchen that is still running; what
+is personal is the link to the person, and severing that is what erasure means here. Without the
+rule at all, the database itself blocks account deletion, which is how it was until 0007.
 
 RLS is SELECT-only everywhere; every write is a `SECURITY DEFINER` RPC (`create_restaurant`,
 `join_restaurant`, `append_ops`, `set_my_cook`, `reset_snapshot`, `compact_snapshot`,
-`set_member_permissions`, `remove_member`, `consume_scan_quota`), because RLS alone can't express
-"insert only once you're already a member", "allocate the next seq under a lock", or "count and judge
-a quota atomically".
+`set_member_permissions`, `remove_member`, `consume_scan_quota`, `rotate_join_code`,
+`delete_my_account`), because RLS alone can't express "insert only once you're already a member",
+"allocate the next seq under a lock", or "count and judge a quota atomically".
 
-`scripts/{verify-supabase,check-ops,second-device-test,verify-remove-member,verify-scan-quota}.mjs` are
-manual, throwaway verification tools against the live project — not part of the app or the build.
-`scripts/{verify-a11y-ui,verify-auth-forms}.mjs` are the same idea against a local dev server and a
-real browser instead (see "Commands" above).
+`scripts/{verify-supabase,check-ops,second-device-test,verify-remove-member,verify-scan-quota,verify-account-rpcs}.mjs`
+are manual, throwaway verification tools against the live project — not part of the app or the
+build. `scripts/{verify-a11y-ui,verify-auth-forms,verify-legal-and-account}.mjs` are the same idea
+against a local dev server and a real browser instead (see "Commands" above).
+
+**`scripts/verify-migrations-local.sh` is the one that runs before shipping a migration**, and it
+exists because nothing else could: every other SQL check talks to the live project, so a migration
+could only be tested *after* being pasted into the dashboard by hand. It spins up a throwaway
+local PostgreSQL with a two-table stand-in for `auth`, applies all seven migrations in order, and
+then exercises the RPCs. The property that makes it worth keeping is that **every RPC call is its
+own `psql -c`, hence its own transaction**, exactly as PostgREST gives each call. Driving the same
+functions from inside one `DO` block hides a whole class of bug, because an exception handler's
+subtransaction rollback looks like success from outside — which is precisely how 0007's rate
+limiter shipped in a commit while counting nothing at all. Add a case here for any new RPC that
+writes and then decides.
 
 ### Nothing white-screens: boundaries, the route table, and scrubbed crash reports
 
@@ -282,6 +311,95 @@ grant. `src/lib/appConfig.ts` polls it at mount, on focus (throttled) and every 
 `min_client_version` does nothing until `VITE_APP_VERSION` carries a numeric version; `isClientOutdated`
 never locks out a version it cannot parse, including the default `dev`.
 
+### Erasure, a rotatable key, and a ceiling on guessing
+
+Three things migration 0007 adds, each closing a hole that had no workaround at all.
+
+**`delete_my_account()`** is one RPC and one transaction, not an Edge Function — the plan called
+for one, but everything it needed turned out to be reachable from SQL, so there is no second
+deploy path and no CLI dependency. Three cases: not a member → just the account; the last member
+of a restaurant → the restaurant goes too (snapshots and ops cascade from `restaurants`); a chef
+with teammates and no other chef → **refused**, because deleting there leaves a working kitchen
+nobody can administer and there is no server-side way to appoint a replacement. That refusal is
+the one case where an account is not immediately erasable, and it is resolvable by the user in
+two taps, which is what makes it defensible rather than a refusal to comply. The final `delete
+from auth.users` is what makes it real rather than a soft delete; it works because a SECURITY
+DEFINER function created from the SQL editor is owned by `postgres`, and if a project ever locks
+that down the whole transaction rolls back rather than half-deleting.
+
+Client side, `AuthContext.deleteMyAccount` follows the RPC with `fullReset(signOut)` — the same
+tier-3 wipe `CrashScreen` offers — which ends in a reload. Nothing after that line runs, and
+nothing needs to: there is no session left to render a signed-in state from.
+
+**`rotate_join_code()`** exists because the join code *is* the key to a kitchen and was fixed for
+the life of the restaurant. A cook who leaves keeps a working key; a code read aloud in a busy
+room stays valid forever. Chef-only, takes no restaurant id (it acts on the caller's own
+membership, so there is nothing to lie about), and the old code stops working the instant it
+returns.
+
+**Join-attempt limiting** reuses `scan_usage` with two new scopes, and the asymmetry between
+them is the design: *every* attempt bumps the per-account counter, but only a **failed** attempt
+bumps the global one, and the global ceiling is therefore consulted only on a lookup that already
+missed. So a correct code always works no matter how full the global bucket is. Without that
+split, a global limit is a denial-of-service switch anyone can flip — exhaust it with garbage and
+nobody in any restaurant can join for the rest of the day. The per-account limit alone bounds
+nothing, because signup is open and an attacker mints a fresh account every ten guesses; the
+global counter is the real ceiling, and the split is what makes it safe to set low.
+
+**`join_restaurant` therefore reports a refusal in a `status` column rather than raising**, and
+that is the single most important thing to preserve about it. The first version raised
+`invalid_code` / `too_many_join_attempts`, and **RAISE aborts the transaction — rolling back the
+counter bump the refusal was based on**. Counting before judging buys nothing if judging erases
+the count: measured against a real database, every failed guess left `scan_usage` exactly as it
+found it, `join_global` never got a single row, and the limit never fired however many times it
+was called. It compiled, it read correctly, and it was decoration. `consume_scan_quota()` in 0006
+already had this right — it *returns* `{"status":"quota"}` — and that precedent is the one to
+follow for anything that must both record an attempt and refuse it. Raising is still correct for
+"not authenticated", where nothing has been written and a rollback loses nothing. Client side,
+`mapJoinStatus` (`lib/rpcErrors.ts`) turns the status into Hebrew and treats an **unrecognised**
+status as a refusal, because reading it as success would cache a membership with a null
+restaurant id.
+
+**Turnstile** (`src/lib/turnstile.ts`, `src/components/Turnstile.tsx`) is **dormant without
+`VITE_TURNSTILE_SITE_KEY`**, the same shape as `sentry.ts` without a DSN. It attacks the problem
+`api/_auth.ts` documents — "a valid JWT is worth nothing on its own" — one step earlier, by making
+the JWT cost something. Three things about it are load-bearing: Supabase's CAPTCHA setting is
+**not per-endpoint**, so sign-up, sign-in *and* password reset all pass a token or all break
+together; a token is **single use and is spent on a rejected attempt**, so every caller bumps
+`resetKey` after a failure or the second error message is always the wrong one; and a challenge
+that fails to load sends no token rather than blocking submit, because a CAPTCHA that cannot load
+must not be a lock on the door — the people it keeps out are the staff.
+
+### Importing a backup is the most destructive path in the app
+
+In local mode it replaces the browser's entire state. In remote mode `Settings` hands the result
+straight to `reset_snapshot`, which replaces **the whole restaurant for every device at once**,
+with no undo. `parseImportedState` used to recognise schema versions 1 to 4 and *fall through to
+`return parsed` for everything else* — so `{"schemaVersion":5}`, a two-field file, "imported
+successfully" and wiped a kitchen, after which every screen crashed on `state.ingredients.map`.
+
+`src/store/importValidation.ts` holds the two rules that follow, and they are the whole design:
+
+- **Nothing is trusted because it has a version number.** The version chooses which migration
+  chain runs and is never on its own a reason to accept the file; what the chain *produces* is
+  validated, so a bad file is caught once at the end no matter which path it took. A version
+  above `SCHEMA_VERSION` is refused outright — it is a backup from a newer app, so its shape is by
+  definition one this code does not know.
+- **Reject, never repair.** A partially-understood backup is silently deleted data, which is the
+  failure this module exists to prevent. The single exception is `settings`, filled field by field
+  from the seed defaults, because every setting has a meaningful default and an ingredient does
+  not.
+
+`migrateToCurrent` in `storage.ts` is now shared by `loadState` and the importer, and returns
+`null` for an unrecognised version rather than the input — there is no path through it that hands
+back something it did not migrate. That duplication is how the bug happened: the importer carried
+its own copy of the ladder, and its copy ended in `return parsed`.
+
+`parseImportedState` returns a result rather than throwing, because the caller has something to do
+with both outcomes: a failure is a Hebrew sentence naming the field, and a success carries the
+counts the confirm dialog shows before anything is replaced. There was no confirmation at all
+before — pick a file, lose a restaurant.
+
 ### Auth and onboarding — a render gate, not a route
 
 `src/auth/AuthContext.tsx` wraps Supabase auth (session) and the caller's `memberships` row
@@ -303,9 +421,21 @@ mode on an otherwise-configured build without touching env vars.
 `src/App.tsx` nests, outermost to innermost: `HashRouter` (works from a `file://`/static host with
 no server routing) → `AuthProvider` → `.app-shell` (with `UpdatePrompt` **outside every gate** — a
 cook stuck behind a broken bundle on the sign-in screen is exactly who needs it) → `.app-main` →
-`AuthGate` → `MembershipGate` → `MaintenanceGate` → `AppProvider` → `CookGate` → `SentryContext` +
-`SyncBadge` + `Routes` + `BottomNav`. `BottomNav` and `SyncBadge` only ever mount once every gate has
-passed, and are siblings of `<Routes>` so a route boundary can never take them down.
+`Routes`. That `<Routes>` has two kinds of child:
+
+- **`LEGAL_ROUTES`**, declared first and rendered with no gate above them at all. A privacy
+  notice a person can only read after creating the account is given after the processing it
+  describes began, so `/legal/privacy` and `/legal/terms` have to sit outside `AuthGate`. `Auth.tsx`
+  links to them, and `verify-legal-and-account.mjs` proves they render with no session.
+- **`APP_ROUTES`**, under a **pathless layout route** whose element is the gate stack:
+  `AuthGate` → `MembershipGate` → `MaintenanceGate` → `AppProvider` → `CookGate` →
+  `SentryContext` + `SyncBadge` + `<Outlet />` + `BottomNav`.
+
+`<Outlet />` sits exactly where `<Routes>` used to, which is what preserves both of the old
+shape's properties: `BottomNav` and `SyncBadge` are still *siblings* of the thing that swaps per
+route, so a route boundary can never take them down; and the whole stack — `AppProvider` included
+— stays mounted across navigations. A per-route wrapper would have remounted it on every tap,
+which is the failure the browser check pins by DOM node identity rather than by reading the code.
 
 Screens live flat in `src/screens/` (app screens plus `Auth.tsx`/`Onboarding.tsx`), except the task UI,
 which is split under `src/screens/tasks/` (`TaskRow`, `TaskDetailSheet`, `AddManualTaskSheet`,
@@ -441,7 +571,10 @@ this app was built against:
 worker from app code instead. `style-src` needs `'unsafe-inline'` and always will: this codebase
 uses React `style={{…}}` attributes on almost every screen. `connect-src` covers Supabase over
 both https and wss plus `*.sentry.io`; **Phase 7's PostHog will need adding here**, and a missing
-entry fails as a silent network error, not a build error. `https://vercel.live` (and the
+entry fails as a silent network error, not a build error. `https://challenges.cloudflare.com` is
+in `script-src` **and** `frame-src` — Turnstile renders itself in an iframe, so allowing only the
+script gives a widget that never appears; it costs nothing while `VITE_TURNSTILE_SITE_KEY` is
+unset, since nothing requests it. `https://vercel.live` (and the
 `wss://ws-us3.pusher.com` it talks to) is allowed for the preview-comment toolbar, which Vercel
 injects into preview deployments only — it costs nothing in trust terms, since Vercel already
 serves every byte of this app, and without it the review workflow in "Branch workflow" above
@@ -674,7 +807,7 @@ to a real restaurant crew — no white screen mid-shift, no torched Gemini accou
 loss. Run as ordered phases, **one PR per phase, each verified live and merged only on explicit
 approval in chat**. The architecture sections above describe what each landed; this is the status.
 
-**Done — phases 1 to 5:**
+**Done — phases 1 to 6:**
 
 1. **Resilience** — error boundaries, the `routes.tsx` route table, the missing 404 screen, Sentry with
    aggressive scrubbing, the three reset tiers. See "Nothing white-screens" above.
@@ -690,25 +823,35 @@ approval in chat**. The architecture sections above describe what each landed; t
    as a real dialog, the shared `Toast`, and auth forms a password manager recognizes. See
    "Tablet, focus, motion" and "Transient confirmations" above.
 
-**Not started — phases 6 and 7**, in the order the plan sets:
+6. **Privacy, accounts, bots** — migration `0007`, import validation, the legal routes outside
+   every gate, and dormant Turnstile. See "Erasure, a rotatable key, and a ceiling on guessing"
+   and "Importing a backup is the most destructive path in the app" above. Two deliberate
+   departures from the plan, both simplifications: account deletion is one SQL RPC rather than an
+   RPC *plus* an Edge Function, since nothing it needs is out of SQL's reach (the Edge Function
+   stays documented as the fallback if a project ever blocks `delete from auth.users`); and the
+   legal documents are real screens in `src/screens/Legal.tsx` rather than strings in
+   `src/content/legal.ts`, because they need navigation between themselves and back to the app.
+   **`OPERATOR` at the top of `Legal.tsx` is still placeholder text** — a notice with
+   `privacy@example.com` in it is not a notice, and that is the one blocking item in
+   LAUNCH-CHECKLIST.md that no code change can clear.
 
-6. **Privacy, accounts, bots.** `delete_my_account()` + the Edge Function, `rotate_join_code()`,
-   rate-limiting `join_restaurant` (6 chars from a 32-char alphabet with no limit today — reuse
-   `scan_usage` with a fourth scope, which needs its `scope` check constraint widened), legal docs
-   outside every gate, Turnstile on signup via Supabase's native support, and **import validation**:
-   `parseImportedState` currently falls through to `return parsed` for any unrecognized version, so
-   `{"schemaVersion":5}` "imports successfully" and wipes a restaurant.
+**Not started — phase 7**, the last one the plan sets:
+
 7. **CI, analytics, process.** There is no `.github/` directory at all. PostHog with
    `autocapture: false` — non-negotiable, since `$el_text` would capture the visible text of every
    clicked element, which in this app is ingredient, recipe, cook and task names. Supabase CLI so
    migrations stop being manual paste. **PostHog also needs adding to `connect-src` in `vercel.json`**,
-   where a missing entry fails as a silent network error rather than a build error.
+   where a missing entry fails as a silent network error rather than a build error — **and to the
+   privacy notice in `Legal.tsx`, in the same commit**, which currently states outright that this
+   app has no analytics and no tracking of any kind.
 
 **Environment reminder:** this dev machine already has a working `.env.local` — running
 `npm run dev` here exercises real Supabase auth, not local mode. Use
 `localStorage.setItem('kitchen-force-local','1')` in the browser to get local-only behavior back
-for a quick check. `scripts/{verify-supabase,check-ops,second-device-test,verify-remove-member}.mjs` are throwaway
-manual verification tools (`node scripts/<name>.mjs`) — not part of the build, safe to delete or
-extend as needed; `scripts/{verify-a11y-ui,verify-auth-forms}.mjs` are the browser-driving ones
-added in phase 5 and need `npm install --no-save playwright` first. A few demo accounts/restaurants exist in the live project from this testing
+for a quick check. `scripts/{verify-supabase,check-ops,second-device-test,verify-remove-member,verify-scan-quota,verify-account-rpcs}.mjs`
+are throwaway manual verification tools (`node scripts/<name>.mjs`) — not part of the build, safe
+to delete or extend as needed; `scripts/{verify-a11y-ui,verify-auth-forms,verify-legal-and-account}.mjs`
+are the browser-driving ones and need `npm install --no-save playwright` first. If the bundled
+Chromium's build number does not match the installed Playwright, point them at it explicitly:
+`CHROMIUM_PATH=/opt/pw-browsers/chromium-*/chrome-linux/chrome`. A few demo accounts/restaurants exist in the live project from this testing
 (e.g. `browser-test-1@example.com`) — the user has said to leave that data as-is.

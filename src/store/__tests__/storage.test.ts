@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { parseImportedState } from '../storage';
+import type { AppState } from '../../types';
 import { getDisplayTasks } from '../../lib/tasks';
 import { todayStr } from '../../lib/date';
+
+/**
+ * Every test in this file is about the migration chain rather than the validator, so they all
+ * assert a successful import and go on to work with the state. The validator's own rejections —
+ * the unknown version that used to sail straight through — live in importValidation.test.ts.
+ */
+function imported(json: string): AppState {
+  const result = parseImportedState(json);
+  if (!result.ok) throw new Error(`expected a valid backup, got: ${result.error}`);
+  return result.state;
+}
 
 /**
  * parseImportedState runs the same migration chain as loadState, so it exercises the v3
@@ -51,7 +63,7 @@ function v2Json(overrides: Record<string, unknown> = {}): string {
 
 describe('migrating v2 data to v3', () => {
   it('repairs a one-sided link so the recipe finally drives the main screen', () => {
-    const state = parseImportedState(v2Json());
+    const state = imported(v2Json());
 
     expect(state.schemaVersion).toBe(5);
     expect(state.products[0].recipeId).toBe('recipe-cream');
@@ -66,7 +78,7 @@ describe('migrating v2 data to v3', () => {
   });
 
   it('aligns the recipe yield unit to the product stock unit', () => {
-    const state = parseImportedState(v2Json());
+    const state = imported(v2Json());
     expect(state.recipes[0].yieldUnit).toBe('l');
   });
 
@@ -74,14 +86,14 @@ describe('migrating v2 data to v3', () => {
     const json = JSON.parse(v2Json());
     json.products[0].recipeId = 'recipe-cream';
     json.recipes[0].producesProductId = undefined;
-    const state = parseImportedState(JSON.stringify(json));
+    const state = imported(JSON.stringify(json));
 
     expect(state.recipes[0].producesProductId).toBe('prod-cream');
     expect(state.products[0].recipeId).toBe('recipe-cream');
   });
 
   it('adds an empty order sheet', () => {
-    expect(parseImportedState(v2Json()).orderLines).toEqual([]);
+    expect(imported(v2Json()).orderLines).toEqual([]);
   });
 
   it('prunes references left behind by deletes that never cascaded', () => {
@@ -96,7 +108,7 @@ describe('migrating v2 data to v3', () => {
       { id: 't-1', date: '2026-09-05', recipeId: 'recipe-gone', multiplier: 1, priority: 'red', done: false, source: 'manual' },
     ];
 
-    const state = parseImportedState(JSON.stringify(json));
+    const state = imported(JSON.stringify(json));
 
     expect(state.recipes[0].items.map((i) => i.refId)).toEqual(['ing-zucchini']);
     expect(state.dayPlans).toEqual([]);
@@ -109,7 +121,7 @@ describe('migrating v2 data to v3', () => {
     const json = JSON.parse(v2Json());
     json.recipes[0].producesProductId = 'prod-gone';
     json.products[0].recipeId = 'recipe-gone';
-    const state = parseImportedState(JSON.stringify(json));
+    const state = imported(JSON.stringify(json));
 
     expect(state.products[0].recipeId).toBeUndefined();
     expect(state.recipes[0].producesProductId).toBeUndefined();
@@ -124,7 +136,7 @@ describe('migrating v2 data to v3', () => {
       { id: 't-manual', date: '2026-09-05', recipeId: 'recipe-cream', multiplier: 1, priority: 'red', done: false, source: 'manual' },
     ];
 
-    const state = parseImportedState(JSON.stringify(json));
+    const state = imported(JSON.stringify(json));
 
     expect(state.schemaVersion).toBe(5);
     expect(state.ingredients).toHaveLength(1);
@@ -155,7 +167,7 @@ describe('migrating v3 data to v4', () => {
   }
 
   it('stamps every pre-existing order line with today so the in-progress sheet survives', () => {
-    const state = parseImportedState(v3Json());
+    const state = imported(v3Json());
     expect(state.schemaVersion).toBe(5);
     expect(state.orderLines).toEqual([
       { ingredientId: 'ing-egg', date: todayStr(), qtyOverride: 30, ordered: true },
@@ -163,7 +175,7 @@ describe('migrating v3 data to v4', () => {
   });
 
   it('an already-empty order sheet stays empty', () => {
-    const state = parseImportedState(v3Json({ orderLines: [] }));
+    const state = imported(v3Json({ orderLines: [] }));
     expect(state.orderLines).toEqual([]);
   });
 });
@@ -193,7 +205,7 @@ describe('migrating v4 data to v5', () => {
   }
 
   it('backs the categories actually in use with real, deduplicated stations — but never "general"', () => {
-    const state = parseImportedState(v4Json());
+    const state = imported(v4Json());
     expect(state.schemaVersion).toBe(5);
     expect(state.stations).toEqual(
       expect.arrayContaining([
@@ -205,7 +217,7 @@ describe('migrating v4 data to v5', () => {
   });
 
   it('a kitchen with nothing but general-category data gets an empty station list', () => {
-    const state = parseImportedState(v4Json({ recipes: [], tasks: [] }));
+    const state = imported(v4Json({ recipes: [], tasks: [] }));
     expect(state.stations).toEqual([]);
   });
 });

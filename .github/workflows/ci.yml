@@ -1,0 +1,47 @@
+# What a contributor is told to run before calling a change done (see CLAUDE.md "Commands"), run
+# on every pull request and every push to main. Vercel builds previews and production by itself;
+# this is the part that was missing: nothing stopped a red build or a failing test from merging.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: lint, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      # `tsc -b && vite build`: the typecheck is part of the build, which is why CLAUDE.md says
+      # `vitest` alone never counts as done. Built with no env vars, i.e. the local-mode bundle —
+      # the same shape every dormant integration (Sentry, PostHog, Turnstile) is tested in.
+      - run: npm run build
+
+  # Applies every migration to a throwaway PostgreSQL and exercises the RPCs, one transaction per
+  # call. This is the only check that runs a migration *before* it is pasted into the dashboard —
+  # see the header of the script for the bug that made it necessary. The runner image ships
+  # PostgreSQL, so nothing is installed; PGROOT is moved to a directory this user can write.
+  migrations:
+    name: migrations against a real PostgreSQL
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/verify-migrations-local.sh
+        env:
+          PGROOT: ${{ runner.temp }}/verify-migrations

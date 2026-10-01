@@ -1,0 +1,50 @@
+# Applies supabase/migrations/*.sql to the live project, replacing "paste it into the SQL editor".
+#
+# MANUAL ONLY, and a dry run unless `apply` is ticked. A migration changes the shared production
+# database and several of ours (0003, 0004, 0007) must land *with* the deploy rather than before
+# it, so this is deliberately not wired to a push: a person decides when. Put the secrets below
+# on a GitHub **environment** named `production` and add a required reviewer there if a second
+# pair of eyes is wanted.
+#
+# FIRST USE: the live project's migration history is empty, because 0001-0007 were applied by
+# hand. Run once, locally, before the first real push, or the CLI will try to apply all seven
+# again:
+#     supabase link --project-ref <ref>
+#     supabase migration repair --status applied 0001 0002 0003 0004 0005 0006 0007
+# (the dry run below will show the pending list, which is how you know whether that was done).
+#
+# Required in the `production` environment:
+#   secrets.SUPABASE_ACCESS_TOKEN   a personal access token (supabase.com/dashboard/account/tokens)
+#   secrets.SUPABASE_DB_PASSWORD    the database password
+#   vars.SUPABASE_PROJECT_REF       the project ref, the `xxxx` in https://xxxx.supabase.co
+name: Supabase migrate
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Actually apply the pending migrations (unticked = dry run only)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - run: supabase link --project-ref "${{ vars.SUPABASE_PROJECT_REF }}"
+      - name: Pending migrations (dry run)
+        run: supabase db push --dry-run
+      - name: Apply
+        if: ${{ inputs.apply }}
+        run: supabase db push

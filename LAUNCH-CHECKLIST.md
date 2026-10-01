@@ -6,7 +6,27 @@
 לפני שהם בוצעו — DSN ריק = מודול רדום, `app_config` חסר = אין הגבלה. הסעיפים כאן מפעילים
 יכולות, הם לא תנאי להרצה.
 
-הרשימה מתעדכנת בכל שלב. כרגע היא מכסה את שלבים 1–6.
+הרשימה מתעדכנת בכל שלב. כרגע היא מכסה את שלבים 1–7.
+
+---
+
+## ⚠️ שלב 7 — CI, סטטיסטיקות שימוש, מיגרציות
+
+אף אחד מאלה לא חוסם הרצה. הם מפעילים יכולות.
+
+1. **הגנת ענף על `main`** (GitHub → Settings → Branches): לדרוש שני checks — `lint, test, build`
+   ו‑`migrations against a real PostgreSQL`. ה‑workflow בלבד לא עוצר מיזוג של ענף אדום.
+2. **PostHog (רשות):** ליצור פרויקט **באיחוד האירופי**, להגדיר ב‑Vercel את `VITE_POSTHOG_KEY`
+   (המפתח הציבורי של הפרויקט), ובהגדרות הפרויקט ב‑PostHog להפעיל **"Discard client IP data"**.
+   בלי המפתח המודול רדום לגמרי. מה נשלח: רק פתיחת אפליקציה, שם מסך, וסוג פעולה מרשימה סגורה
+   (`src/lib/analytics.ts`) — ורק במצב מסונכרן. פרויקט אמריקאי דורש גם `VITE_POSTHOG_HOST`.
+3. **מיגרציות דרך ה‑CLI (רשות):** ב‑GitHub Settings → Environments ליצור `production` עם הסודות
+   `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD` והמשתנה `SUPABASE_PROJECT_REF`. לפני ההרצה
+   הראשונה, פעם אחת מקומית: `supabase link --project-ref <ref>` ואז
+   `supabase migration repair --status applied 0001 0002 0003 0004 0005 0006 0007` — ההיסטוריה
+   בפרויקט החי ריקה כי המיגרציות הודבקו ידנית. אחרי זה: Actions → "Supabase migrate" (ריצת
+   יבש כברירת מחדל; לסמן `apply` כדי להחיל). **ה‑workflow לא הורץ עדיין** — הריצה היבשה הראשונה
+   היא הבדיקה שלו. הדבקה ידנית ב‑SQL Editor נשארת אפשרית.
 
 ---
 

@@ -1,0 +1,5 @@
+# Minimal Supabase CLI config — just enough for `supabase link` and `supabase db push`
+# (see .github/workflows/supabase-migrate.yml). This project does not run the local Supabase
+# stack: the local check for migrations is scripts/verify-migrations-local.sh, a throwaway
+# PostgreSQL, because it is what lets every RPC be called in its own transaction.
+project_id = "kitchen-app"

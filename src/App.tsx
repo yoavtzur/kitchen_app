@@ -1,5 +1,6 @@
 import { HashRouter, Outlet, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './auth/AuthContext';
+import { AnalyticsContext } from './components/AnalyticsContext';
 import { AuthGate, MaintenanceGate, MembershipGate, CookGate } from './components/Gate';
 import { AppProvider } from './store/AppContext';
 import { BottomNav } from './components/BottomNav';
@@ -31,6 +32,7 @@ function GatedApp() {
           <AppProvider>
             <CookGate>
               <SentryContext />
+              <AnalyticsContext />
               <SyncBadge />
               <Outlet />
               <BottomNav />

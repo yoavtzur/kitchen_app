@@ -23,6 +23,8 @@ import App from './App.tsx'
 import { CrashScreen } from './components/CrashScreen.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary.tsx'
 import { installConsoleFallback, installErrorUx } from './lib/errorUx.ts'
+import { initAnalytics } from './lib/analytics.ts'
+import { isSupabaseConfigured } from './lib/supabase.ts'
 import { captureBoundaryError, initSentry } from './lib/sentry.ts'
 
 // Order matters: Sentry first, so the two installers below can see whether a client exists and
@@ -30,6 +32,9 @@ import { captureBoundaryError, initSentry } from './lib/sentry.ts'
 initSentry()
 installErrorUx()
 installConsoleFallback()
+// Dormant unless VITE_POSTHOG_KEY is set, the build is in Supabase mode, and the person has not
+// opted out. See lib/analytics.ts for everything it can and cannot send.
+initAnalytics(isSupabaseConfigured)
 
 createRoot(document.getElementById('root')!, {
   // React 19 routes what used to reach `window.onerror` through these root options instead, so

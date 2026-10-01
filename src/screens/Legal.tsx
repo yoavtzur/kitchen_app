@@ -13,8 +13,10 @@ import { Link } from 'react-router-dom';
  * adapted from a template — which is the only way a notice is worth anything. Three facts about
  * it are worth keeping true as the app changes:
  *
- *   • It says there is **no analytics and no tracking**. That is true today. The pre-launch
- *     audit's phase 7 adds PostHog, and this document has to change in the same commit.
+ *   • It describes the **anonymous usage statistics** of `lib/analytics.ts` — closed event
+ *     list, no identifier stored on the device, opt-out in Settings. If an event is added there
+ *     that carries anything beyond a screen name or an action type, this document changes in
+ *     the same commit.
  *   • It says photos sent to scan a recipe go to Google. That is `api/scan-recipe`.
  *   • It says deleting the last account in a kitchen deletes the kitchen. That is
  *     `delete_my_account()` in migration 0007.
@@ -32,7 +34,7 @@ const OPERATOR = {
   /** The region the Supabase project was created in; shown because it is where the data lives. */
   region: 'האיחוד האירופי (פרנקפורט)',
   /** Last substantive change to these documents. */
-  updated: '30 בספטמבר 2026',
+  updated: '1 באוקטובר 2026',
 };
 
 function LegalPage({ title, children }: { title: string; children: React.ReactNode }) {
@@ -82,9 +84,17 @@ export function Privacy() {
         <strong>נתונים טכניים:</strong> מזהה מכשיר אקראי שנוצר מקומית (לצורכי איתור תקלות בסנכרון בלבד), ומונה יומי
         של פעולות סריקה והצטרפות, שנועד למנוע שימוש לרעה.
       </p>
+      <p>
+        <strong>סטטיסטיקות שימוש אנונימיות:</strong> כדי להבין אילו חלקים באפליקציה משמשים בפועל, נשלחים אל PostHog
+        אירועים בודדים מרשימה סגורה: שהאפליקציה נפתחה, שם המסך שנפתח (למשל "הזמנות"), וסוג הפעולה שבוצעה (למשל
+        "השלמת משימה"). <strong>לא נשלחים שמות, כמויות, תוכן מתכונים, כתובת אימייל או כל טקסט שהוזן.</strong> האירועים
+        אינם מקושרים לחשבון: מזהה אקראי נשמר בזיכרון הדף בלבד, אינו נכתב למכשיר ומתחלף בכל פתיחה, כתובת ה‑IP אינה
+        משמשת לאיתור מיקום, ואין יצירת פרופיל אישי. אפשר לכבות זאת בהגדרות ("פרטיות וחשבון"), והאפליקציה מכבדת
+        אוטומטית את אות "Do Not Track" ו‑Global Privacy Control של הדפדפן. במצב מקומי (ללא חשבון) שום דבר לא נשלח.
+      </p>
       <p className="muted">
-        אין באפליקציה מדידת שימוש, פרסום, פיקסלים או כלי מעקב מכל סוג. אין קובצי Cookie פרסומיים. האחסון המקומי
-        בדפדפן משמש רק לשמירת ההתחברות ולעבודה במצב לא מקוון.
+        אין באפליקציה פרסום, פיקסלים או מעקב בין אתרים, ואין קובצי Cookie פרסומיים. האחסון המקומי בדפדפן משמש רק
+        לשמירת ההתחברות, לעבודה במצב לא מקוון ולבחירות שלכם (כמו כיבוי הסטטיסטיקות).
       </p>
 
       <h2 className="section-title">היכן זה נשמר, ומי עוד רואה את זה</h2>
@@ -96,6 +106,9 @@ export function Privacy() {
         <strong>סריקת מתכון מתמונה</strong> היא הפעולה היחידה ששולחת מידע לצד שלישי נוסף: התמונה נשלחת אל שירות
         Gemini של Google לצורך חילוץ הטקסט, ומוחזרת כטקסט. התמונה אינה נשמרת אצלנו. הפעולה מופעלת רק כשלוחצים על
         כפתור הסריקה.
+      </p>
+      <p>
+        <strong>סטטיסטיקות שימוש</strong> נשלחות אל PostHog, אם הופעלו, כמתואר למעלה.
       </p>
       <p>
         <strong>דיווחי תקלות</strong> נשלחים אל Sentry, אם הופעל. הדיווחים עוברים סינון אגרסיבי לפני השליחה: כל

@@ -1046,6 +1046,23 @@ this required.
 That landed in the pre-launch audit's phase 3 (below). `compact_snapshot` is still wired in SQL and
 still unused — worth doing if the `ops` table ever grows large enough to matter.
 
+**Also done — expiry dates and the chef's waste log (2026-10-01):** `Ingredient.expiresOn` /
+`Product.expiresOn` (one last-good day per item, not per batch) and `AppState.wasteLog` — all
+optional, so no `SCHEMA_VERSION` bump. `lib/expiry.ts` (`expiredItems`: past its date *and* still in
+stock) and `lib/waste.ts` (entry builder, week/month ranges, per-item totals) are pure and tested.
+Three reducer actions: `SET_EXPIRY` (absolute; `null` clears), `LOG_WASTE` (appends the row, takes
+`entry.qty` out of stock, ignores an id it already has; clears an expired item's date only once the
+stock is used up, so a partial throw keeps flagging the rest), and `UNDO_WASTE` (puts stock and date
+back). The `WasteEntry` row snapshots the item name/unit and is never pruned by `pruneEntities`, so
+the history survives deleting the ingredient. The "מה התקלקל?" quick action now logs too
+(`reason: 'spoiled'`). UI: `ExpiryBanner` on the task list (everyone — whoever opens the fridge acts
+on it: זרוק with an editable quantity, or האריך), `ExpiryField`/`ExpirySheet` for setting a date
+(ingredient detail sheet; a new small product sheet in the stock count), and a chef-only
+`/waste` screen (`ChefRoute`) with the log and a weekly/monthly summary. **"Chef-only" is a client
+rule**: like orders and consumption, there is no table for RLS to guard (everything lives in the one
+snapshot blob), and no migration was needed — the new actions are open to every member in
+`action_requires`, on purpose, because discarding food is a floor-level action.
+
 ---
 
 ## ⚠ Continuing this work: the pre-launch audit (2026-09-30)

@@ -1,4 +1,5 @@
-import { HashRouter, Outlet, Route, Routes } from 'react-router-dom';
+import { useEffect } from 'react';
+import { HashRouter, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider } from './auth/AuthContext';
 import { AnalyticsContext } from './components/AnalyticsContext';
 import { AuthGate, MaintenanceGate, MembershipGate, CookGate, NoticeGate } from './components/Gate';
@@ -53,9 +54,23 @@ function GatedApp() {
   );
 }
 
+/**
+ * `HashRouter` does not restore scroll, so a new screen opened from the bottom of a long one
+ * (Settings → תנאי שימוש, say) rendered at the old offset, with its own title off-screen.
+ * Keyed on the path only, so a change of search or hash inside one screen never jumps it.
+ */
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
+}
+
 export default function App() {
   return (
     <HashRouter>
+      <ScrollToTop />
       <AuthProvider>
         <div className="app-shell">
           {/* Outside every gate: a cook stuck behind a broken bundle on the sign-in screen is

@@ -27,6 +27,9 @@ export type Ingredient = {
    * the prep cards that need it; cleared once stock goes up (a count, a delivery). Optional, so
    * no schema bump: an old snapshot simply has none. */
   shortFlag?: boolean;
+  /** Last day it is good (YYYY-MM-DD). One date per item, not per batch. Optional, so no schema
+   * bump: an old snapshot simply has none. See lib/expiry.ts. */
+  expiresOn?: string;
 };
 
 export type ProductKind = 'menu' | 'component';
@@ -43,6 +46,8 @@ export type Product = {
   dailyUsageByWeekday?: WeekdayUsage;
   recipeId?: string;
   coverageDaysOverride?: number;
+  /** Last day it is good (YYYY-MM-DD) — see `Ingredient.expiresOn`. */
+  expiresOn?: string;
 };
 
 /** A station's id (see `Station`), or the built-in `'general'` ("כללי") fallback for
@@ -212,6 +217,30 @@ export type RecipeChange = 'name' | 'items' | 'steps' | 'yield';
  * `ackedBy` holds the cook ids that have read the current revision. */
 export type RecipeNotice = { rev: number; changed: RecipeChange[]; ackedBy: string[] };
 
+export type WasteItemType = 'ingredient' | 'product';
+
+/** Why food left the shelf: `expired` came from the expiry banner, `spoiled` from the quick
+ * action "מה התקלקל?". */
+export type WasteReason = 'expired' | 'spoiled';
+
+/** One thing thrown away. Append-only history for the chef — see lib/waste.ts. `itemName` and
+ * `unit` are snapshots, so the log still reads correctly after the ingredient is deleted or
+ * renamed (which is why `pruneEntities` never touches it). */
+export type WasteEntry = {
+  id: string;
+  date: string; // YYYY-MM-DD, the day it was thrown
+  at: string; // ISO timestamp
+  itemType: WasteItemType;
+  itemId: string;
+  itemName: string;
+  unit: Unit;
+  qty: number;
+  reason: WasteReason;
+  /** The expiry date the item had when it was thrown — what "בטל" puts back. */
+  expiredOn?: string;
+  cookId?: string;
+};
+
 export type AppState = {
   schemaVersion: number;
   ingredients: Ingredient[];
@@ -229,4 +258,6 @@ export type AppState = {
   recipeNotices?: Record<string, RecipeNotice>;
   /** Standing tasks. Optional, so no schema bump: an old snapshot or backup simply has none. */
   recurringTasks?: RecurringTask[];
+  /** Everything thrown away, newest last. Optional, so no schema bump. */
+  wasteLog?: WasteEntry[];
 };

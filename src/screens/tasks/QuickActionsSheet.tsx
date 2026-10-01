@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import { useApp } from '../../store/AppContext';
+import { useAuth } from '../../auth/AuthContext';
 import { BottomSheet } from '../../components/BottomSheet';
 import { ShortageIcon, WasteIcon } from '../../components/icons';
 import { weightedRecipeItems } from '../../lib/calc';
 import { stockAfterWaste, WASTE_SHARES } from '../../lib/quickActions';
+import { todayStr } from '../../lib/date';
+import { newWasteEntry } from '../../lib/waste';
 import { unitLabel } from '../../lib/units';
 import { useUndo } from '../../lib/undo';
 import type { DisplayTask } from '../../lib/tasks';
@@ -32,6 +35,7 @@ export function QuickActionsSheet({
 }) {
   const { state, dispatch } = useApp();
   const { showUndo } = useUndo();
+  const { membership } = useAuth();
   const [step, setStep] = useState<Step>({ kind: 'menu' });
 
   // The recipe's own raw ingredients (one level — a prepared product it consumes is not something
@@ -53,11 +57,23 @@ export function QuickActionsSheet({
 
   function wasteShare(ingredient: Ingredient, share: number, label: string) {
     const previous = ingredient.currentQty;
-    dispatch({ type: 'SET_INGREDIENT_QTY', id: ingredient.id, qty: stockAfterWaste(previous, share) });
+    const thrown = Math.round((previous - stockAfterWaste(previous, share)) * 100) / 100;
     onClose();
-    showUndo(`פחת ${label} מ"${ingredient.name}"`, () =>
-      dispatch({ type: 'SET_INGREDIENT_QTY', id: ingredient.id, qty: previous }),
-    );
+    // Nothing on hand to throw: there is no quantity to log, and an empty row in the chef's
+    // waste history would be noise.
+    if (thrown <= 0) return;
+    const entry = newWasteEntry({
+      today: todayStr(),
+      itemType: 'ingredient',
+      itemId: ingredient.id,
+      itemName: ingredient.name,
+      unit: ingredient.unit,
+      qty: thrown,
+      reason: 'spoiled',
+      cookId: membership?.cookId ?? undefined,
+    });
+    dispatch({ type: 'LOG_WASTE', entry });
+    showUndo(`פחת ${label} מ"${ingredient.name}"`, () => dispatch({ type: 'UNDO_WASTE', id: entry.id }));
   }
 
   const title =

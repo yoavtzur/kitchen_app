@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { reducer } from '../reducer';
 import { autoTaskId, getDisplayTasks } from '../../lib/tasks';
 import { todayStr } from '../../lib/date';
-import type { AppState, Product, Recipe } from '../../types';
+import type { AppState, Product, Recipe, WasteEntry } from '../../types';
 
 function baseState(overrides: Partial<AppState> = {}): AppState {
   return {
@@ -991,5 +991,93 @@ describe('actions survive a JSON round trip', () => {
     const roundTripped = JSON.parse(JSON.stringify(action)) as typeof action;
     const afterRoundTrip = reducer(state, roundTripped);
     expect(afterRoundTrip).toEqual(direct);
+  });
+});
+
+describe('expiry and waste', () => {
+  const thrown = (over: Partial<WasteEntry> = {}): WasteEntry => ({
+    id: 'waste-1',
+    date,
+    at: '2026-09-05T08:00:00.000Z',
+    itemType: 'ingredient',
+    itemId: 'ing-egg',
+    itemName: 'ביצים',
+    unit: 'unit',
+    qty: 60,
+    reason: 'expired',
+    expiredOn: '2026-09-01',
+    ...over,
+  });
+  const expiredEggs = () => baseState({ ingredients: [{ ...baseState().ingredients[0], expiresOn: '2026-09-01' }] });
+
+  it('SET_EXPIRY sets a date and null clears it, for an ingredient and a product', () => {
+    const state = baseState({ products: [cremeBrulee] });
+    const set = reducer(state, { type: 'SET_EXPIRY', itemType: 'ingredient', id: 'ing-egg', expiresOn: '2026-09-09' });
+    expect(set.ingredients[0].expiresOn).toBe('2026-09-09');
+    const cleared = reducer(set, { type: 'SET_EXPIRY', itemType: 'ingredient', id: 'ing-egg', expiresOn: null });
+    expect('expiresOn' in cleared.ingredients[0]).toBe(false);
+    const product = reducer(state, { type: 'SET_EXPIRY', itemType: 'product', id: cremeBrulee.id, expiresOn: '2026-09-07' });
+    expect(product.products[0].expiresOn).toBe('2026-09-07');
+  });
+
+  it('LOG_WASTE takes the quantity out of stock, logs it, and clears the date once used up', () => {
+    const next = reducer(expiredEggs(), { type: 'LOG_WASTE', entry: thrown() });
+    expect(next.ingredients[0].currentQty).toBe(0);
+    expect('expiresOn' in next.ingredients[0]).toBe(false);
+    expect(next.wasteLog).toEqual([thrown()]);
+  });
+
+  it('a partial throw of an expired item keeps its date, so the rest is still flagged', () => {
+    const next = reducer(expiredEggs(), { type: 'LOG_WASTE', entry: thrown({ qty: 10 }) });
+    expect(next.ingredients[0].currentQty).toBe(50);
+    expect(next.ingredients[0].expiresOn).toBe('2026-09-01');
+  });
+
+  it('LOG_WASTE is idempotent: a replayed row is not thrown twice', () => {
+    const once = reducer(baseState(), { type: 'LOG_WASTE', entry: thrown({ qty: 10, reason: 'spoiled' }) });
+    const twice = reducer(once, { type: 'LOG_WASTE', entry: thrown({ qty: 10, reason: 'spoiled' }) });
+    expect(twice).toBe(once);
+    expect(twice.ingredients[0].currentQty).toBe(50);
+  });
+
+  it('never takes stock below zero', () => {
+    const next = reducer(baseState(), { type: 'LOG_WASTE', entry: thrown({ qty: 500, reason: 'spoiled' }) });
+    expect(next.ingredients[0].currentQty).toBe(0);
+  });
+
+  it('throws away a prepared product through the product stock path', () => {
+    const state = baseState({ products: [{ ...cremeBrulee, expiresOn: '2026-09-01' }] });
+    const next = reducer(state, {
+      type: 'LOG_WASTE',
+      entry: thrown({ itemType: 'product', itemId: cremeBrulee.id, itemName: cremeBrulee.name, qty: 3 }),
+    });
+    expect(next.products[0].currentQty).toBe(0);
+    expect('expiresOn' in next.products[0]).toBe(false);
+  });
+
+  it('UNDO_WASTE puts back the stock and the date, and removes the row', () => {
+    const thrownState = reducer(expiredEggs(), { type: 'LOG_WASTE', entry: thrown() });
+    const undone = reducer(thrownState, { type: 'UNDO_WASTE', id: 'waste-1' });
+    expect(undone.ingredients[0].currentQty).toBe(60);
+    expect(undone.ingredients[0].expiresOn).toBe('2026-09-01');
+    expect(undone.wasteLog).toEqual([]);
+    expect(reducer(undone, { type: 'UNDO_WASTE', id: 'waste-1' })).toBe(undone);
+  });
+
+  it('the log outlives the ingredient it describes', () => {
+    const logged = reducer(expiredEggs(), { type: 'LOG_WASTE', entry: thrown() });
+    const deleted = reducer(logged, { type: 'DELETE_INGREDIENT', id: 'ing-egg' });
+    expect(deleted.ingredients).toEqual([]);
+    expect(deleted.wasteLog).toHaveLength(1);
+  });
+
+  it('survives a JSON round trip', () => {
+    const state = expiredEggs();
+    for (const action of [
+      { type: 'SET_EXPIRY', itemType: 'ingredient', id: 'ing-egg', expiresOn: null },
+      { type: 'LOG_WASTE', entry: thrown() },
+    ] as Parameters<typeof reducer>[1][]) {
+      expect(reducer(state, JSON.parse(JSON.stringify(action)))).toEqual(reducer(state, action));
+    }
   });
 });

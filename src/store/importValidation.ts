@@ -144,6 +144,12 @@ export function checkShape(value: unknown): { ok: true; state: AppState } | { ok
     }
   }
 
+  // Optional collections are absent in an older backup, which is fine — but present and not a list
+  // would crash the waste screen, so that is as bad as a missing required one.
+  if (value.wasteLog !== undefined && !Array.isArray(value.wasteLog)) {
+    return { ok: false, error: 'הגיבוי חסר או פגום: יומן זריקות.' };
+  }
+
   // `entries` is the one nested array anything reads without checking — `Consumption` and
   // `calc.ts` both walk it directly off a DayPlan.
   const dayPlans = value.dayPlans as Record<string, unknown>[];

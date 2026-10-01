@@ -30,7 +30,6 @@ function CurrentOrder() {
   const { state, dispatch } = useApp();
   const date = todayStr();
   const [query, setQuery] = useState('');
-  const [copied, flagCopied] = useTimedFlag(2000);
   const [submitted, flagSubmitted] = useTimedFlag(2000);
 
   const groups = useMemo(() => {
@@ -49,14 +48,6 @@ function CurrentOrder() {
   // Deliveries still owed from the last week, not just today's — the receiving screen's own list.
   const awaitingDelivery = stillOwed(orderedLines(state, date)).length;
 
-  function copyList() {
-    const text = buildOrderText(date, state);
-    navigator.clipboard
-      ?.writeText(text)
-      .then(flagCopied)
-      .catch(() => {});
-  }
-
   function shareToWhatsApp() {
     // Opens WhatsApp with the list pre-filled; the user picks the recipient and sends it.
     window.open(`https://wa.me/?text=${encodeURIComponent(buildOrderText(date, state))}`, '_blank');
@@ -74,9 +65,6 @@ function CurrentOrder() {
   return (
     <div>
       <div className="row" style={{ gap: 8, marginBottom: 'var(--space-4)' }}>
-        <button type="button" className="btn" style={{ flex: 1 }} onClick={copyList}>
-          {copied ? 'הועתק ✓' : 'העתק רשימה'}
-        </button>
         <button type="button" className="btn" style={{ flex: 1 }} onClick={shareToWhatsApp}>
           שלח בוואטסאפ
         </button>

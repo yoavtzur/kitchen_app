@@ -20,10 +20,10 @@ npm run preview   # preview a production build
 
 Run a single test file: `npx vitest run src/lib/__tests__/calc.test.ts`
 
-There are 30 test files (440 tests), colocated in `__tests__` folders next to what they cover:
+There are 32 test files (460 tests), colocated in `__tests__` folders next to what they cover:
 `src/lib/__tests__/` (calc, date, ids, integrity, tasks, swipe, units-adjacent helpers, geminiScanner,
 recipeDraft, migrateStations, sentry, analytics, appConfig, focusTrap, rpcErrors, nav, orders,
-ingredientCategories, stations, syncIndicator, invite, cookName),
+ingredientCategories, stations, syncIndicator, invite, cookName, phone, todayFilter),
 `src/store/__tests__/{reducer,storage,importValidation}.test.ts`,
 `src/sync/__tests__/{backoff,engine,localAdapter,log,persist}.test.ts`, and **`api/__tests__/` — the one
 test directory outside `src/`**, covering the scan endpoint's guards (see "Closing /api/scan-recipe").
@@ -197,9 +197,10 @@ they're pure functions over `AppState` and don't care where it came from.
   focus all trigger.
 
 **Supabase schema**: `supabase/migrations/0001_init.sql` through
-`0008_team_invites_and_stations.sql`, **applied by hand to the live project** (0007 is the
+`0009_member_contacts.sql`, **applied by hand to the live project** (0007 is the
 one to check first if account deletion, code rotation or join rate limiting misbehaves, 0008 for
-invites, join requests and chef-only station edits — see LAUNCH-CHECKLIST.md). Nothing in the build applies migrations, so any *future*
+invites, join requests and chef-only station edits, 0009 for phone numbers and the team's contact
+list — see LAUNCH-CHECKLIST.md). Nothing in the build applies migrations, so any *future*
 migration needs the same manual step before synced clients can use it — until then they sit at
 `upgrade-required` and refuse to append, which is the expected signal that it hasn't landed yet.
 `LAUNCH-CHECKLIST.md` at the repo root is the operator-facing version of this.
@@ -235,7 +236,7 @@ against a local dev server and a real browser instead (see "Commands" above).
 **`scripts/verify-migrations-local.sh` is the one that runs before shipping a migration**, and it
 exists because nothing else could: every other SQL check talks to the live project, so a migration
 could only be tested *after* being pasted into the dashboard by hand. It spins up a throwaway
-local PostgreSQL with a two-table stand-in for `auth`, applies all eight migrations in order, and
+local PostgreSQL with a two-table stand-in for `auth`, applies all nine migrations in order, and
 then exercises the RPCs. The property that makes it worth keeping is that **every RPC call is its
 own `psql -c`, hence its own transaction**, exactly as PostgREST gives each call. Driving the same
 functions from inside one `DO` block hides a whole class of bug, because an exception handler's
@@ -620,6 +621,55 @@ no policy and no grant (like `scan_usage`), and become a membership only in `res
 - A four-digit personal passcode was requested and **not built**: Supabase requires 6+ character
   passwords and four digits is 10,000 guesses. Cooks still use email + password.
 - The privacy notice and terms (`Legal.tsx`) describe the name/phone request data; keep them in step.
+
+### Menu, profile, team — and where a phone number lives (migration 0009)
+
+**Settings used to show the team twice** — "הרשאות צוות" (accounts) and "טבחים" (`Cook` rows) — because
+they are two tables underneath and one list to the person looking. `screens/Team.tsx` is now the one
+place: every account with its cook, then "טבחים ללא חשבון". `useTeamMembers` (`auth/`) is the shared
+`memberships` fetch (Team renders the list; Settings only needs the headcount for the deletion warning).
+Until the member list has loaded, the accountless section is **withheld** — every cook looks accountless
+on a guess, and "accountless" is what unlocks a one-tap delete. Local mode has no accounts, so Team there
+is just the cooks. A chef sees everyone (role, phone, e-mail, permissions, remove) plus invite and
+approve; a cook sees the chef's phone with call / WhatsApp links (`ContactActions`, `lib/phone.ts`).
+
+**`screens/Profile.tsx`** (profile card on the menu): name, phone, e-mail, password. The name is the
+`Cook` row, so it saves as an ordinary op (`RENAME_COOK`, a silent no-op on blank/unknown/unchanged for
+the usual replay reason). The e-mail and password go to Supabase auth (`updateEmail` takes effect only
+after the confirmation mail, so `session.user.email` keeps the old address until then). **A failed load
+of the stored phone locks the field** rather than showing it blank — saving "nothing" would delete a
+real number.
+
+**Phone numbers: `member_contacts`, not a column on `memberships`.** `memberships_read` lets every
+teammate read every membership row, which is right for role and cook binding and wrong for a phone
+number. The table has RLS on and no policy/grant (like `scan_usage` and `join_requests`); the RPCs
+`get_my_phone` / `set_my_phone` / `list_team_contacts` decide who sees what — a chef reads everyone's
+phone **and e-mail**, a cook reads only the chefs' phones, never an e-mail. 0009 also redefines
+`resolve_join_request` so the number typed when asking to join survives approval (0008 deleted it with
+the request), and a trigger drops a contact row with its membership. Both foreign keys **cascade** —
+this is personal data, unlike `ops`, which is the restaurant's record. `Legal.tsx` describes it; keep
+them in step. Without the migration the app degrades rather than breaks: saving a phone reports "not
+available on the server yet", and Team renders without the phone line.
+
+**Menu** is role-based as before; it now also carries "צוות" for both roles and links the profile card
+to `/profile` (a plain card in local mode, where there is no account to show).
+
+**`PasswordField`** is the one password input (sign-in, new password, change password): the eye is a real
+`type="button"` with `aria-pressed`, and `onPointerDown` is prevented so tapping it does not dismiss the
+phone keyboard. `name`/`autoComplete` pass straight through — password managers key off those, not the
+input's `type`.
+
+**The task list remembers its station tab** (`lib/todayFilter.ts`, key `kitchen-today-station`):
+`Today` unmounts on every navigation, so `useState('all')` reset it each time. It is a device preference,
+so it lives in `localStorage`, not the synced state (which would flip every other cook's tab). A stored
+station that no longer exists resolves to "הכל" without being overwritten. The date input is `.date-chip`,
+deliberately the quietest control on the screen.
+
+**Tap feel.** `html { touch-action: manipulation }` (no double-tap-zoom wait, applied to everything
+rather than three opt-in controls), instant `:active` states at the bottom of `global.css` (the app turns
+off the browser's tap flash, so a control with no `:active` rule gave *no* feedback until the screen
+changed), no transition on the nav icon, and `preloadScreens()` in `routes.tsx` warms every lazy chunk
+at idle so the first visit to a tab is not a network round trip.
 
 ### Tablet, focus, motion
 

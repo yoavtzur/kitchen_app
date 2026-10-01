@@ -17,12 +17,42 @@ const Consumption = lazy(() => import('./screens/Consumption').then((m) => ({ de
 const StockCount = lazy(() => import('./screens/StockCount').then((m) => ({ default: m.StockCount })));
 const Orders = lazy(() => import('./screens/Orders').then((m) => ({ default: m.Orders })));
 const Settings = lazy(() => import('./screens/Settings').then((m) => ({ default: m.Settings })));
+const Team = lazy(() => import('./screens/Team').then((m) => ({ default: m.Team })));
+const Profile = lazy(() => import('./screens/Profile').then((m) => ({ default: m.Profile })));
 const Menu = lazy(() => import('./screens/Menu').then((m) => ({ default: m.Menu })));
 const Stations = lazy(() => import('./screens/Stations').then((m) => ({ default: m.Stations })));
 const NotFound = lazy(() => import('./screens/NotFound').then((m) => ({ default: m.NotFound })));
 const JoinRoute = lazy(() => import('./screens/JoinRoute').then((m) => ({ default: m.JoinRoute })));
 const Privacy = lazy(() => import('./screens/Legal').then((m) => ({ default: m.Privacy })));
 const Terms = lazy(() => import('./screens/Legal').then((m) => ({ default: m.Terms })));
+
+/**
+ * Fetches every lazy screen's chunk once the app is up and the browser is idle.
+ *
+ * Lazy loading keeps the first paint small, but on its own it makes the *first* visit to each
+ * screen pay a chunk round trip at the moment of the tap — a visible pause (and a skeleton) on
+ * exactly the navigation the cook is waiting on. Warming them while idle moves that cost to a
+ * time nobody is looking. `import()` of an already-loaded module is free, so this changes nothing
+ * about what `lazy()` does later; it only has the chunk ready. The service worker precaches the
+ * same files, so after the first launch this is a cache read, not a download.
+ */
+export function preloadScreens(): void {
+  const run = () => {
+    void import('./screens/Menu');
+    void import('./screens/StockCount');
+    void import('./screens/Recipes');
+    void import('./screens/Orders');
+    void import('./screens/Consumption');
+    void import('./screens/Settings');
+    void import('./screens/Team');
+    void import('./screens/Profile');
+    void import('./screens/Stations');
+  };
+  if (typeof window === 'undefined') return;
+  const idle = (window as { requestIdleCallback?: (cb: () => void) => void }).requestIdleCallback;
+  if (idle) idle.call(window, run);
+  else window.setTimeout(run, 2000);
+}
 
 export type AppRoute = {
   path: string;
@@ -60,6 +90,8 @@ export const APP_ROUTES: AppRoute[] = [
   { path: '/stations', name: 'stations', element: <ChefRoute><Stations /></ChefRoute> },
   { path: '/settings', name: 'settings', element: <Settings /> },
   { path: '/menu', name: 'menu', element: <Menu /> },
+  { path: '/team', name: 'team', element: <Team /> },
+  { path: '/profile', name: 'profile', element: <Profile /> },
   { path: '/more', name: 'more-redirect', element: <Navigate to="/menu" replace />, redirect: true },
   // Without this, an unmatched hash rendered nothing at all: chrome, no content, no explanation.
   { path: '*', name: 'not-found', element: <NotFound /> },

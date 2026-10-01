@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import { PasswordField } from '../components/PasswordField';
 import { Turnstile } from '../components/Turnstile';
 import { readPendingInvite } from '../lib/invite';
 
@@ -81,20 +82,17 @@ export function Auth({ onForgotPassword }: { onForgotPassword: () => void }) {
             autoFocus
           />
         </div>
-        <div className="field" style={{ marginBottom: 0 }}>
-          <label htmlFor={passwordId}>סיסמה</label>
-          <input
-            id={passwordId}
-            name="password"
-            type="password"
-            // The distinction a manager acts on: `new-password` makes it offer to generate and
-            // then save, `current-password` makes it fill the one already stored. Getting this
-            // backwards on signup is how a manager ends up saving nothing at all.
-            autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </div>
+        <PasswordField
+          id={passwordId}
+          label="סיסמה"
+          name="password"
+          // The distinction a manager acts on: `new-password` makes it offer to generate and
+          // then save, `current-password` makes it fill the one already stored. Getting this
+          // backwards on signup is how a manager ends up saving nothing at all.
+          autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
         {/* Renders nothing unless VITE_TURNSTILE_SITE_KEY is set. Deliberately does NOT gate the
             submit button: a challenge that fails to load must not lock the kitchen out of its
             own app — see lib/turnstile.ts. */}

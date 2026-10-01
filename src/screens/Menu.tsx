@@ -4,6 +4,7 @@ import { useApp } from '../store/AppContext';
 import { useAuth } from '../auth/AuthContext';
 import { usePermissions } from '../auth/usePermissions';
 import { isSupabaseConfigured } from '../lib/supabase';
+import { initialsOf } from '../lib/initials';
 import {
   ChevronIcon,
   LegalIcon,
@@ -11,19 +12,8 @@ import {
   RecipesIcon,
   SettingsIcon,
   StationsIcon,
+  TeamIcon,
 } from '../components/icons';
-
-/** Initials for the avatar: the first letter of up to two words. Hebrew has no case, so no
- * transformation is needed — and a blank name must not render an empty circle. */
-function initialsOf(name: string): string {
-  const letters = name
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => Array.from(w)[0]);
-  return letters.join('') || '•';
-}
 
 function MenuLink({ to, icon, label }: { to: string; icon: ReactNode; label: string }) {
   return (
@@ -41,6 +31,9 @@ function MenuLink({ to, icon, label }: { to: string; icon: ReactNode; label: str
  * Replaces "עוד". Role decides what is listed: a chef gets the kitchen's management screens, a
  * cook only what concerns their own account — but both reach settings, because sign-out and
  * account deletion (migration 0007) are not a chef-only right.
+ *
+ * Tapping the profile card opens "הפרופיל שלי" (name, phone, e-mail, password). The team screen
+ * is for both roles: a chef manages people there, a cook finds how to reach the chef.
  */
 export function Menu() {
   const { state } = useApp();
@@ -51,31 +44,46 @@ export function Menu() {
   const restaurantName = membership?.restaurantName?.trim() || 'ניהול מטבח';
   const displayName = cook?.name ?? (isChef ? 'שף' : 'טבח');
 
+  const profile = (
+    <>
+      <span className="avatar" style={cook ? { background: cook.color } : undefined} aria-hidden="true">
+        {initialsOf(displayName)}
+      </span>
+      <div style={{ flex: 1 }}>
+        <div className="profile-name">{displayName}</div>
+        <div className="profile-sub">{restaurantName}</div>
+      </div>
+    </>
+  );
+
   return (
     <div>
       <div className="screen-header">
         <h1 className="screen-title">תפריט</h1>
       </div>
 
-      <div className="profile-card">
-        <span className="avatar" style={cook ? { background: cook.color } : undefined} aria-hidden="true">
-          {initialsOf(displayName)}
-        </span>
-        <div>
-          <div className="profile-name">{displayName}</div>
-          <div className="profile-sub">{restaurantName}</div>
-        </div>
-      </div>
+      {/* A link only when there is an account to show: local mode has no e-mail, phone or password. */}
+      {isSupabaseConfigured ? (
+        <Link to="/profile" className="profile-card profile-card-link" aria-label="הפרופיל שלי">
+          {profile}
+          <span className="chevron">
+            <ChevronIcon />
+          </span>
+        </Link>
+      ) : (
+        <div className="profile-card">{profile}</div>
+      )}
 
       <div className="list-card">
         {isChef && <MenuLink to="/recipes" icon={<RecipesIcon size={22} />} label="מתכונים" />}
         {isChef && <MenuLink to="/stations" icon={<StationsIcon size={22} />} label="ניהול פסים" />}
+        <MenuLink to="/team" icon={<TeamIcon size={22} />} label={!isSupabaseConfigured ? 'צוות' : isChef ? 'צוות והזמנות' : 'צוות ויצירת קשר'} />
         <MenuLink
           to="/settings"
           icon={<SettingsIcon size={22} />}
-          label={isChef ? 'צוות והגדרות' : 'הגדרות וחשבון'}
+          label={isChef ? 'הגדרות' : 'הגדרות וחשבון'}
         />
-        {!isChef && <MenuLink to="/legal/privacy" icon={<LegalIcon size={22} />} label="פרטיות ותנאים" />}
+        <MenuLink to="/legal/privacy" icon={<LegalIcon size={22} />} label="פרטיות ותנאים" />
       </div>
 
       {isSupabaseConfigured && (

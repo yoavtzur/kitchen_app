@@ -171,3 +171,37 @@ export function ChevronIcon(p: IconProps) {
     </Svg>
   );
 }
+
+export function EyeIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" />
+      <circle cx="12" cy="12" r="3" />
+    </Svg>
+  );
+}
+
+export function EyeOffIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M9.9 5.7A9.6 9.6 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a16 16 0 0 1-2.6 3.4M6.3 7.3A16 16 0 0 0 2.5 12S6 18.5 12 18.5c1.4 0 2.7-.3 3.8-.8" />
+      <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2M3.5 3.5l17 17" />
+    </Svg>
+  );
+}
+
+export function PhoneIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M5 4h3.5l1.7 4.3-2.1 1.4a11 11 0 0 0 5.2 5.2l1.4-2.1L19 14.5V18a2 2 0 0 1-2 2A13 13 0 0 1 3 6a2 2 0 0 1 2-2z" />
+    </Svg>
+  );
+}
+
+export function ChatIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M4 5.5h16v10H10.5L6 19.5v-4H4z" />
+    </Svg>
+  );
+}

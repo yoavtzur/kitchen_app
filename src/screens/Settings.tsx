@@ -1,31 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp, useSync } from '../store/AppContext';
 import { useAuth } from '../auth/AuthContext';
 import { usePermissions } from '../auth/usePermissions';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { mapRpcError } from '../lib/rpcErrors';
+import { useTeamMembers } from '../auth/useTeamMembers';
 import { analyticsAvailable, isOptedOut, setOptedOut } from '../lib/analytics';
 import { exportStateAsJson, parseImportedState } from '../store/storage';
 import type { ImportSummary } from '../store/importValidation';
 import { SCHEMA_VERSION } from '../data/seed';
-import { newId } from '../lib/ids';
 import { useTimedFlag, useTimedMessage } from '../lib/useTimedFlag';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { CookPill } from '../components/CookPill';
 import { Toast } from '../components/Toast';
-import { InviteCookSheet } from '../components/InviteCookSheet';
-import { JoinRequestsBanner } from '../components/JoinRequestsBanner';
-import { buildInviteLink } from '../lib/invite';
-import type { AppState, Cook, MemberRole, RoundTo } from '../types';
-
-type MemberRow = {
-  userId: string;
-  cookId: string | null;
-  role: MemberRole;
-  canEditRecipes: boolean;
-  canDeleteRecipes: boolean;
-};
+import type { AppState, RoundTo } from '../types';
 
 const ROUND_OPTIONS: { value: string; label: string }[] = [
   { value: 'none', label: 'ללא עיגול' },
@@ -46,26 +34,17 @@ const SYNC_STATUS_LABEL: Record<string, string> = {
 
 export function Settings() {
   const { state, dispatch } = useApp();
-  const { session, membership, signOut, setMemberPermissions, removeMember, rotateJoinCode, deleteMyAccount, createInvite } =
-    useAuth();
+  const { session, membership, signOut, rotateJoinCode, deleteMyAccount } = useAuth();
   const { isChef } = usePermissions();
   const sync = useSync();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [newCookName, setNewCookName] = useState('');
   const [importError, setImportError] = useState('');
   const [restaurant, setRestaurant] = useState<{ name: string; joinCode: string } | null>(null);
-  const [members, setMembers] = useState<MemberRow[]>([]);
-  const [permError, setPermError] = useState('');
-  const [membersError, setMembersError] = useState('');
-  // Initialized during render rather than set from the mount effect: in remote mode the very
-  // first paint of this screen genuinely is loading, and deriving that is both more honest and
-  // one fewer cascading render than announcing it afterwards.
-  const [membersLoading, setMembersLoading] = useState(() => isSupabaseConfigured && Boolean(membership));
+  // Only the headcount matters here — whether the caller is the last member, for the deletion
+  // warning. The team itself is managed on its own screen (see Team.tsx).
+  const { members } = useTeamMembers();
   const [copied, flagCopied] = useTimedFlag(1500);
   const [analyticsOptOut, setAnalyticsOptOut] = useState(isOptedOut);
-  const [deleteCandidate, setDeleteCandidate] = useState<Cook | null>(null);
-  const [removeCandidate, setRemoveCandidate] = useState<MemberRow | null>(null);
-  const [removedMessage, showRemovedMessage] = useTimedMessage(1500);
   const [importCandidate, setImportCandidate] = useState<{ state: AppState; summary: ImportSummary } | null>(null);
   const [importing, setImporting] = useState(false);
   const [importedMessage, showImportedMessage] = useTimedMessage(2000);
@@ -76,90 +55,24 @@ export function Settings() {
   const [deleteTyped, setDeleteTyped] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [rotatedMessage, showRotatedMessage] = useTimedMessage(2500);
-  const [inviteLink, setInviteLink] = useState<string | null>(null);
-  const [inviting, setInviting] = useState(false);
-  const [inviteError, setInviteError] = useState('');
-
-  const boundCookIds = new Set(members.map((m) => m.cookId).filter((id): id is string => !!id));
-
-  /** A failed team fetch used to be completely silent: `error` was destructured away, so a
-   * chef on a dropped connection saw an empty permissions list and no reason for it — visually
-   * identical to "you are the only member". It now reports, and offers a retry.
-   *
-   * `cancelledRef` covers it too. The old version guarded only the sibling restaurant fetch
-   * with `cancelled`, so a slow membership response landing after this screen unmounted called
-   * `setMembers` on a dead component. */
-  const cancelledRef = useRef(false);
-
-  const reloadMembers = useCallback(() => {
-    if (!isSupabaseConfigured || !supabase || !membership) return;
-    supabase
-      .from('memberships')
-      .select('user_id, cook_id, role, can_edit_recipes, can_delete_recipes')
-      .eq('restaurant_id', membership.restaurantId)
-      .then(({ data, error }) => {
-        if (cancelledRef.current) return;
-        setMembersLoading(false);
-        if (error) {
-          setMembersError(mapRpcError(error));
-          return;
-        }
-        setMembers(
-          (data ?? []).map((row) => ({
-            userId: row.user_id as string,
-            cookId: row.cook_id as string | null,
-            role: row.role as MemberRole,
-            canEditRecipes: Boolean(row.can_edit_recipes),
-            canDeleteRecipes: Boolean(row.can_delete_recipes),
-          })),
-        );
-      });
-  }, [membership]);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase || !membership) return;
-    cancelledRef.current = false;
+    let cancelled = false;
     supabase
       .from('restaurants')
       .select('name, join_code')
       .eq('id', membership.restaurantId)
       .single()
       .then(({ data }) => {
-        if (!cancelledRef.current && data) {
+        if (!cancelled && data) {
           setRestaurant({ name: data.name as string, joinCode: data.join_code as string });
         }
       });
-    reloadMembers();
     return () => {
-      cancelledRef.current = true;
+      cancelled = true;
     };
-  }, [membership, reloadMembers]);
-
-  async function updatePermissions(row: MemberRow, patch: Partial<Pick<MemberRow, 'canEditRecipes' | 'canDeleteRecipes'>>) {
-    setPermError('');
-    const next = { ...row, ...patch };
-    const { error } = await setMemberPermissions(row.userId, next.role, next.canEditRecipes, next.canDeleteRecipes);
-    if (error) {
-      setPermError(error);
-      return;
-    }
-    reloadMembers();
-  }
-
-  async function confirmRemoveMember() {
-    if (!removeCandidate) return;
-    setPermError('');
-    const { error } = await removeMember(removeCandidate.userId);
-    if (error) {
-      setPermError(error);
-      setRemoveCandidate(null);
-      return;
-    }
-    if (removeCandidate.cookId) dispatch({ type: 'REMOVE_COOK', id: removeCandidate.cookId });
-    reloadMembers();
-    setRemoveCandidate(null);
-    showRemovedMessage('הוסר!');
-  }
+  }, [membership]);
 
   function handleExport() {
     const json = exportStateAsJson(state);
@@ -210,25 +123,6 @@ export function Settings() {
     showImportedMessage('הגיבוי שוחזר ✓');
   }
 
-  function addCook() {
-    if (!newCookName.trim()) return;
-    const cook: Cook = {
-      id: newId('cook'),
-      name: newCookName.trim(),
-      color: `hsl(${Math.floor(Math.random() * 360)}, 45%, 40%)`,
-    };
-    dispatch({ type: 'ADD_COOK', cook });
-    setNewCookName('');
-  }
-
-  function requestDeleteCook(cook: Cook) {
-    if (isSupabaseConfigured && boundCookIds.has(cook.id)) {
-      setDeleteCandidate(cook);
-      return;
-    }
-    dispatch({ type: 'DELETE_COOK', id: cook.id });
-  }
-
   /** Replacing the code is what makes it possible to remove someone's access to the kitchen
    * without deleting their account — the old code stops working the instant this returns. */
   async function doRotateJoinCode() {
@@ -256,20 +150,6 @@ export function Settings() {
       setConfirmDelete(false);
       setDeleteTyped('');
     }
-  }
-
-  /** Two taps for the chef: this, then "שתף בוואטסאפ" in the sheet. Nothing to type — the cook
-   * fills in their own details, and the chef's say over who gets in is the approval. */
-  async function doInvite() {
-    setInviteError('');
-    setInviting(true);
-    const { token, error } = await createInvite();
-    setInviting(false);
-    if (error || !token) {
-      setInviteError(error ?? 'יצירת הקישור נכשלה. נסו שוב.');
-      return;
-    }
-    setInviteLink(buildInviteLink(window.location.origin, window.location.pathname, token));
   }
 
   async function copyJoinCode() {
@@ -345,94 +225,6 @@ export function Settings() {
         </>
       )}
 
-      {isSupabaseConfigured && isChef && (
-        <>
-          <h2 className="section-title">צוות</h2>
-          <div className="card stack-gap-3">
-            <button type="button" className="btn btn-primary btn-block" disabled={inviting} onClick={doInvite}>
-              {inviting ? 'יוצר קישור...' : 'הזמן טבח'}
-            </button>
-            {inviteError && <p style={{ color: 'var(--color-red)' }}>{inviteError}</p>}
-          </div>
-          <JoinRequestsBanner />
-          <h2 className="section-title">הרשאות צוות</h2>
-          <div className="card stack-gap-2">
-            {permError && <p style={{ color: 'var(--color-red)' }}>{permError}</p>}
-            {membersLoading && members.length === 0 && <p className="muted">טוען צוות...</p>}
-            {membersError && (
-              <div className="stack-gap-2">
-                <p style={{ color: 'var(--color-red)' }}>טעינת הצוות נכשלה: {membersError}</p>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => {
-                    setMembersError('');
-                    setMembersLoading(true);
-                    reloadMembers();
-                  }}
-                >
-                  נסה שוב
-                </button>
-              </div>
-            )}
-            {members.map((row) => {
-              const cook = row.cookId ? state.cooks.find((c) => c.id === row.cookId) : undefined;
-              return (
-                <div key={row.userId} className="row-item" style={{ alignItems: 'center' }}>
-                  <div className="row" style={{ gap: 8, width: 'auto' }}>
-                    {cook ? <CookPill cook={cook} /> : <span className="muted">טבח לא משויך</span>}
-                  </div>
-                  {row.role === 'chef' ? (
-                    <span className="pill">שף</span>
-                  ) : cook ? (
-                    <div className="row" style={{ gap: 12, width: 'auto' }}>
-                      <label className="row" style={{ gap: 4, width: 'auto' }}>
-                        <input
-                          type="checkbox"
-                          checked={row.canEditRecipes}
-                          onChange={(e) => updatePermissions(row, { canEditRecipes: e.target.checked })}
-                          style={{ width: 'auto' }}
-                        />
-                        עריכת מתכונים
-                      </label>
-                      <label className="row" style={{ gap: 4, width: 'auto' }}>
-                        <input
-                          type="checkbox"
-                          checked={row.canDeleteRecipes}
-                          onChange={(e) => updatePermissions(row, { canDeleteRecipes: e.target.checked })}
-                          style={{ width: 'auto' }}
-                        />
-                        מחיקת מתכונים
-                      </label>
-                      <button
-                        type="button"
-                        className="btn btn-icon"
-                        aria-label="הסר טבח"
-                        onClick={() => setRemoveCandidate(row)}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="row" style={{ gap: 12, width: 'auto' }}>
-                      <span className="muted">צריך להתחבר לפני שאפשר להגדיר הרשאות</span>
-                      <button
-                        type="button"
-                        className="btn btn-icon"
-                        aria-label="הסר טבח"
-                        onClick={() => setRemoveCandidate(row)}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </>
-      )}
-
       {isChef && (
         <>
       <h2 className="section-title">חישוב</h2>
@@ -467,30 +259,6 @@ export function Settings() {
         </div>
       </div>
 
-      <h2 className="section-title">טבחים</h2>
-      <div className="card">
-        <div className="stack-gap-2" style={{ marginBottom: 'var(--space-3)' }}>
-          {state.cooks.map((cook) => (
-            <div key={cook.id} className="row-item">
-              <CookPill cook={cook} />
-              <button type="button" className="btn btn-icon" onClick={() => requestDeleteCook(cook)}>
-                ✕
-              </button>
-            </div>
-          ))}
-        </div>
-        <div className="row" style={{ gap: 8 }}>
-          <input
-            value={newCookName}
-            onChange={(e) => setNewCookName(e.target.value)}
-            placeholder="שם טבח חדש"
-            style={{ flex: 1, border: '1px solid var(--color-border)', borderRadius: 8, padding: '8px' }}
-          />
-          <button type="button" className="btn btn-primary" onClick={addCook}>
-            הוסף
-          </button>
-        </div>
-      </div>
         </>
       )}
 
@@ -575,43 +343,6 @@ export function Settings() {
         </>
       )}
 
-      {deleteCandidate && (
-        <ConfirmDialog
-          title="מחיקת טבח"
-          confirmLabel="מחק בכל זאת"
-          onClose={() => setDeleteCandidate(null)}
-          onConfirm={() => {
-            dispatch({ type: 'DELETE_COOK', id: deleteCandidate.id });
-            setDeleteCandidate(null);
-          }}
-        >
-          <p>
-            "{deleteCandidate.name}" משויך לחשבון פעיל של אחד המשתמשים. מחיקתו לא תסיר את החשבון, אבל הוא ייאלץ לבחור
-            את עצמו מחדש.
-          </p>
-        </ConfirmDialog>
-      )}
-
-      {inviteLink && (
-        <InviteCookSheet link={inviteLink} restaurantName={membership?.restaurantName} onClose={() => setInviteLink(null)} />
-      )}
-
-      {removeCandidate && (
-        <ConfirmDialog
-          title="הסרת טבח מהמסעדה"
-          confirmLabel="הסר לצמיתות"
-          destructive
-          onClose={() => setRemoveCandidate(null)}
-          onConfirm={confirmRemoveMember}
-        >
-          <p>
-            האם אתה בטוח שברצונך להסיר את{' '}
-            {removeCandidate.cookId ? state.cooks.find((c) => c.id === removeCandidate.cookId)?.name : 'טבח לא משויך'}?
-            הפעולה תמחק את הגישה שלו למסעדה לצמיתות, אך היסטוריית המשימות שבוצעו תישמר.
-          </p>
-        </ConfirmDialog>
-      )}
-
       {confirmRotate && (
         <ConfirmDialog
           title="החלפת קוד ההצטרפות"
@@ -684,9 +415,8 @@ export function Settings() {
         </ConfirmDialog>
       )}
 
-      {/* At the end of the screen rather than inside the team card that triggers it: Settings is
-          long enough that the card is usually scrolled past by the time the removal returns. */}
-      {removedMessage && <Toast message={removedMessage} />}
+      {/* At the end of the screen rather than inside the card that triggers it: Settings is long
+          enough that the card is usually scrolled past by the time the action returns. */}
       {importedMessage && <Toast message={importedMessage} />}
       {rotatedMessage && <Toast message={rotatedMessage} />}
     </div>

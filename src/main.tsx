@@ -25,6 +25,7 @@ import { ErrorBoundary } from './components/ErrorBoundary.tsx'
 import { installConsoleFallback, installErrorUx } from './lib/errorUx.ts'
 import { initAnalytics } from './lib/analytics.ts'
 import { isSupabaseConfigured } from './lib/supabase.ts'
+import { preloadScreens } from './routes.tsx'
 import { captureBoundaryError, initSentry } from './lib/sentry.ts'
 
 // Order matters: Sentry first, so the two installers below can see whether a client exists and
@@ -35,6 +36,9 @@ installConsoleFallback()
 // Dormant unless VITE_POSTHOG_KEY is set, the build is in Supabase mode, and the person has not
 // opted out. See lib/analytics.ts for everything it can and cannot send.
 initAnalytics(isSupabaseConfigured)
+
+// Warm the lazy screens' chunks once idle, so tapping a tab is not a network round trip.
+preloadScreens()
 
 createRoot(document.getElementById('root')!, {
   // React 19 routes what used to reach `window.onerror` through these root options instead, so

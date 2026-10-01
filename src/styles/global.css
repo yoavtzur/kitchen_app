@@ -18,6 +18,14 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Taps should land the instant the finger does. `manipulation` turns off double-tap-to-zoom, which
+   is the only reason a browser ever waits before treating a touch as a click — and it applies to
+   everything under it, unlike the two or three controls that used to opt in one by one. The app
+   has no double-tap gesture of its own, and pinch-zoom still works. */
+html {
+  touch-action: manipulation;
+}
+
 button {
   font-family: inherit;
   color: inherit;
@@ -314,7 +322,7 @@ p {
   align-items: center;
   justify-content: center;
   color: var(--color-text-muted);
-  transition: background 0.15s ease, color 0.15s ease;
+  /* No transition: a tab that takes 150ms to light up reads as a tap that did not register. */
 }
 
 .bottom-nav a.active .nav-icon-box {
@@ -1682,4 +1690,143 @@ textarea {
    — the strip itself already separates the tabs from the list. */
 .sticky-tabs .tabs {
   margin-bottom: var(--space-2);
+}
+
+/* ---------------------------------------------------------------------------
+   Password field: the eye sits at the inline-END of the box (the left edge in this RTL app, where
+   the text runs out), and the input reserves room for it so a long password never slides
+   underneath the button.
+   --------------------------------------------------------------------------- */
+.password-wrap {
+  position: relative;
+  display: flex;
+}
+
+.password-wrap input {
+  padding-inline-end: 48px;
+}
+
+.password-toggle {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  width: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+}
+
+.password-toggle[aria-pressed='true'] {
+  color: var(--color-primary);
+}
+
+/* Team screen: one card per person, contact line beneath the name. */
+.team-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.team-row:last-child {
+  border-bottom: none;
+}
+
+.team-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.contact-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.contact-actions .contact-phone {
+  flex: 1;
+  color: var(--color-text);
+  text-align: start;
+  text-decoration: none;
+  unicode-bidi: plaintext;
+}
+
+.contact-email {
+  color: var(--color-text-muted);
+  text-decoration: none;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+/* The profile card as a link into "הפרופיל שלי": same card, plus a chevron at the end edge. */
+.profile-card-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.profile-card-link .chevron {
+  display: inline-flex;
+  color: var(--color-text-muted);
+}
+
+[dir='ltr'] .profile-card-link .chevron svg {
+  transform: scaleX(-1);
+}
+
+/* The date picker on the task screen. It sits beside the one real action ("+ משימה") and used to be
+   drawn as loud as it: the browser's default light, full-size field on a dark app. It is a
+   secondary control — most visits never touch it — so it is small, takes the app's own surface
+   and text colours, and lets the browser's picker draw itself dark (`color-scheme`) instead of
+   in whatever the platform default is. */
+.date-chip {
+  flex: none;
+  width: auto;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  color-scheme: dark;
+}
+
+.date-chip:focus-visible {
+  color: var(--color-text);
+}
+
+/* ---------------------------------------------------------------------------
+   Pressed state. `body` turns off the browser's own tap flash (-webkit-tap-highlight-color), and
+   most controls had no :active rule of their own, so a tap gave no feedback at all until the
+   screen changed — which, over a lazy-loaded route or a sync round trip, can be a beat later and
+   feels like lag. These land on touch-down with no transition, so the app answers immediately
+   and finishes the work afterwards.
+   --------------------------------------------------------------------------- */
+.btn:active,
+.print-icon-btn:active {
+  filter: brightness(0.85);
+}
+
+.tab:active,
+.segmented button:active {
+  filter: brightness(0.8);
+}
+
+.menu-row:active,
+.profile-card-link:active {
+  background: var(--color-surface-2);
+}
+
+.bottom-nav a:active .nav-icon-box {
+  background: var(--color-surface-2);
+}
+
+.bottom-nav a.active:active .nav-icon-box {
+  filter: brightness(0.85);
 }

@@ -11,6 +11,7 @@ import { CategoryTabs } from '../components/CategoryTabs';
 import { PrintStationButton } from '../components/PrintStationButton';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { JoinRequestsBanner } from '../components/JoinRequestsBanner';
+import { readStoredStation, resolveStation, writeStoredStation } from '../lib/todayFilter';
 import { categoryTabs, UNASSIGNED_CATEGORY, UNASSIGNED_LABEL, type CategoryFilter } from '../lib/recipeCategories';
 import { TaskRow } from './tasks/TaskRow';
 import { AddManualTaskSheet } from './tasks/AddManualTaskSheet';
@@ -45,7 +46,14 @@ export function Today() {
   const [date, setDate] = useState(todayStr());
   const [addingManual, setAddingManual] = useState(false);
   const [query, setQuery] = useState('');
-  const [category, setCategory] = useState<CategoryFilter>('all');
+  // Remembered across screens (and reloads): see lib/todayFilter.ts. `stored` is what the cook
+  // picked; `category` is what is shown, which differs only when that station has been deleted.
+  const [stored, setStored] = useState<CategoryFilter>(readStoredStation);
+  const category = resolveStation(stored, state.stations);
+  function setCategory(next: CategoryFilter) {
+    setStored(next);
+    writeStoredStation(next);
+  }
 
   const title = membership?.restaurantName?.trim() || 'ניהול מטבח';
   const searching = query.trim().length > 0;
@@ -147,7 +155,7 @@ export function Today() {
           value={date}
           onChange={(e) => setDate(e.target.value)}
           aria-label="תאריך"
-          style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '8px' }}
+          className="date-chip"
         />
       </div>
 

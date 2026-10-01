@@ -38,21 +38,38 @@ describe('mapRpcError', () => {
 });
 
 describe('mapJoinStatus', () => {
+  const RID = '11111111-1111-1111-1111-111111111111';
+
   it('reports no error for a successful join', () => {
-    expect(mapJoinStatus('ok')).toBeNull();
+    expect(mapJoinStatus('ok', RID)).toBeNull();
   });
 
   it.each([
     ['invalid_code', 'קוד לא נמצא'],
     ['rate_limited', 'יותר מדי ניסיונות'],
   ])('maps %s', (status, expected) => {
-    expect(mapJoinStatus(status)).toContain(expected);
+    expect(mapJoinStatus(status, null)).toContain(expected);
   });
 
   it('treats an unrecognised status as a refusal, not a success', () => {
     // A server newer than this build. The one thing we know is that it did not say 'ok', and
     // reading it as success would write a membership with no restaurant id.
-    expect(mapJoinStatus('something_new')).toBeTruthy();
-    expect(mapJoinStatus('')).toBeTruthy();
+    expect(mapJoinStatus('something_new', RID)).toBeTruthy();
+    expect(mapJoinStatus('', RID)).toBeTruthy();
+  });
+
+  describe('against a server without migration 0007', () => {
+    // There is no `status` column there, and merging to main deploys before the migration is
+    // pasted in by hand — so this window is real, not hypothetical.
+    it('accepts a row with a real restaurant id as the success it is', () => {
+      expect(mapJoinStatus(undefined, RID)).toBeNull();
+      expect(mapJoinStatus(null, RID)).toBeNull();
+    });
+
+    it('still refuses when there is no restaurant id to join', () => {
+      expect(mapJoinStatus(undefined, null)).toBeTruthy();
+      expect(mapJoinStatus(undefined, undefined)).toBeTruthy();
+      expect(mapJoinStatus(undefined, '')).toBeTruthy();
+    });
   });
 });

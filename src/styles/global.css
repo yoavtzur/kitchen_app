@@ -2040,3 +2040,12 @@ textarea {
   background: var(--color-surface-2);
   font-size: 17px;
 }
+
+/* "נשארה מאתמול": a quiet note on a task carried over from an earlier day. Muted yellow, small — it
+   informs without competing with the red stripe or the priority border. */
+.carried-note {
+  margin-top: var(--space-2);
+  color: var(--color-yellow);
+  font-size: 13px;
+  font-weight: 600;
+}

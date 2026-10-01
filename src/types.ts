@@ -95,6 +95,9 @@ export type Task = {
   /** Station for a free-text task (recipeId absent) — a recipe-backed task's station always
    * comes from its recipe's own category instead. */
   categoryOverride?: RecipeCategory;
+  /** The day this task was first planned for, set when it was left open and carried over to a
+   * later day (lib/carryOver.ts). Absent for a task that has never been carried. */
+  carriedFrom?: string;
   multiplier: number;
   priority: Priority;
   priorityManual?: boolean;

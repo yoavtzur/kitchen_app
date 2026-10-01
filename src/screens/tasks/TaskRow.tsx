@@ -8,13 +8,23 @@ import { completeTask } from './completeTask';
 import { TaskDetailSheet } from './TaskDetailSheet';
 import { QuickActionsSheet } from './QuickActionsSheet';
 import { useUndo } from '../../lib/undo';
+import { daysBetween } from '../../lib/date';
+import { useToday } from '../../lib/useToday';
 import type { Priority } from '../../types';
+
+/** "נשארה מאתמול" / "מלפני 3 ימים" — how long a carried-over task has been waiting. */
+function carriedLabel(days: number): string {
+  if (days <= 1) return 'נשארה מאתמול';
+  if (days === 2) return 'מלפני יומיים';
+  return `מלפני ${days} ימים`;
+}
 
 const PRIORITY_CYCLE: Priority[] = ['red', 'yellow', 'green'];
 
 export function TaskRow({ task }: { task: DisplayTask }) {
   const { state, dispatch } = useApp();
   const { showUndo } = useUndo();
+  const today = useToday();
   const [detailOpen, setDetailOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const recipe = state.recipes.find((r) => r.id === task.recipeId);
@@ -137,6 +147,9 @@ export function TaskRow({ task }: { task: DisplayTask }) {
             ✕
           </button>
         </div>
+        {task.carriedFrom && !task.done && (
+          <p className="carried-note">{carriedLabel(daysBetween(task.carriedFrom, today))}</p>
+        )}
         {task.blocked && (
           <p className="critical-note">
             <AlertIcon size={18} />

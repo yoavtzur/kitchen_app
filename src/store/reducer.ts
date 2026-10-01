@@ -21,6 +21,7 @@ import { todayStr } from '../lib/date';
 import { autoTaskId } from '../lib/tasks';
 import { pruneEntities } from '../lib/integrity';
 import { applyRestore, type Restore } from '../lib/restore';
+import { carryOver } from '../lib/carryOver';
 import { ackAllFor, ackRecipeNotice, noteRecipeChange } from '../lib/notices';
 import { UNASSIGNED_CATEGORY } from '../lib/recipeCategories';
 import { convert } from '../lib/units';
@@ -98,6 +99,9 @@ export type Action =
   /** Puts back what a deletion took out (see lib/restore.ts) — the "בטל" after deleting a recipe,
    * ingredient, station or cook. An upsert, so replaying it is harmless. */
   | { type: 'RESTORE_ENTITIES'; restore: Restore }
+  /** Start of a new day: open manual tasks move to `today` and auto-task assignee/priority carry
+   * over (lib/carryOver.ts). `today` comes from the dispatcher, never the clock. Idempotent. */
+  | { type: 'CARRY_OVER_TASKS'; today: string }
   | { type: 'ADD_COOK'; cook: Cook }
   | { type: 'RENAME_COOK'; id: string; name: string }
   | { type: 'DELETE_COOK'; id: string }
@@ -663,6 +667,9 @@ export function reducer(state: AppState, action: Action): AppState {
       };
     case 'DELETE_SPECIAL_EVENT':
       return { ...state, specialEvents: state.specialEvents.filter((e) => e.id !== action.id) };
+
+    case 'CARRY_OVER_TASKS':
+      return carryOver(state, action.today);
 
     case 'RESTORE_ENTITIES':
       return applyRestore(state, action.restore);

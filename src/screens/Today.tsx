@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useApp } from '../store/AppContext';
 import { useAuth } from '../auth/AuthContext';
 import { getDisplayTasks, groupByStation, sortDisplayTasks, taskProgress } from '../lib/tasks';
-import { dayName, todayStr } from '../lib/date';
+import { dayName } from '../lib/date';
+import { useToday } from '../lib/useToday';
 import { matchesQuery } from '../lib/search';
 import { EmptyState } from '../components/EmptyState';
 import { CookPill } from '../components/CookPill';
@@ -43,7 +44,11 @@ function formatToday(date: string): string {
 export function Today() {
   const { state } = useApp();
   const { membership } = useAuth();
-  const [date, setDate] = useState(todayStr());
+  // Follows the real date (it rolls over at midnight and when the app wakes) until the cook picks
+  // another day with the date picker; then their choice sticks.
+  const today = useToday();
+  const [picked, setPicked] = useState<string | null>(null);
+  const date = picked ?? today;
   const [addingManual, setAddingManual] = useState(false);
   const [showDone, setShowDone] = useState(false);
   const [query, setQuery] = useState('');
@@ -159,7 +164,7 @@ export function Today() {
         <input
           type="date"
           value={date}
-          onChange={(e) => setDate(e.target.value)}
+          onChange={(e) => setPicked(e.target.value || null)}
           aria-label="תאריך"
           className="date-chip"
         />

@@ -28,6 +28,8 @@ export type DisplayTask = {
    * multiplier needs, or flagged short by a cook. Absent when nothing is missing, and always
    * absent on a finished task. Drives the red stripe and the jump to the top of the list. */
   blocked?: string[];
+  /** For a manual task carried over from an earlier day: the day it was first planned for. */
+  carriedFrom?: string;
 };
 
 /**
@@ -85,6 +87,7 @@ export function getDisplayTasks(date: string, state: AppState): DisplayTask[] {
         category: recipe?.category ?? t.categoryOverride ?? 'general',
         note: t.note,
         appliedCompletion: t.appliedCompletion,
+        carriedFrom: t.carriedFrom,
       };
       return recipe ? withBlocked(display, blockedIngredients(recipe, t.multiplier, state)) : display;
     });

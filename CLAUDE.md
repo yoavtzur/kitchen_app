@@ -20,10 +20,10 @@ npm run preview   # preview a production build
 
 Run a single test file: `npx vitest run src/lib/__tests__/calc.test.ts`
 
-There are 36 test files (522 tests), colocated in `__tests__` folders next to what they cover:
+There are 37 test files (540 tests), colocated in `__tests__` folders next to what they cover:
 `src/lib/__tests__/` (calc, date, ids, integrity, tasks, swipe, units-adjacent helpers, geminiScanner,
 recipeDraft, migrateStations, sentry, analytics, appConfig, focusTrap, rpcErrors, nav, orders,
-ingredientCategories, stations, syncIndicator, invite, cookName, phone, todayFilter, restore, receiving, notices, quickActions),
+ingredientCategories, stations, syncIndicator, invite, cookName, phone, todayFilter, restore, receiving, notices, quickActions, carryOver),
 `src/store/__tests__/{reducer,storage,importValidation}.test.ts`,
 `src/sync/__tests__/{backoff,engine,localAdapter,log,persist}.test.ts`, and **`api/__tests__/` — the one
 test directory outside `src/`**, covering the scan endpoint's guards (see "Closing /api/scan-recipe").
@@ -730,6 +730,34 @@ the notice pending again. The gate wraps the **whole layout** (nav included, oth
 around), shows for a signed-in `cook` only (a chef made the change; local mode has no cooks), and sits
 after `CookGate`. The server does not check that an ACK's `cookId` is the caller's own — the same trust
 model as every other op that names a cook.
+
+### A new day: unfinished work carries over (2026-10-01, no migration)
+
+**What used to happen.** An auto task is recomputed from stock, so an undone one came back on its own — but
+what is stored per `(product, date)` (assignee, hand-set priority, dismissal) did not. And a *manual* task
+vanished: the list shows `task.date === date`, so yesterday's open "clean shelves" was still in the data and
+nowhere on screen (no overdue marker, not in the nav badge).
+
+**`CARRY_OVER_TASKS { today }`** (`lib/carryOver.ts`, pure, idempotent — it returns the *same object* when
+there is nothing to do, which is also how callers ask "is there anything to do?"). A real action rather
+than a display-time derivation, because a manual task moved onto today is then an ordinary task of today:
+completing it, the per-cook "done today" count and every card action work unchanged (a derived version
+would file a task finished today under yesterday). Open manual tasks move to `today` and keep the day they
+were *first* planned for in `Task.carriedFrom` (so "3 days ago" does not reset each morning); there is no
+age limit — they stay until done or deleted, with "מלפני N ימים" on the card. For auto tasks only the
+**most recent earlier** override per product is considered, and only its assignee and a hand-set priority
+are copied, and only if it was neither done (the work happened) nor **dismissed** (a real need must not stay
+hidden forever because it was waved away once), within `AUTO_CARRY_DAYS` (7), and never over an existing row
+for today. `today` comes from the dispatcher, never the clock, so replay agrees on every device.
+
+**`DayRollover`** (`components/`, in `GatedApp` beside `SentryContext`) sends it, and **at the layout
+level, not on `Today`**: the open-task badge in the bottom nav counts the same list and has to be right on
+whichever screen the app lands on. Several devices opening in the same minute is fine — the first makes the
+rest no-ops. **`useToday`** keeps "today" current (visibility/focus, and the next local midnight rescheduled
+from the real clock rather than a fixed 24h, so a device that slept through midnight lands on the right day
+when it wakes): `Today` follows it until the cook picks another date, and `BottomNav` uses it instead of a
+`todayStr()` read once inside a memo, which went stale on an app left open overnight. Known edge: a device
+whose clock runs ahead carries tasks onto a date other devices have not reached yet.
 
 ### Tablet, focus, motion
 

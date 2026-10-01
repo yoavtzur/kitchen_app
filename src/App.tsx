@@ -4,6 +4,7 @@ import { AnalyticsContext } from './components/AnalyticsContext';
 import { AuthGate, MaintenanceGate, MembershipGate, CookGate, NoticeGate } from './components/Gate';
 import { AppProvider } from './store/AppContext';
 import { BottomNav } from './components/BottomNav';
+import { DayRollover } from './components/DayRollover';
 import { RouteBoundary } from './components/RouteBoundary';
 import { SentryContext } from './components/SentryContext';
 import { SyncBadge } from './components/SyncBadge';
@@ -37,6 +38,7 @@ function GatedApp() {
                     that triggered it, and it needs `dispatch` to undo. */}
                 <UndoProvider>
                   <SentryContext />
+                  <DayRollover />
                   <AnalyticsContext />
                   <SyncBadge />
                   <Outlet />

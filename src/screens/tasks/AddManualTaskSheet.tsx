@@ -3,8 +3,13 @@ import { useApp } from '../../store/AppContext';
 import { usePermissions } from '../../auth/usePermissions';
 import { newId } from '../../lib/ids';
 import { BottomSheet } from '../../components/BottomSheet';
+import { WeekdayPicker } from '../../components/WeekdayPicker';
+import { ALL_WEEKDAYS } from '../../lib/recurring';
+import { todayStr } from '../../lib/date';
 import { stationOptions, UNASSIGNED_CATEGORY } from '../../lib/recipeCategories';
-import type { Priority, RecipeCategory, Station, Task } from '../../types';
+import type { Priority, RecipeCategory, Station, Task, Weekday } from '../../types';
+
+type Repeat = 'none' | 'daily' | 'days';
 
 const PRIORITY_OPTIONS: { value: Priority; label: string }[] = [
   { value: 'red', label: 'דחוף' },
@@ -20,7 +25,9 @@ const NEW_STATION_ID = '__new_station__';
 
 export function AddManualTaskSheet({ date, onClose }: { date: string; onClose: () => void }) {
   const { state, dispatch } = useApp();
-  const { canEditRecipes } = usePermissions();
+  const { canEditRecipes, isChef } = usePermissions();
+  const [repeat, setRepeat] = useState<Repeat>('none');
+  const [repeatDays, setRepeatDays] = useState<Weekday[]>([]);
   const [recipeId, setRecipeId] = useState(state.recipes[0]?.id ?? FREE_TEXT_OPTION);
   const [title, setTitle] = useState('');
   const [multiplier, setMultiplier] = useState('1');
@@ -72,9 +79,33 @@ export function AddManualTaskSheet({ date, onClose }: { date: string; onClose: (
     setAddingStation(false);
   }
 
+  // Only the chef makes standing tasks, and only free-text ones: a recipe-backed prep task already
+  // comes back on its own from stock, every day it is needed.
+  const canRepeat = isChef && isFreeText;
+  const repeating = canRepeat && repeat !== 'none';
+  const repeatDaysChosen = repeat === 'daily' ? ALL_WEEKDAYS : repeatDays;
+
   function save() {
     if (isFreeText && !title.trim()) return;
     if (!isFreeText && !recipeId) return;
+    if (repeating) {
+      if (repeatDaysChosen.length === 0) return;
+      dispatch({
+        type: 'ADD_RECURRING_TASK',
+        rule: {
+          id: newId('recurring'),
+          title: title.trim(),
+          days: repeatDaysChosen,
+          categoryOverride: category,
+          priority,
+          assigneeId: assigneeId || undefined,
+        },
+        // Today, not the date picked on the screen: a standing task starts from now.
+        today: todayStr(),
+      });
+      onClose();
+      return;
+    }
     const task: Task = {
       id: newId('task-manual'),
       date,
@@ -211,8 +242,25 @@ export function AddManualTaskSheet({ date, onClose }: { date: string; onClose: (
           ))}
         </select>
       </div>
-      <button type="button" className="btn btn-primary" style={{ width: '100%' }} onClick={save}>
-        הוסף משימה
+      {canRepeat && (
+        <div className="field">
+          <label>חזרה</label>
+          <select value={repeat} onChange={(e) => setRepeat(e.target.value as Repeat)}>
+            <option value="none">לא חוזרת</option>
+            <option value="daily">כל יום</option>
+            <option value="days">ימים נבחרים</option>
+          </select>
+          {repeat === 'days' && <WeekdayPicker value={repeatDays} onChange={setRepeatDays} />}
+        </div>
+      )}
+      <button
+        type="button"
+        className="btn btn-primary"
+        style={{ width: '100%' }}
+        disabled={repeating && repeatDaysChosen.length === 0}
+        onClick={save}
+      >
+        {repeating ? 'הוסף משימה קבועה' : 'הוסף משימה'}
       </button>
     </BottomSheet>
   );

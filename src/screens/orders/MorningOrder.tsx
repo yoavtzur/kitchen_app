@@ -1,34 +1,37 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { useApp, useSync } from '../../store/AppContext';
 import { InfoIcon } from '../../components/icons';
 import { BottomSheet } from '../../components/BottomSheet';
 import { CategoryTabs } from '../../components/CategoryTabs';
-import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { EmptyState } from '../../components/EmptyState';
 import { NumberEditor } from '../../components/NumberEditor';
 import { SearchInput } from '../../components/SearchInput';
 import { Toast } from '../../components/Toast';
+import { SendOrdersSheet } from './SendOrdersSheet';
 import { daysOfSupply, weekdayValue } from '../../lib/calc';
 import { addDays, dayOfWeek, todayStr } from '../../lib/date';
 import { ALL_CATEGORIES, categoryOf, ingredientCategoryTabs, matchesCategory } from '../../lib/ingredientCategories';
 import {
   buildOrderLines,
   collectCountChanges,
+  groupBySupplier,
   effectiveCount,
   lowStockTone,
   parseQty,
   planFillToPar,
   suggestedQty,
+  supplierMessages,
   type CountDrafts,
+  type SupplierMessage,
 } from '../../lib/orders';
 import { matchesQuery } from '../../lib/search';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import { savedMessage } from '../../lib/syncIndicator';
 import { unitLabel } from '../../lib/units';
 import { useTimedMessage } from '../../lib/useTimedFlag';
+import { useUndo } from '../../lib/undo';
 import type { Ingredient } from '../../types';
 
-const UNDO_WINDOW_MS = 8000;
 
 /** Real weekend delta (Thu/Fri/Sat) against the ingredient's own base dailyUsage — never a
  * fabricated percentage. Returns null when nothing is configured for those weekdays. */
@@ -194,8 +197,8 @@ export function MorningOrder() {
   const [category, setCategory] = useState(ALL_CATEGORIES);
   const [drafts, setDrafts] = useState<CountDrafts>({});
   const [info, setInfo] = useState<Ingredient | null>(null);
-  const [confirmFill, setConfirmFill] = useState(false);
-  const [undo, setUndo] = useState<{ ingredientId: string; previous: number }[] | null>(null);
+  const { showUndo } = useUndo();
+  const [sending, setSending] = useState<SupplierMessage[] | null>(null);
   const [message, showMessage] = useTimedMessage(2500);
 
   const tabs = useMemo(() => ingredientCategoryTabs(state.ingredients), [state.ingredients]);
@@ -209,38 +212,34 @@ export function MorningOrder() {
   const lines = useMemo(() => buildOrderLines(state, drafts, today), [state, drafts, today]);
   const fillPlan = useMemo(() => planFillToPar(state, today), [state, today]);
 
-  useEffect(() => {
-    if (!undo) return;
-    const t = setTimeout(() => setUndo(null), UNDO_WINDOW_MS);
-    return () => clearTimeout(t);
-  }, [undo]);
-
   function approve() {
     const changes = collectCountChanges(state.ingredients, drafts);
     if (changes.length > 0) {
       dispatch({ type: 'BULK_UPDATE_QUANTITIES', ingredients: changes, products: [], today });
     }
-    if (lines.length > 0) dispatch({ type: 'SUBMIT_ORDER', date: today, lines });
+    if (lines.length > 0) {
+      dispatch({ type: 'SUBMIT_ORDER', date: today, lines });
+      // Built from the very lines just submitted, so what is sent is what was approved.
+      setSending(supplierMessages(lines, state.ingredients));
+    }
     setDrafts({});
     showMessage(
       sync.online && sync.status !== 'offline' ? 'הספירה וההזמנה נשמרו ✓' : savedMessage(sync, isSupabaseConfigured),
     );
   }
 
+  /** No "are you sure?": the replaced quantities are one "בטל" away, which is faster than a dialog
+   * and just as safe — the previous values are captured before anything is dispatched. */
   function fillToPar() {
-    setConfirmFill(false);
-    for (const { ingredientId } of fillPlan) {
+    const plan = fillPlan;
+    for (const { ingredientId } of plan) {
       dispatch({ type: 'SET_ORDER_LINE_QTY', ingredientId, date: today, qtyOverride: null });
     }
-    setUndo(fillPlan);
-  }
-
-  function undoFill() {
-    if (!undo) return;
-    for (const { ingredientId, previous } of undo) {
-      dispatch({ type: 'SET_ORDER_LINE_QTY', ingredientId, date: today, qtyOverride: previous });
-    }
-    setUndo(null);
+    showUndo('ההצעה האוטומטית הוחזרה', () => {
+      for (const { ingredientId, previous } of plan) {
+        dispatch({ type: 'SET_ORDER_LINE_QTY', ingredientId, date: today, qtyOverride: previous });
+      }
+    });
   }
 
   return (
@@ -259,7 +258,7 @@ export function MorningOrder() {
           type="button"
           className="btn btn-sm"
           disabled={fillPlan.length === 0}
-          onClick={() => setConfirmFill(true)}
+          onClick={fillToPar}
         >
           מלא לפי המינימום
         </button>
@@ -276,23 +275,28 @@ export function MorningOrder() {
               <span>הזמנה</span>
             </span>
           </div>
-          {filtered.map((ing) => {
-            const count = effectiveCount(ing, drafts);
-            return (
-              <MorningRow
-                key={ing.id}
-                ingredient={ing}
-                countValue={drafts[ing.id] ?? fmt(ing.currentQty)}
-                order={suggestedQty(ing, state, today, drafts)}
-                tone={lowStockTone(ing, count, today)}
-                onCountChange={(id, value) => setDrafts((prev) => ({ ...prev, [id]: value }))}
-                onOrderCommit={(i, qtyOverride) =>
-                  dispatch({ type: 'SET_ORDER_LINE_QTY', ingredientId: i.id, date: today, qtyOverride })
-                }
-                onInfo={setInfo}
-              />
-            );
-          })}
+          {groupBySupplier(filtered).map((group) => (
+            <div key={group.supplier}>
+              <div className="morning-supplier">{group.supplier}</div>
+              {group.ingredients.map((ing) => {
+                const count = effectiveCount(ing, drafts);
+                return (
+                  <MorningRow
+                    key={ing.id}
+                    ingredient={ing}
+                    countValue={drafts[ing.id] ?? fmt(ing.currentQty)}
+                    order={suggestedQty(ing, state, today, drafts)}
+                    tone={lowStockTone(ing, count, today)}
+                    onCountChange={(id, value) => setDrafts((prev) => ({ ...prev, [id]: value }))}
+                    onOrderCommit={(i, qtyOverride) =>
+                      dispatch({ type: 'SET_ORDER_LINE_QTY', ingredientId: i.id, date: today, qtyOverride })
+                    }
+                    onInfo={setInfo}
+                  />
+                );
+              })}
+            </div>
+          ))}
         </div>
       )}
       {/* Room for the fixed approve bar, so the last row can scroll clear of it. */}
@@ -307,25 +311,9 @@ export function MorningOrder() {
         />
       )}
 
-      {confirmFill && (
-        <ConfirmDialog
-          title="מילוי לפי המינימום"
-          confirmLabel="חזור להצעה האוטומטית"
-          onClose={() => setConfirmFill(false)}
-          onConfirm={fillToPar}
-        >
-          <p>
-            {fillPlan.length} כמויות שהוקלדו ידנית יוחלפו בהצעה האוטומטית, שמשלימה כל מצרך לרמת המינימום או
-            לצריכה השבועית. אפשר לבטל מיד אחרי.
-          </p>
-        </ConfirmDialog>
-      )}
+      {sending && sending.length > 0 && <SendOrdersSheet messages={sending} onClose={() => setSending(null)} />}
 
-      {undo ? (
-        <Toast message="ההצעה האוטומטית הוחזרה" action={{ label: 'ביטול', onClick: undoFill }} />
-      ) : (
-        message && <Toast message={message} />
-      )}
+      {message && <Toast message={message} />}
 
       <div className="count-save-bar">
         <button type="button" className="btn btn-primary btn-block" disabled={lines.length === 0} onClick={approve}>

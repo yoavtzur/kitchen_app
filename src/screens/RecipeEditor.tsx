@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useApp } from '../store/AppContext';
+import { useAuth } from '../auth/AuthContext';
 import { usePermissions } from '../auth/usePermissions';
 import { BottomSheet } from '../components/BottomSheet';
-import { ConfirmDialog } from '../components/ConfirmDialog';
-import { describeImpact, impactOfDeletingRecipe } from '../lib/integrity';
+import { useUndo } from '../lib/undo';
 import { newId } from '../lib/ids';
 import { WeekdayUsageEditor } from '../components/WeekdayUsageEditor';
 import { stationOptions } from '../lib/recipeCategories';
@@ -126,6 +126,10 @@ type Props = {
  */
 export function RecipeEditor({ recipe, defaultCategory, onClose, draft = null }: Props) {
   const { state, dispatch } = useApp();
+  const { membership } = useAuth();
+  // Who is saving: a recipe change leaves a "read this" notice for the cooks, but not for its author.
+  const byCookId = membership?.cookId ?? undefined;
+  const { deleteWithUndo } = useUndo();
   const { canEditRecipes, canDeleteRecipes } = usePermissions();
 
   const linkedProduct =
@@ -166,7 +170,6 @@ export function RecipeEditor({ recipe, defaultCategory, onClose, draft = null }:
     if (draft?.steps.length) return draft.steps;
     return [''];
   });
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
 
   // A recipe must never consume the product it produces.
@@ -266,7 +269,11 @@ export function RecipeEditor({ recipe, defaultCategory, onClose, draft = null }:
     };
 
     if (!tracksStock) {
-      dispatch({ type: recipe ? 'UPDATE_RECIPE' : 'ADD_RECIPE', recipe: basePayload } as never);
+      dispatch(
+        (recipe
+          ? { type: 'UPDATE_RECIPE', recipe: basePayload, byCookId }
+          : { type: 'ADD_RECIPE', recipe: basePayload }) as never,
+      );
       onClose();
       return;
     }
@@ -291,13 +298,16 @@ export function RecipeEditor({ recipe, defaultCategory, onClose, draft = null }:
       type: 'SAVE_PREP_ITEM',
       recipe: { ...basePayload, producesProductId: productId },
       product,
+      byCookId,
     });
     onClose();
   }
 
   function remove() {
     if (!recipe || !canDeleteRecipes) return;
-    dispatch({ type: 'DELETE_RECIPE', id: recipe.id });
+    // No "are you sure?": everything the deletion takes with it (the linked product, its tasks,
+    // plan entries and order lines) comes back with one "בטל" — see lib/restore.ts.
+    deleteWithUndo({ type: 'DELETE_RECIPE', id: recipe.id }, `"${recipe.name}" נמחק`);
     onClose();
   }
 
@@ -611,7 +621,7 @@ export function RecipeEditor({ recipe, defaultCategory, onClose, draft = null }:
           <button
             type="button"
             className="btn"
-            onClick={() => setConfirmingDelete(true)}
+            onClick={remove}
             style={{ color: 'var(--color-red)' }}
           >
             מחק פריט
@@ -631,22 +641,6 @@ export function RecipeEditor({ recipe, defaultCategory, onClose, draft = null }:
           onSelect={addItemWithSelection}
           onClose={() => setPickerOpen(false)}
         />
-      )}
-
-      {confirmingDelete && recipe && (
-        <ConfirmDialog
-          title={`מחיקת "${recipe.name}"`}
-          confirmLabel="מחק לצמיתות"
-          onClose={() => setConfirmingDelete(false)}
-          onConfirm={remove}
-        >
-          <p>הפריט יימחק מכל האפליקציה. מה שיושפע:</p>
-          {describeImpact(impactOfDeletingRecipe(recipe.id, state)).map((line, i) => (
-            <p key={i} className="muted">
-              • {line}
-            </p>
-          ))}
-        </ConfirmDialog>
       )}
     </BottomSheet>
   );

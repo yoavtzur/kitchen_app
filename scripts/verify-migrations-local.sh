@@ -262,6 +262,17 @@ ck "a chef can delete one" "$(as "$CHEF" "select count(*) from public.append_ops
 ck "a forbidden batch took no sequence numbers" \
    "$($Q -c "select last_seq = (select max(seq) from public.ops where restaurant_id='$RID1') from public.restaurants where id='$RID1'")" "t"
 
+echo; echo "== 0010: standing tasks are chef-only, but the day-start action is open =="
+for T in ADD_RECURRING_TASK UPDATE_RECURRING_TASK DELETE_RECURRING_TASK; do
+  ck "a cook cannot send $T" \
+     "$(as "$COOK" "select 1 from public.append_ops('$RID1'::uuid,'c',$(op $T))" 2>&1 >/dev/null | grep -c forbidden_action)" "1"
+  ck "a chef can send $T" "$(as "$CHEF" "select count(*) from public.append_ops('$RID1'::uuid,'c',$(op $T))")" "1"
+done
+ck "a cook CAN send MATERIALIZE_RECURRING — whichever device opens first makes today's tasks" \
+   "$(as "$COOK" "select count(*) from public.append_ops('$RID1'::uuid,'c',$(op MATERIALIZE_RECURRING))")" "1"
+ck "a rejected batch of standing-task ops took no sequence numbers" \
+   "$($Q -c "select last_seq = (select max(seq) from public.ops where restaurant_id='$RID1') from public.restaurants where id='$RID1'")" "t"
+
 echo; echo "== 0008: a pending person's account can be erased, and takes the request with it =="
 PD=$(newuser pd@t)
 ask "$PD" "$CODE2" >/dev/null

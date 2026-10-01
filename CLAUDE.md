@@ -20,10 +20,10 @@ npm run preview   # preview a production build
 
 Run a single test file: `npx vitest run src/lib/__tests__/calc.test.ts`
 
-There are 32 test files (460 tests), colocated in `__tests__` folders next to what they cover:
+There are 38 test files (561 tests), colocated in `__tests__` folders next to what they cover:
 `src/lib/__tests__/` (calc, date, ids, integrity, tasks, swipe, units-adjacent helpers, geminiScanner,
 recipeDraft, migrateStations, sentry, analytics, appConfig, focusTrap, rpcErrors, nav, orders,
-ingredientCategories, stations, syncIndicator, invite, cookName, phone, todayFilter),
+ingredientCategories, stations, syncIndicator, invite, cookName, phone, todayFilter, restore, receiving, notices, quickActions, carryOver, recurring),
 `src/store/__tests__/{reducer,storage,importValidation}.test.ts`,
 `src/sync/__tests__/{backoff,engine,localAdapter,log,persist}.test.ts`, and **`api/__tests__/` — the one
 test directory outside `src/`**, covering the scan endpoint's guards (see "Closing /api/scan-recipe").
@@ -197,10 +197,10 @@ they're pure functions over `AppState` and don't care where it came from.
   focus all trigger.
 
 **Supabase schema**: `supabase/migrations/0001_init.sql` through
-`0009_member_contacts.sql`, **applied by hand to the live project** (0007 is the
+`0010_recurring_tasks_chef_only.sql`, **applied by hand to the live project** (0007 is the
 one to check first if account deletion, code rotation or join rate limiting misbehaves, 0008 for
 invites, join requests and chef-only station edits, 0009 for phone numbers and the team's contact
-list — see LAUNCH-CHECKLIST.md). Nothing in the build applies migrations, so any *future*
+list, 0010 for chef-only standing tasks — see LAUNCH-CHECKLIST.md). Nothing in the build applies migrations, so any *future*
 migration needs the same manual step before synced clients can use it — until then they sit at
 `upgrade-required` and refuse to append, which is the expected signal that it hasn't landed yet.
 `LAUNCH-CHECKLIST.md` at the repo root is the operator-facing version of this.
@@ -236,7 +236,7 @@ against a local dev server and a real browser instead (see "Commands" above).
 **`scripts/verify-migrations-local.sh` is the one that runs before shipping a migration**, and it
 exists because nothing else could: every other SQL check talks to the live project, so a migration
 could only be tested *after* being pasted into the dashboard by hand. It spins up a throwaway
-local PostgreSQL with a two-table stand-in for `auth`, applies all nine migrations in order, and
+local PostgreSQL with a two-table stand-in for `auth`, applies all ten migrations in order, and
 then exercises the RPCs. The property that makes it worth keeping is that **every RPC call is its
 own `psql -c`, hence its own transaction**, exactly as PostgREST gives each call. Driving the same
 functions from inside one `DO` block hides a whole class of bug, because an exception handler's
@@ -670,6 +670,121 @@ rather than three opt-in controls), instant `:active` states at the bottom of `g
 off the browser's tap flash, so a control with no `:active` rule gave *no* feedback until the screen
 changed), no transition on the nav icon, and `preloadScreens()` in `routes.tsx` warms every lazy chunk
 at idle so the first visit to a tab is not a network round trip.
+
+### Swipe quick actions, receiving, one undo, recipe-change gate (2026-10-01, no migration)
+
+None of this needed a migration: every new piece of state is an **optional field** on `AppState`
+(`Ingredient.shortFlag`, `OrderLine.receivedQty`, `AppState.recipeNotices`), so no `SCHEMA_VERSION` bump,
+and an older client simply ignores the new action types (`default: return state`).
+
+**Task cards.** Swipe **right** = done (green), swipe **left** = `QuickActionsSheet` (orange): "חסר חומר
+גלם" flags an ingredient (`SET_INGREDIENT_SHORT`, absolute) and "פחת" takes ¼ / ½ / הכל off stock
+(`SET_INGREDIENT_QTY`) — nothing to type, each ends in "בטל". `swipeDirection` is physical (right is right
+in RTL too). Left springs the card back; the sheet is rendered **inside** the card, because a sibling of
+the swipe wrapper becomes a second child of `.tasks-grid` and breaks its "lone last card spans the row"
+rule (found live, not by a test). Finished tasks leave the working list for a collapsed "הושלמו (N)" —
+still counted in the progress bar, still one swipe from undone (`UNDO_*_COMPLETION` replays the stored
+`appliedCompletion`, so stock returns exactly). `shortFlag` is cleared by stock going *up* (`withQty` in
+`reducer.ts`: a count, a delivery) and not by going down (a waste report). It reaches the morning order
+through `suggestedQty` (par level, else a day of cover, else 1) and shows as a red dot.
+
+**Tasks missing an ingredient jump the queue.** `blockedIngredients` (`lib/tasks.ts`) compares what the
+multiplier needs with stock *in the ingredient's own unit* (a cross-family line is skipped, not guessed)
+and counts `shortFlag`. `DisplayTask.blocked` is absent when nothing is missing and always absent on a
+finished task; `sortDisplayTasks` is done → blocked → priority → id. The red stripe (`.critical`) sits on
+top of the priority border: priority is about the product's stock, this is about its ingredients.
+
+**One shared "בטל"** (`UndoProvider`, `lib/undo.ts`, 4s) replaces "are you sure?" for cook / station /
+recipe / ingredient deletes and fill-to-par. It sits above `<Outlet />` and inside `AppProvider` because
+the sheet that triggered a delete closes itself, and a toast rendered inside it would leave with it.
+`deleteWithUndo(action, message)` computes the *after* state by calling the pure reducer, diffs it
+(`lib/restore.ts`, `diffForRestore`) and undoes with `RESTORE_ENTITIES`, an idempotent upsert of the
+**before** version of everything the deletion touched — needed because `DELETE_RECIPE` and
+`DELETE_INGREDIENT` cascade through `pruneEntities` into products, tasks, plans and order lines. Known
+cost: an edit to those same entities from another device inside the 4s window is overwritten. **Still
+confirmed** (irreversible or an RPC): account deletion, backup import, join-code rotation, removing a
+member, local resets, and the unit-change warning (information, not a guard). The station delete keeps
+its sheet because it asks *where the recipes go* — that is a choice, not a confirmation.
+
+**Receiving** (`screens/Receiving.tsx`, chef only, `/receiving`, linked from the menu and the orders
+tab). Lines keep a `receivedQty` instead of being deleted, and `SET_LINE_RECEIVED` is **absolute**: stock
+moves by the *difference* from what was recorded, so replay, a double tap and undo are all exact — the
+old `RECEIVE_ORDER` deleted the line and could not represent a short delivery (it is still in the reducer
+for old ops). Tap = arrived in full, long press = `QtySheet` (the keypad extracted from `NumberEditor`)
+for the real quantity; a short delivery stays open as "התקבל 3 · חסר 2". `useLongPress` keeps the tap a
+real `click` (keyboard still works) and swallows the click that follows a long press; the context menu is
+blocked. The window is `RECEIVING_WINDOW_DAYS` (7).
+
+**Morning order by supplier.** `groupBySupplier` / `supplierMessages` (`lib/orders.ts`) build one WhatsApp
+message per supplier from the exact lines submitted; `SendOrdersSheet` follows "אשר הכל". The by-supplier
+orders view now reads `suggestedQty` instead of its own copy of the calculation. An ingredient carries
+only a supplier *name*, so WhatsApp opens with the text filled in and the chef picks the contact.
+
+**"קראתי והבנתי" gate (`NoticeGate`, `lib/notices.ts`).** A notice is **derived, never authored**: saving
+a recipe whose *content* changed (name, items, steps, yield — not its station) bumps a per-recipe `rev`
+in `recipeNotices` and records who has read it. The author is pre-acknowledged (`byCookId` on
+`UPDATE_RECIPE` / `SAVE_PREP_ITEM`); a cook approved later starts caught up (`ADD_COOK`). It is
+deterministic (no clock, no random id), and needs no server rule — editing is already `can_edit_recipes`
+and acknowledging is open to any member. An acknowledgement names the revision read, so a later edit makes
+the notice pending again. The gate wraps the **whole layout** (nav included, otherwise it can be walked
+around), shows for a signed-in `cook` only (a chef made the change; local mode has no cooks), and sits
+after `CookGate`. The server does not check that an ACK's `cookId` is the caller's own — the same trust
+model as every other op that names a cook.
+
+### A new day: unfinished work carries over (2026-10-01, no migration)
+
+**What used to happen.** An auto task is recomputed from stock, so an undone one came back on its own — but
+what is stored per `(product, date)` (assignee, hand-set priority, dismissal) did not. And a *manual* task
+vanished: the list shows `task.date === date`, so yesterday's open "clean shelves" was still in the data and
+nowhere on screen (no overdue marker, not in the nav badge).
+
+**`CARRY_OVER_TASKS { today }`** (`lib/carryOver.ts`, pure, idempotent — it returns the *same object* when
+there is nothing to do, which is also how callers ask "is there anything to do?"). A real action rather
+than a display-time derivation, because a manual task moved onto today is then an ordinary task of today:
+completing it, the per-cook "done today" count and every card action work unchanged (a derived version
+would file a task finished today under yesterday). Open manual tasks move to `today` and keep the day they
+were *first* planned for in `Task.carriedFrom` (so "3 days ago" does not reset each morning); there is no
+age limit — they stay until done or deleted, with "מלפני N ימים" on the card. For auto tasks only the
+**most recent earlier** override per product is considered, and only its assignee and a hand-set priority
+are copied, and only if it was neither done (the work happened) nor **dismissed** (a real need must not stay
+hidden forever because it was waved away once), within `AUTO_CARRY_DAYS` (7), and never over an existing row
+for today. `today` comes from the dispatcher, never the clock, so replay agrees on every device.
+
+**`DayRollover`** (`components/`, in `GatedApp` beside `SentryContext`) sends it, and **at the layout
+level, not on `Today`**: the open-task badge in the bottom nav counts the same list and has to be right on
+whichever screen the app lands on. Several devices opening in the same minute is fine — the first makes the
+rest no-ops. **`useToday`** keeps "today" current (visibility/focus, and the next local midnight rescheduled
+from the real clock rather than a fixed 24h, so a device that slept through midnight lands on the right day
+when it wakes): `Today` follows it until the cook picks another date, and `BottomNav` uses it instead of a
+`todayStr()` read once inside a memo, which went stale on an app left open overnight. Known edge: a device
+whose clock runs ahead carries tasks onto a date other devices have not reached yet.
+
+### Standing tasks: "clean the shelves" every day (2026-10-01, migration 0010 optional)
+
+**A rule, not a task.** `RecurringTask` (`AppState.recurringTasks?`, optional — no schema bump) holds a
+title, the weekdays it is due on, station, priority and assignee. Each day it is due,
+`materializeRecurring(state, today)` (`lib/recurring.ts`, pure) makes an **ordinary manual `Task`** from it,
+tagged `recurringId`. That is the whole design: from its first moment the task is indistinguishable from one
+a person typed, so completing, assigning, deleting, undo and the carry-over all work by code that already
+exists, and there is no second display path to keep in step. Free-text only — a recipe-backed prep task
+already comes back by itself from stock.
+
+Three rules in it are load-bearing. **`lastMaterialized` is why a deleted instance does not come back:** the
+rule has already answered for that day, so the idempotent re-run does not make it again (without it, ✕ on
+today's task would be undone by the next render). **No stacking:** an instance still open — typically
+yesterday's, carried over — *is* the task for today, so a daily task left undone does not become a pile;
+`DayRollover` runs the carry-over **before** the materialize for exactly that reason. **Ids are
+deterministic** (`rec-<rule>-<date>`), so two devices making the same day's task make the same task. No
+back-fill for days nobody opened the app. `UPDATE_RECURRING_TASK` keeps `lastMaterialized`, so saving a rule
+twice in a day does not make today's task twice, and it changes future days only.
+
+**Chef only, and the server agrees.** `ADD/UPDATE/DELETE_RECURRING_TASK` are `'chef'` in `action_requires`
+(migration 0010, same mechanism 0008 used for stations; `scripts/verify-migrations-local.sh` covers it).
+**`MATERIALIZE_RECURRING` is deliberately open to every member**: it is sent by whichever device opens the
+app first, very often a cook's, and it is a pure function of state and date. Until 0010 is applied nothing
+breaks — the actions are simply open, as for any action the server does not list. UI: a "חזרה" block in
+`AddManualTaskSheet` (chef, free-text tasks), and `screens/RecurringTasks.tsx` (`/recurring`, from the menu)
+to edit, pause or delete a rule (`deleteWithUndo`, so no confirmation). `WeekdayPicker` is seven real toggles.
 
 ### Tablet, focus, motion
 

@@ -3,10 +3,12 @@ import {
   buildOrderLines,
   collectCountChanges,
   effectiveCount,
+  groupBySupplier,
   lowStockTone,
   parseQty,
   planFillToPar,
   suggestedQty,
+  supplierMessages,
 } from '../orders';
 import type { AppState, Ingredient, OrderLine } from '../../types';
 
@@ -134,5 +136,75 @@ describe('planFillToPar', () => {
   it('ignores other days', () => {
     const state = stateWith([egg], [{ ingredientId: 'egg', date: '2026-09-04', qtyOverride: 7, ordered: false }]);
     expect(planFillToPar(state, date)).toEqual([]);
+  });
+});
+
+describe('an ingredient flagged short', () => {
+  const flagged: Ingredient = { ...salt, shortFlag: true, parLevel: 4 };
+
+  it('is ordered at its par level even when the numbers see no need', () => {
+    expect(suggestedQty(salt, stateWith([salt]), date, {})).toBe(0);
+    expect(suggestedQty(flagged, stateWith([flagged]), date, {})).toBe(4);
+  });
+
+  it('falls back to a day of cover, then to one, when there is no par level', () => {
+    const daily = { ...flagged, parLevel: undefined, dailyUsage: 3 };
+    expect(suggestedQty(daily, stateWith([daily]), date, {})).toBe(3);
+    const none = { ...flagged, parLevel: undefined, dailyUsage: 0 };
+    expect(suggestedQty(none, stateWith([none]), date, {})).toBe(1);
+  });
+
+  it('does not override a quantity the chef typed', () => {
+    const state = stateWith([flagged], [{ ingredientId: 'salt', date, qtyOverride: 2, ordered: false }]);
+    expect(suggestedQty(flagged, state, date, {})).toBe(2);
+  });
+
+  it('is answered by a typed count above the stored one', () => {
+    expect(suggestedQty(flagged, stateWith([flagged]), date, { salt: '9' })).toBe(0);
+  });
+
+  it('shows a red dot, and puts the ingredient in the order', () => {
+    expect(lowStockTone(flagged, flagged.currentQty, date)).toBe('red');
+    expect(buildOrderLines(stateWith([flagged]), {}, date)).toEqual([{ ingredientId: 'salt', qty: 4 }]);
+  });
+});
+
+describe('supplierMessages', () => {
+  const dairy: Ingredient = { ...flour, id: 'milk', name: 'חלב', unit: 'l', supplier: 'תנובה' };
+  const mill: Ingredient = { ...flour, supplier: 'מילה' };
+  const loose: Ingredient = { ...salt };
+
+  it('splits one message per supplier, alphabetically, with no-supplier last', () => {
+    const lines = [
+      { ingredientId: 'salt', qty: 1 },
+      { ingredientId: 'milk', qty: 12 },
+      { ingredientId: 'flour', qty: 5 },
+    ];
+    const out = supplierMessages(lines, [mill, dairy, loose]);
+    expect(out.map((m) => m.supplier)).toEqual(['מילה', 'תנובה', 'ללא ספק']);
+    expect(out[1]).toEqual({ supplier: 'תנובה', count: 1, text: '*תנובה*\n• חלב: 12 ליטר' });
+  });
+
+  it('puts several items of one supplier in one message and drops empty quantities', () => {
+    const second: Ingredient = { ...mill, id: 'rye', name: 'שיפון' };
+    const out = supplierMessages(
+      [{ ingredientId: 'flour', qty: 5 }, { ingredientId: 'rye', qty: 2 }, { ingredientId: 'salt', qty: 0 }],
+      [mill, second, loose],
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].count).toBe(2);
+    expect(out[0].text.split('\n')).toHaveLength(3);
+  });
+
+  it('is empty for an empty order', () => {
+    expect(supplierMessages([], [mill])).toEqual([]);
+  });
+});
+
+describe('groupBySupplier', () => {
+  it('keeps each ingredient under its supplier in the same order as the messages', () => {
+    const a: Ingredient = { ...flour, supplier: 'תנובה' };
+    const groups = groupBySupplier([salt, a, { ...egg, supplier: 'תנובה' }]);
+    expect(groups.map((g) => [g.supplier, g.ingredients.length])).toEqual([['תנובה', 2], ['ללא ספק', 1]]);
   });
 });

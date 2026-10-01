@@ -23,6 +23,10 @@ export type Ingredient = {
    * prep stations for recipes and tasks, not a way to group ingredients themselves. */
   category?: string;
   note?: string;
+  /** A cook flagged this as running out (swipe → "חסר"). Surfaces it on the morning order and on
+   * the prep cards that need it; cleared once stock goes up (a count, a delivery). Optional, so
+   * no schema bump: an old snapshot simply has none. */
+  shortFlag?: boolean;
 };
 
 export type ProductKind = 'menu' | 'component';
@@ -91,6 +95,11 @@ export type Task = {
   /** Station for a free-text task (recipeId absent) — a recipe-backed task's station always
    * comes from its recipe's own category instead. */
   categoryOverride?: RecipeCategory;
+  /** The day this task was first planned for, set when it was left open and carried over to a
+   * later day (lib/carryOver.ts). Absent for a task that has never been carried. */
+  carriedFrom?: string;
+  /** The standing task (`RecurringTask`) this one was made from — see lib/recurring.ts. */
+  recurringId?: string;
   multiplier: number;
   priority: Priority;
   priorityManual?: boolean;
@@ -161,6 +170,10 @@ export type OrderLine = {
   /** Manual quantity typed by the user; when absent the suggested quantity is used. */
   qtyOverride?: number;
   ordered: boolean;
+  /** How much of the order has actually arrived (the "קבלת סחורה" screen). Absent means none.
+   * Kept on the line instead of deleting it, so a short delivery leaves the gap visible and the
+   * order history still shows what was asked for. */
+  receivedQty?: number;
 };
 
 export type RoundTo = 0.25 | 0.5 | 1 | null;
@@ -170,6 +183,34 @@ export type Settings = {
   weekStartsOn: 0 | 1; // 0 = Sunday
   roundMultiplierTo: RoundTo;
 };
+
+/**
+ * A task that comes back on its own: "clean the shelves" every day, or only on chosen weekdays.
+ * It is a *rule*, not a task — each day it is due, a normal manual `Task` is made from it
+ * (lib/recurring.ts), so completing, assigning, deleting and carrying over all work as they
+ * already do. Free-text only: a recipe-backed prep task already reappears by itself from stock.
+ */
+export type RecurringTask = {
+  id: string;
+  title: string;
+  /** Weekdays it is due on, 0 = Sunday. All seven means every day. */
+  days: Weekday[];
+  categoryOverride?: RecipeCategory;
+  priority: Priority;
+  assigneeId?: string;
+  /** Stops it coming back without deleting it. */
+  paused?: boolean;
+  /** The last day a task was made from this rule. Why a deleted instance does not come straight
+   * back: the rule already counts that day as done. */
+  lastMaterialized?: string;
+};
+
+/** What differs in a recipe that a cook doing the prep would care about — see lib/notices.ts. */
+export type RecipeChange = 'name' | 'items' | 'steps' | 'yield';
+
+/** The standing "this recipe changed" notice for one recipe. `rev` counts content changes;
+ * `ackedBy` holds the cook ids that have read the current revision. */
+export type RecipeNotice = { rev: number; changed: RecipeChange[]; ackedBy: string[] };
 
 export type AppState = {
   schemaVersion: number;
@@ -184,4 +225,8 @@ export type AppState = {
   cooks: Cook[];
   stations: Station[];
   settings: Settings;
+  /** Per recipe id. Optional, so no schema bump: an old snapshot or backup simply has none. */
+  recipeNotices?: Record<string, RecipeNotice>;
+  /** Standing tasks. Optional, so no schema bump: an old snapshot or backup simply has none. */
+  recurringTasks?: RecurringTask[];
 };

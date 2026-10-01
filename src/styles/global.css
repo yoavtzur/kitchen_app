@@ -681,6 +681,11 @@ textarea {
   font-size: 16px;
 }
 
+.swipe-action-menu {
+  background: rgba(255, 140, 0, 0.18);
+  color: var(--color-orange, #ff8c00);
+}
+
 .swipe-surface {
   position: relative;
   touch-action: pan-y;
@@ -1829,4 +1834,248 @@ textarea {
 
 .bottom-nav a.active:active .nav-icon-box {
   filter: brightness(0.85);
+}
+
+/* Quick actions opened by a left swipe on a task: big targets, no typing. Orange to match the
+   panel the swipe reveals, so the colour tells a cook which gesture brought them here. */
+.quick-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.quick-grid-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.quick-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 120px;
+  padding: var(--space-3);
+  border: 2px solid rgba(255, 140, 0, 0.5);
+  border-radius: var(--radius-card);
+  background: rgba(255, 140, 0, 0.12);
+  color: var(--color-text);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.quick-tile:active {
+  background: rgba(255, 140, 0, 0.28);
+}
+
+.quick-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--row-height);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  font-size: 17px;
+  font-weight: 600;
+  text-align: start;
+}
+
+.quick-row:active {
+  background: var(--color-border);
+}
+
+/* "הושלמו (N)" under the task list: finished work, out of the way but one tap from undoing. */
+.done-toggle {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  margin: var(--space-4) 0 var(--space-2);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-card);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* Receiving: one big full-width button per delivered item. Tall on purpose — the back door at seven
+   in the morning is not a place for precise taps. */
+.receive-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 76px;
+  padding: var(--space-3) var(--space-4);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  color: var(--color-text);
+  text-align: start;
+  /* A long press must not start a text selection or open the browser's own menu. */
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.receive-row:active {
+  background: var(--color-surface-2);
+}
+
+.receive-row.received {
+  border-color: var(--color-green);
+  background: var(--color-green-bg);
+}
+
+.receive-row.received .receive-name {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.receive-check {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border: 2px solid var(--color-border);
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-green);
+  font-weight: 900;
+}
+
+.receive-row.received .receive-check {
+  border-color: var(--color-green);
+}
+
+.receive-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.receive-name {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+/* Morning order: ingredients grouped under their supplier, one header per group. */
+.morning-supplier {
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-surface-2);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.send-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-2);
+}
+
+.send-row-name {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* A task that cannot be made with what is on the shelf: a thick red stripe down the start edge and a
+   warning line, so urgency reads without reading. It sits on top of the priority border rather than
+   replacing it — priority is about the product's stock, this is about its ingredients. */
+.priority-card.critical {
+  border-inline-start: 10px solid var(--color-red-bright);
+}
+
+.critical-note {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  color: var(--color-red);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* The "chef changed a recipe" gate: a card in the middle of an otherwise empty screen. */
+.notice-gate {
+  display: flex;
+  min-height: 70vh;
+  align-items: center;
+  justify-content: center;
+}
+
+.notice-gate .card {
+  width: 100%;
+}
+
+.notice-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.notice-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-s);
+  background: var(--color-surface-2);
+  font-size: 17px;
+}
+
+/* "נשארה מאתמול": a quiet note on a task carried over from an earlier day. Muted yellow, small — it
+   informs without competing with the red stripe or the priority border. */
+.carried-note {
+  margin-top: var(--space-2);
+  color: var(--color-yellow);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Standing tasks: the weekday toggles and the little tag on a card made from one. */
+.weekday-picker {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--space-1);
+}
+
+.weekday-chip {
+  min-height: 48px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-s);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.weekday-chip.on {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+}
+
+.recurring-tag {
+  margin-top: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 600;
 }

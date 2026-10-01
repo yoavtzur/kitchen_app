@@ -18,6 +18,14 @@ export function addDays(dateStr: string, days: number): string {
   return toDateStr(dt);
 }
 
+/** Whole days from `from` to `to` (negative if `to` is earlier). Built on local-midnight dates, so a
+ * daylight-saving change in between cannot make a day 23 or 25 hours long and skew the count. */
+export function daysBetween(from: string, to: string): number {
+  const [fy, fm, fd] = from.split('-').map(Number);
+  const [ty, tm, td] = to.split('-').map(Number);
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000);
+}
+
 /** 0=Sunday .. 6=Saturday, matching Date#getDay(). */
 export function dayOfWeek(dateStr: string): Weekday {
   const [y, m, d] = dateStr.split('-').map(Number);

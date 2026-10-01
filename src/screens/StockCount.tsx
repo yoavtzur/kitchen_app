@@ -27,7 +27,7 @@ import { useTimedFlag } from '../lib/useTimedFlag';
 import { todayStr } from '../lib/date';
 import { newId } from '../lib/ids';
 import { canConvert, unitLabel } from '../lib/units';
-import { describeImpact, impactOfDeletingIngredient } from '../lib/integrity';
+import { useUndo } from '../lib/undo';
 import type { Ingredient, Product, Unit, Weekday } from '../types';
 
 const UNIT_OPTIONS: { value: Unit; label: string }[] = [
@@ -223,7 +223,7 @@ function UnitPickerSheet({
 
 function IngredientDetailSheet({ ingredient, onClose }: { ingredient: Ingredient; onClose: () => void }) {
   const { state, dispatch } = useApp();
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const { deleteWithUndo } = useUndo();
   const [pickingUnit, setPickingUnit] = useState(false);
   // Set only for a cross-family change (e.g. weight -> count), where SET_INGREDIENT_UNIT can't
   // convert the existing numbers automatically — see the comment on that case in reducer.ts.
@@ -349,29 +349,15 @@ function IngredientDetailSheet({ ingredient, onClose }: { ingredient: Ingredient
         type="button"
         className="btn"
         style={{ marginTop: 'var(--space-4)', color: 'var(--color-red)' }}
-        onClick={() => setConfirmingDelete(true)}
+        onClick={() => {
+          // No "are you sure?": the ingredient, its recipe lines and its order rows all come
+          // back with one "בטל" (lib/restore.ts).
+          deleteWithUndo({ type: 'DELETE_INGREDIENT', id: ingredient.id }, `"${ingredient.name}" נמחק`);
+          onClose();
+        }}
       >
         מחק מצרך
       </button>
-
-      {confirmingDelete && (
-        <ConfirmDialog
-          title={`מחיקת "${ingredient.name}"`}
-          confirmLabel="מחק לצמיתות"
-          onClose={() => setConfirmingDelete(false)}
-          onConfirm={() => {
-            dispatch({ type: 'DELETE_INGREDIENT', id: ingredient.id });
-            onClose();
-          }}
-        >
-          <p>המצרך יימחק מכל האפליקציה. מה שיושפע:</p>
-          {describeImpact(impactOfDeletingIngredient(ingredient.id, state)).map((line, i) => (
-            <p key={i} className="muted">
-              • {line}
-            </p>
-          ))}
-        </ConfirmDialog>
-      )}
 
       {pickingUnit && (
         <UnitPickerSheet ingredient={ingredient} onClose={() => setPickingUnit(false)} onPick={handlePickUnit} />

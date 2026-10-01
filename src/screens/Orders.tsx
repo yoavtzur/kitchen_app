@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useApp } from '../store/AppContext';
-import { orderQtyForIngredient, weeklyNeedForIngredient } from '../lib/calc';
+import { weeklyNeedForIngredient } from '../lib/calc';
+import { suggestedQty, supplierMessages } from '../lib/orders';
 import { formatQty } from '../lib/units';
 import { addDays, dayOfWeek, dayShortLabel, orderLineKey, todayStr } from '../lib/date';
 import { EmptyState } from '../components/EmptyState';
-import { ConfirmDialog } from '../components/ConfirmDialog';
 import { SearchInput } from '../components/SearchInput';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { Segmented } from '../components/Segmented';
@@ -12,75 +13,23 @@ import { MorningOrder } from './orders/MorningOrder';
 import { useAuth } from '../auth/AuthContext';
 import { matchesQuery } from '../lib/search';
 import { useTimedFlag } from '../lib/useTimedFlag';
+import { NO_SUPPLIER, orderedLines, stillOwed } from '../lib/receiving';
 import type { AppState, Ingredient } from '../types';
 
-const NO_SUPPLIER = 'ללא ספק';
 
-/** Quantity to order today: the user's typed override if there is one, else the suggestion. */
-function orderQtyFor(ingredient: Ingredient, date: string, state: AppState): number {
-  const line = state.orderLines.find((l) => l.ingredientId === ingredient.id && l.date === date);
-  if (line?.qtyOverride !== undefined) return line.qtyOverride;
-  return Math.round(orderQtyForIngredient(ingredient.id, state) * 100) / 100;
-}
+/** Quantity to order today — the same function the morning view and its approve button use, so
+ * the two screens can never show a different number for the same ingredient. */
+const orderQtyFor = (ingredient: Ingredient, date: string, state: AppState) => suggestedQty(ingredient, state, date, {});
 
 function buildOrderText(date: string, state: AppState): string {
-  const bySupplier = new Map<string, string[]>();
-  for (const ing of state.ingredients) {
-    const qty = orderQtyFor(ing, date, state);
-    if (qty <= 0) continue;
-    const supplier = ing.supplier?.trim() || NO_SUPPLIER;
-    const lines = bySupplier.get(supplier) ?? [];
-    lines.push(`• ${ing.name}: ${formatQty(qty, ing.unit)}`);
-    bySupplier.set(supplier, lines);
-  }
-  return [...bySupplier.entries()]
-    .map(([supplier, lines]) => `*${supplier}*\n${lines.join('\n')}`)
-    .join('\n\n');
-}
-
-function ReceiveDialog({ date, onClose }: { date: string; onClose: () => void }) {
-  const { state, dispatch } = useApp();
-
-  const receipts = state.orderLines
-    .filter((l) => l.date === date && l.ordered)
-    .map((l) => {
-      const ing = state.ingredients.find((i) => i.id === l.ingredientId);
-      return ing ? { ingredientId: ing.id, qty: orderQtyFor(ing, date, state), ing } : null;
-    })
-    .filter((r): r is { ingredientId: string; qty: number; ing: Ingredient } => r !== null && r.qty > 0);
-
-  function confirm() {
-    dispatch({
-      type: 'RECEIVE_ORDER',
-      date,
-      receipts: receipts.map(({ ingredientId, qty }) => ({ ingredientId, qty })),
-    });
-    onClose();
-  }
-
-  return (
-    <ConfirmDialog title="קבלת סחורה" confirmLabel="אשר קליטה" onClose={onClose} onConfirm={confirm}>
-      {receipts.length === 0 ? (
-        <p className="muted">לא סומן שום מצרך כ&quot;הוזמן&quot;.</p>
-      ) : (
-        <>
-          <p className="muted">הכמויות הבאות יתווספו למלאי, והשורות יימחקו מגיליון ההזמנה:</p>
-          {receipts.map(({ ing, qty }) => (
-            <p key={ing.id}>
-              {ing.name}: +{formatQty(qty, ing.unit)}
-            </p>
-          ))}
-        </>
-      )}
-    </ConfirmDialog>
-  );
+  const lines = state.ingredients.map((ing) => ({ ingredientId: ing.id, qty: orderQtyFor(ing, date, state) }));
+  return supplierMessages(lines, state.ingredients).map((m) => m.text).join('\n\n');
 }
 
 function CurrentOrder() {
   const { state, dispatch } = useApp();
   const date = todayStr();
   const [query, setQuery] = useState('');
-  const [receiving, setReceiving] = useState(false);
   const [copied, flagCopied] = useTimedFlag(2000);
   const [submitted, flagSubmitted] = useTimedFlag(2000);
 
@@ -97,7 +46,8 @@ function CurrentOrder() {
   }, [state.ingredients, query]);
 
   const todaysLines = state.orderLines.filter((l) => l.date === date);
-  const orderedCount = todaysLines.filter((l) => l.ordered).length;
+  // Deliveries still owed from the last week, not just today's — the receiving screen's own list.
+  const awaitingDelivery = stillOwed(orderedLines(state, date)).length;
 
   function copyList() {
     const text = buildOrderText(date, state);
@@ -130,15 +80,13 @@ function CurrentOrder() {
         <button type="button" className="btn" style={{ flex: 1 }} onClick={shareToWhatsApp}>
           שלח בוואטסאפ
         </button>
-        <button
-          type="button"
+        <Link
           className="btn btn-primary"
-          style={{ flex: 1 }}
-          disabled={orderedCount === 0}
-          onClick={() => setReceiving(true)}
+          style={{ flex: 1, textAlign: 'center', textDecoration: 'none' }}
+          to="/receiving"
         >
-          קבלת סחורה{orderedCount > 0 ? ` (${orderedCount})` : ''}
-        </button>
+          קבלת סחורה{awaitingDelivery > 0 ? ` (${awaitingDelivery})` : ''}
+        </Link>
       </div>
 
       <SearchInput value={query} onChange={setQuery} placeholder="חיפוש מצרך או ספק..." />
@@ -253,7 +201,6 @@ function CurrentOrder() {
         </button>
       )}
 
-      {receiving && <ReceiveDialog date={date} onClose={() => setReceiving(false)} />}
     </div>
   );
 }

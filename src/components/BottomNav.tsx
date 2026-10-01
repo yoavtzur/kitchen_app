@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useApp } from '../store/AppContext';
 import { usePermissions } from '../auth/usePermissions';
 import { getDisplayTasks, taskProgress } from '../lib/tasks';
-import { todayStr } from '../lib/date';
+import { useToday } from '../lib/useToday';
 import { isTabActive, navTabsFor, type NavIconName } from '../lib/nav';
 import { ConsumptionIcon, CountIcon, MenuIcon, OrdersIcon, RecipesIcon, TasksIcon } from './icons';
 
@@ -26,7 +26,10 @@ export function BottomNav() {
   // Honest cost: this runs getDisplayTasks a second time per render. At this data size a memo
   // keyed on `state` is plenty; if it ever stops being enough, hoist one memoized call into
   // AppProvider — not before.
-  const openCount = useMemo(() => taskProgress(getDisplayTasks(todayStr(), state)).open, [state]);
+  // `useToday`, not `todayStr()`: the date read once inside a memo keyed on `state` goes stale on an
+  // app left open overnight, so the badge would count yesterday's list until something changed.
+  const today = useToday();
+  const openCount = useMemo(() => taskProgress(getDisplayTasks(today, state)).open, [today, state]);
 
   return (
     <nav className="bottom-nav" aria-label="ניווט ראשי">

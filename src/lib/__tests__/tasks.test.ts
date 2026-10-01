@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   autoTaskId,
+  blockedIngredients,
   getDisplayTasks,
   groupByStation,
   sortDisplayTasks,
   taskProgress,
   type DisplayTask,
 } from '../tasks';
-import type { AppState, Product, Recipe } from '../../types';
+import type { AppState, Ingredient, Product, Recipe } from '../../types';
 
 function baseState(overrides: Partial<AppState> = {}): AppState {
   return {
@@ -337,5 +338,66 @@ describe('groupByStation', () => {
 
   it('returns nothing for an empty task list', () => {
     expect(groupByStation([], stations)).toEqual([]);
+  });
+});
+
+describe('tasks missing a raw ingredient', () => {
+  const eggs = { id: 'ing-egg', name: 'ביצים', unit: 'unit' as const, currentQty: 100, dailyUsage: 1, weeklyUsage: 7 };
+  const milk = { id: 'ing-milk', name: 'חלב', unit: 'l' as const, currentQty: 50, dailyUsage: 1, weeklyUsage: 7 };
+  const recipe: Recipe = {
+    ...cremeBruleeRecipe,
+    items: [
+      { refType: 'ingredient', refId: 'ing-egg', qty: 4, unit: 'unit' },
+      { refType: 'ingredient', refId: 'ing-milk', qty: 500, unit: 'ml' },
+    ],
+  };
+  const withStock = (overrides: Partial<Ingredient>[]) =>
+    baseState({ products: [cremeBrulee], recipes: [recipe], ingredients: [{ ...eggs, ...overrides[0] }, { ...milk, ...overrides[1] }] });
+
+  it('is empty when everything needed is on the shelf', () => {
+    expect(blockedIngredients(recipe, 1, withStock([{}, {}]))).toEqual([]);
+  });
+
+  it('names an ingredient whose stock is below what the multiplier needs', () => {
+    // 1.5 batches need 6 eggs; there are 5.
+    expect(blockedIngredients(recipe, 1.5, withStock([{ currentQty: 5 }, {}]))).toEqual(['ביצים']);
+  });
+
+  it('compares in the ingredient’s own unit (500 ml against litres)', () => {
+    expect(blockedIngredients(recipe, 1, withStock([{}, { currentQty: 0.4 }]))).toEqual(['חלב']);
+    expect(blockedIngredients(recipe, 1, withStock([{}, { currentQty: 0.6 }]))).toEqual([]);
+  });
+
+  it('counts a cook’s "חסר" flag even when the numbers look fine', () => {
+    expect(blockedIngredients(recipe, 1, withStock([{ shortFlag: true }, {}]))).toEqual(['ביצים']);
+  });
+
+  it('does not guess across unit families', () => {
+    const weird = { ...recipe, items: [{ refType: 'ingredient' as const, refId: 'ing-egg', qty: 5, unit: 'kg' as const }] };
+    expect(blockedIngredients(weird, 1, withStock([{ currentQty: 0 }, {}]))).toEqual([]);
+  });
+
+  it('marks the live task, and not once it is done', () => {
+    const open = getDisplayTasks(date, withStock([{ currentQty: 1 }, {}]));
+    expect(open[0].blocked).toEqual(['ביצים']);
+    const done = getDisplayTasks(date, {
+      ...withStock([{ currentQty: 1 }, {}]),
+      taskOverrides: [{ id: autoTaskId(cremeBrulee.id, date), productId: cremeBrulee.id, date, done: true }],
+    });
+    expect(done[0].blocked).toBeUndefined();
+  });
+
+  it('sorts blocked tasks above others of the same priority, but below the finished-last rule', () => {
+    const mk = (id: string, extra: Partial<DisplayTask>): DisplayTask => ({
+      id, date, multiplier: 1, priority: 'yellow', done: false, source: 'manual', category: 'general', ...extra,
+    });
+    const sorted = sortDisplayTasks([
+      mk('a', {}),
+      mk('b', { blocked: ['ביצים'] }),
+      mk('c', { priority: 'red' }),
+      mk('d', { blocked: ['חלב'], done: true }),
+    ]);
+    // blocked beats priority; a finished task stays last whatever it was missing.
+    expect(sorted.map((t) => t.id)).toEqual(['b', 'c', 'a', 'd']);
   });
 });

@@ -8,6 +8,7 @@ import type {
   Priority,
   Product,
   Recipe,
+  RecurringTask,
   Settings,
   SpecialEvent,
   Station,
@@ -20,11 +21,17 @@ import type {
 import { todayStr } from '../lib/date';
 import { autoTaskId } from '../lib/tasks';
 import { pruneEntities } from '../lib/integrity';
+import { applyRestore, type Restore } from '../lib/restore';
+import { carryOver } from '../lib/carryOver';
+import { materializeRecurring } from '../lib/recurring';
+import { ackAllFor, ackRecipeNotice, noteRecipeChange } from '../lib/notices';
 import { UNASSIGNED_CATEGORY } from '../lib/recipeCategories';
 import { convert } from '../lib/units';
 
 export type Action =
   | { type: 'SET_INGREDIENT_QTY'; id: string; qty: number }
+  /** Absolute, not a toggle: two cooks tapping "חסר" on the same ingredient agree. */
+  | { type: 'SET_INGREDIENT_SHORT'; id: string; short: boolean }
   | { type: 'SET_INGREDIENT_USAGE'; id: string; dailyUsage?: number; weeklyUsage?: number }
   | { type: 'SET_INGREDIENT_PAR'; id: string; parLevel: number }
   | { type: 'SET_INGREDIENT_WEEKDAY_USAGE'; id: string; weekday: Weekday; dailyUsage?: number }
@@ -47,9 +54,12 @@ export type Action =
   | { type: 'ADD_PRODUCT'; product: Product }
   | { type: 'UPDATE_PRODUCT'; product: Product }
   | { type: 'DELETE_PRODUCT'; id: string }
-  | { type: 'SAVE_PREP_ITEM'; recipe: Recipe; product: Product }
+  /** `byCookId` is who made the edit: they wrote it, so they are not asked to acknowledge it. */
+  | { type: 'SAVE_PREP_ITEM'; recipe: Recipe; product: Product; byCookId?: string }
   | { type: 'ADD_RECIPE'; recipe: Recipe }
-  | { type: 'UPDATE_RECIPE'; recipe: Recipe }
+  | { type: 'UPDATE_RECIPE'; recipe: Recipe; byCookId?: string }
+  /** A cook has read revision `rev` of a recipe's change notice (lib/notices.ts). */
+  | { type: 'ACK_RECIPE_NOTICE'; recipeId: string; rev: number; cookId: string }
   | { type: 'DELETE_RECIPE'; id: string }
   | { type: 'ADD_TASK'; task: Task }
   | { type: 'UPDATE_TASK'; task: Task }
@@ -88,6 +98,18 @@ export type Action =
   | { type: 'ADD_SPECIAL_EVENT'; event: SpecialEvent }
   | { type: 'UPDATE_SPECIAL_EVENT'; event: SpecialEvent }
   | { type: 'DELETE_SPECIAL_EVENT'; id: string }
+  /** Puts back what a deletion took out (see lib/restore.ts) — the "בטל" after deleting a recipe,
+   * ingredient, station or cook. An upsert, so replaying it is harmless. */
+  | { type: 'RESTORE_ENTITIES'; restore: Restore }
+  /** Start of a new day: open manual tasks move to `today` and auto-task assignee/priority carry
+   * over (lib/carryOver.ts). `today` comes from the dispatcher, never the clock. Idempotent. */
+  | { type: 'CARRY_OVER_TASKS'; today: string }
+  /** A standing task and, if it is due today, today's first instance (lib/recurring.ts). */
+  | { type: 'ADD_RECURRING_TASK'; rule: RecurringTask; today: string }
+  | { type: 'UPDATE_RECURRING_TASK'; rule: RecurringTask }
+  | { type: 'DELETE_RECURRING_TASK'; id: string }
+  /** Makes today's task from every standing task that is due and has not been made yet. */
+  | { type: 'MATERIALIZE_RECURRING'; today: string }
   | { type: 'ADD_COOK'; cook: Cook }
   | { type: 'RENAME_COOK'; id: string; name: string }
   | { type: 'DELETE_COOK'; id: string }
@@ -100,6 +122,10 @@ export type Action =
   | { type: 'DELETE_STATION'; id: string; moveToId: string }
   | { type: 'SET_ORDER_LINE_QTY'; ingredientId: string; date: string; qtyOverride?: number | null }
   | { type: 'SET_ORDER_LINE_ORDERED'; ingredientId: string; date: string; ordered: boolean }
+  /** Sets how much of one order line has arrived. Absolute — stock moves by the *difference* from
+   * what was recorded before, so replaying it, or two cooks tapping the same row, adds nothing
+   * twice; and undo is just this action with the previous number. */
+  | { type: 'SET_LINE_RECEIVED'; ingredientId: string; date: string; receivedQty: number }
   | { type: 'RECEIVE_ORDER'; date: string; receipts: { ingredientId: string; qty: number }[] }
   | { type: 'CLEAR_ORDER_SHEET'; date: string }
   // Absolute set (idempotent under replay), mirroring SET_ORDER_LINE_ORDERED's own reasoning:
@@ -301,14 +327,31 @@ function withWeekdayOverride<T extends { dailyUsageByWeekday?: WeekdayUsage }>(
   return { ...entity, dailyUsageByWeekday: Object.keys(next).length > 0 ? next : undefined };
 }
 
+/** Sets an ingredient's stock. Raising it clears a "חסר" flag: the shortage was about what was on
+ * the shelf, and a count or a delivery that adds stock has answered it. Lowering it (a waste
+ * report, a count that found less) leaves the flag as it was. */
+function withQty(ingredient: Ingredient, qty: number): Ingredient {
+  if (!ingredient.shortFlag || qty <= ingredient.currentQty) return { ...ingredient, currentQty: qty };
+  const { shortFlag: _cleared, ...rest } = ingredient;
+  return { ...rest, currentQty: qty };
+}
+
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'SET_INGREDIENT_QTY':
       return {
         ...state,
-        ingredients: state.ingredients.map((i) =>
-          i.id === action.id ? { ...i, currentQty: action.qty } : i,
-        ),
+        ingredients: state.ingredients.map((i) => (i.id === action.id ? withQty(i, action.qty) : i)),
+      };
+    case 'SET_INGREDIENT_SHORT':
+      return {
+        ...state,
+        ingredients: state.ingredients.map((i) => {
+          if (i.id !== action.id || Boolean(i.shortFlag) === action.short) return i;
+          if (action.short) return { ...i, shortFlag: true };
+          const { shortFlag: _cleared, ...rest } = i;
+          return rest;
+        }),
       };
     case 'SET_INGREDIENT_USAGE':
       return {
@@ -399,7 +442,7 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         ingredients: state.ingredients.map((i) => {
           const update = action.ingredients.find((u) => u.id === i.id);
-          return update ? { ...i, currentQty: update.qty } : i;
+          return update ? withQty(i, update.qty) : i;
         }),
       };
       for (const update of action.products) {
@@ -468,7 +511,8 @@ export function reducer(state: AppState, action: Action): AppState {
           ? withProduct.recipes.map((r) => (r.id === action.recipe.id ? action.recipe : r))
           : [...withProduct.recipes, action.recipe],
       };
-      return linkRecipeProduct(withRecipe, action.recipe.id, action.product.id);
+      const linked = linkRecipeProduct(withRecipe, action.recipe.id, action.product.id);
+      return noteRecipeChange(linked, hasRecipe ? state.recipes.find((r) => r.id === action.recipe.id) : undefined, action.recipe, action.byCookId);
     }
     case 'ADD_RECIPE': {
       const withRecipe: AppState = { ...state, recipes: [...state.recipes, action.recipe] };
@@ -479,8 +523,11 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         recipes: state.recipes.map((r) => (r.id === action.recipe.id ? action.recipe : r)),
       };
-      return linkRecipeProduct(withRecipe, action.recipe.id, action.recipe.producesProductId);
+      const linked = linkRecipeProduct(withRecipe, action.recipe.id, action.recipe.producesProductId);
+      return noteRecipeChange(linked, state.recipes.find((r) => r.id === action.recipe.id), action.recipe, action.byCookId);
     }
+    case 'ACK_RECIPE_NOTICE':
+      return ackRecipeNotice(state, action.recipeId, action.rev, action.cookId);
     case 'DELETE_RECIPE':
       return pruneEntities(state, { recipeIds: [action.id] });
 
@@ -629,8 +676,47 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'DELETE_SPECIAL_EVENT':
       return { ...state, specialEvents: state.specialEvents.filter((e) => e.id !== action.id) };
 
+    case 'CARRY_OVER_TASKS':
+      return carryOver(state, action.today);
+
+    // Blank title or a duplicate id is a silent no-op: this op replays on every device, and a
+    // reducer that throws would break replay everywhere, not just for whoever made the mistake.
+    case 'ADD_RECURRING_TASK': {
+      const title = action.rule.title.trim();
+      const existing = state.recurringTasks ?? [];
+      if (!title || existing.some((r) => r.id === action.rule.id)) return state;
+      const withRule: AppState = {
+        ...state,
+        recurringTasks: [...existing, { ...action.rule, title, lastMaterialized: undefined }],
+      };
+      return materializeRecurring(withRule, action.today);
+    }
+    case 'UPDATE_RECURRING_TASK': {
+      const title = action.rule.title.trim();
+      const existing = state.recurringTasks ?? [];
+      if (!title || !existing.some((r) => r.id === action.rule.id)) return state;
+      // Editing changes what happens on *future* days; it must not reset which day was already
+      // made, or saving a rule twice in one day would make today's task twice.
+      return {
+        ...state,
+        recurringTasks: existing.map((r) =>
+          r.id === action.rule.id ? { ...action.rule, title, lastMaterialized: r.lastMaterialized } : r,
+        ),
+      };
+    }
+    case 'DELETE_RECURRING_TASK': {
+      if (!state.recurringTasks?.some((r) => r.id === action.id)) return state;
+      return { ...state, recurringTasks: state.recurringTasks.filter((r) => r.id !== action.id) };
+    }
+    case 'MATERIALIZE_RECURRING':
+      return materializeRecurring(state, action.today);
+
+    case 'RESTORE_ENTITIES':
+      return applyRestore(state, action.restore);
+
     case 'ADD_COOK':
-      return { ...state, cooks: [...state.cooks, action.cook] };
+      // A new cook has no history to catch up on: notices already posted count as read for them.
+      return ackAllFor({ ...state, cooks: [...state.cooks, action.cook] }, action.cook.id);
     // A person correcting how their own name appears on tasks. Blank, unchanged or unknown is a
     // silent no-op for the same replay reason as RENAME_STATION below.
     case 'RENAME_COOK': {
@@ -707,6 +793,24 @@ export function reducer(state: AppState, action: Action): AppState {
     // intended state instead of a toggle flipping it back and forth under concurrent writes.
     case 'SET_ORDER_LINE_ORDERED':
       return upsertOrderLine(state, action.ingredientId, action.date, { ordered: action.ordered });
+    case 'SET_LINE_RECEIVED': {
+      const line = state.orderLines.find((l) => l.ingredientId === action.ingredientId && l.date === action.date);
+      if (!line || !line.ordered) return state;
+      const next = Math.max(0, Math.round(action.receivedQty * 1000) / 1000);
+      const delta = next - (line.receivedQty ?? 0);
+      if (delta === 0) return state;
+      return {
+        ...state,
+        ingredients: state.ingredients.map((i) =>
+          i.id === action.ingredientId ? withQty(i, Math.round((i.currentQty + delta) * 1000) / 1000) : i,
+        ),
+        orderLines: state.orderLines.map((l) => {
+          if (l !== line) return l;
+          const { receivedQty: _previous, ...rest } = l;
+          return next > 0 ? { ...rest, receivedQty: next } : rest;
+        }),
+      };
+    }
     case 'RECEIVE_ORDER': {
       // Goods arrived: add exactly what the sheet said into stock and clear those rows, leaving
       // anything still on order (or on another date) untouched. Only receipts for lines still
@@ -722,7 +826,7 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         ingredients: state.ingredients.map((i) => {
           const receipt = openReceipts.find((r) => r.ingredientId === i.id);
-          return receipt ? { ...i, currentQty: i.currentQty + receipt.qty } : i;
+          return receipt ? withQty(i, i.currentQty + receipt.qty) : i;
         }),
         orderLines: state.orderLines.filter(
           (l) => !(l.date === action.date && received.has(l.ingredientId)),

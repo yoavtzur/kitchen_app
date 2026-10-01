@@ -1,4 +1,6 @@
 import { coverageColor, daysOfSupply, orderQtyForIngredient } from './calc';
+import { NO_SUPPLIER } from './receiving';
+import { formatQty } from './units';
 import type { AppState, Ingredient } from '../types';
 
 /**
@@ -57,7 +59,22 @@ export function suggestedQty(ingredient: Ingredient, state: AppState, date: stri
     count === ingredient.currentQty
       ? state
       : { ...state, ingredients: state.ingredients.map((i) => (i.id === ingredient.id ? { ...i, currentQty: count } : i)) };
-  return Math.round(orderQtyForIngredient(ingredient.id, scoped) * 100) / 100;
+  const qty = Math.round(orderQtyForIngredient(ingredient.id, scoped) * 100) / 100;
+  // A cook flagged it short and the numbers see no reason to order (usage data missing, or stock
+  // looks fine on paper): the flag wins, with a floor of one par level so the line is worth sending.
+  return isFlaggedShort(ingredient, count) && qty <= 0 ? shortFloor(ingredient, state) : qty;
+}
+
+/** Flagged short, and not since counted back up (a typed count above the stored one answers it). */
+function isFlaggedShort(ingredient: Ingredient, count: number): boolean {
+  return Boolean(ingredient.shortFlag) && count <= ingredient.currentQty;
+}
+
+/** What to order for something flagged short that the usual calculation says needs nothing:
+ * its par level, else a day's cover, else one — never zero, or the flag would do nothing. */
+function shortFloor(ingredient: Ingredient, state: AppState): number {
+  const floor = ingredient.parLevel && ingredient.parLevel > 0 ? ingredient.parLevel : ingredient.dailyUsage * state.settings.defaultCoverageDays;
+  return Math.round((floor > 0 ? floor : 1) * 100) / 100;
 }
 
 /** The order as it would be submitted right now. Empty only when there is genuinely nothing to
@@ -72,6 +89,7 @@ export function buildOrderLines(state: AppState, drafts: CountDrafts, date: stri
  * flag. Plenty-of-stock rows deliberately carry no marker at all: on a list of fifty, the eye
  * should land only on what needs it. */
 export function lowStockTone(ingredient: Ingredient, count: number, date: string): 'red' | 'yellow' | null {
+  if (isFlaggedShort(ingredient, count)) return 'red';
   const days = daysOfSupply({ ...ingredient, currentQty: count }, date);
   if (!Number.isFinite(days)) return null;
   const tone = coverageColor(days);
@@ -91,4 +109,40 @@ export function planFillToPar(state: AppState, date: string): { ingredientId: st
   return state.orderLines
     .filter((l) => l.date === date && l.qtyOverride !== undefined && !l.ordered)
     .map((l) => ({ ingredientId: l.ingredientId, previous: l.qtyOverride as number }));
+}
+
+/** One supplier's slice of an order, ready to send. */
+export type SupplierMessage = { supplier: string; count: number; text: string };
+
+/**
+ * An order split by supplier, each with the message that would go to them — the unit the chef
+ * actually sends, since a delivery is arranged supplier by supplier.
+ *
+ * Takes the lines as they are about to be submitted (`buildOrderLines`), so what is sent is
+ * exactly what was approved and never a second calculation that could drift from it. Suppliers
+ * come out alphabetically with "no supplier" last, matching the receiving screen.
+ */
+export function supplierMessages(lines: { ingredientId: string; qty: number }[], ingredients: Ingredient[]): SupplierMessage[] {
+  const groups = new Map<string, string[]>();
+  for (const { ingredientId, qty } of lines) {
+    const ing = ingredients.find((i) => i.id === ingredientId);
+    if (!ing || qty <= 0) continue;
+    const supplier = ing.supplier?.trim() || NO_SUPPLIER;
+    groups.set(supplier, [...(groups.get(supplier) ?? []), `• ${ing.name}: ${formatQty(qty, ing.unit)}`]);
+  }
+  return [...groups.entries()]
+    .sort(([a], [b]) => (a === NO_SUPPLIER ? 1 : b === NO_SUPPLIER ? -1 : a.localeCompare(b, 'he')))
+    .map(([supplier, rows]) => ({ supplier, count: rows.length, text: `*${supplier}*\n${rows.join('\n')}` }));
+}
+
+/** Ingredients grouped under their supplier, in the same order `supplierMessages` uses. */
+export function groupBySupplier(ingredients: Ingredient[]): { supplier: string; ingredients: Ingredient[] }[] {
+  const groups = new Map<string, Ingredient[]>();
+  for (const ing of ingredients) {
+    const supplier = ing.supplier?.trim() || NO_SUPPLIER;
+    groups.set(supplier, [...(groups.get(supplier) ?? []), ing]);
+  }
+  return [...groups.entries()]
+    .sort(([a], [b]) => (a === NO_SUPPLIER ? 1 : b === NO_SUPPLIER ? -1 : a.localeCompare(b, 'he')))
+    .map(([supplier, list]) => ({ supplier, ingredients: list }));
 }

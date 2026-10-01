@@ -1,12 +1,14 @@
 import { HashRouter, Outlet, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './auth/AuthContext';
 import { AnalyticsContext } from './components/AnalyticsContext';
-import { AuthGate, MaintenanceGate, MembershipGate, CookGate } from './components/Gate';
+import { AuthGate, MaintenanceGate, MembershipGate, CookGate, NoticeGate } from './components/Gate';
 import { AppProvider } from './store/AppContext';
 import { BottomNav } from './components/BottomNav';
+import { DayRollover } from './components/DayRollover';
 import { RouteBoundary } from './components/RouteBoundary';
 import { SentryContext } from './components/SentryContext';
 import { SyncBadge } from './components/SyncBadge';
+import { UndoProvider } from './components/UndoProvider';
 import { UpdatePrompt } from './components/UpdatePrompt';
 import { APP_ROUTES, INVITE_ROUTES, LEGAL_ROUTES } from './routes';
 
@@ -31,11 +33,18 @@ function GatedApp() {
         <MaintenanceGate>
           <AppProvider>
             <CookGate>
-              <SentryContext />
-              <AnalyticsContext />
-              <SyncBadge />
-              <Outlet />
-              <BottomNav />
+              <NoticeGate>
+                {/* Above the Outlet and inside AppProvider: the "בטל" toast has to outlive the sheet
+                    that triggered it, and it needs `dispatch` to undo. */}
+                <UndoProvider>
+                  <SentryContext />
+                  <DayRollover />
+                  <AnalyticsContext />
+                  <SyncBadge />
+                  <Outlet />
+                  <BottomNav />
+                </UndoProvider>
+              </NoticeGate>
             </CookGate>
           </AppProvider>
         </MaintenanceGate>

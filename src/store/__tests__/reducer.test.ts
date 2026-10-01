@@ -436,6 +436,40 @@ describe('RENAME_COOK', () => {
   });
 });
 
+describe('SET_INGREDIENT_SHORT', () => {
+  const state = baseState();
+
+  it('flags and unflags absolutely, so two cooks tapping it agree', () => {
+    const flagged = reducer(state, { type: 'SET_INGREDIENT_SHORT', id: 'ing-egg', short: true });
+    expect(flagged.ingredients[0].shortFlag).toBe(true);
+    expect(reducer(flagged, { type: 'SET_INGREDIENT_SHORT', id: 'ing-egg', short: true })).toEqual(flagged);
+    const cleared = reducer(flagged, { type: 'SET_INGREDIENT_SHORT', id: 'ing-egg', short: false });
+    expect('shortFlag' in cleared.ingredients[0]).toBe(false);
+    expect(reducer(cleared, { type: 'SET_INGREDIENT_SHORT', id: 'ing-egg', short: false })).toEqual(cleared);
+  });
+
+  it('is cleared by stock going up (a count) but not by stock going down (waste)', () => {
+    const flagged = reducer(state, { type: 'SET_INGREDIENT_SHORT', id: 'ing-egg', short: true });
+    expect(reducer(flagged, { type: 'SET_INGREDIENT_QTY', id: 'ing-egg', qty: 10 }).ingredients[0].shortFlag).toBe(true);
+    expect('shortFlag' in reducer(flagged, { type: 'SET_INGREDIENT_QTY', id: 'ing-egg', qty: 90 }).ingredients[0]).toBe(false);
+    expect(
+      'shortFlag' in
+        reducer(flagged, { type: 'BULK_UPDATE_QUANTITIES', ingredients: [{ id: 'ing-egg', qty: 90 }], products: [], today: date })
+          .ingredients[0],
+    ).toBe(false);
+  });
+
+  it('is cleared by a delivery', () => {
+    const flagged = reducer(
+      baseState({ orderLines: [{ ingredientId: 'ing-egg', date, qtyOverride: 30, ordered: true }] }),
+      { type: 'SET_INGREDIENT_SHORT', id: 'ing-egg', short: true },
+    );
+    const received = reducer(flagged, { type: 'RECEIVE_ORDER', date, receipts: [{ ingredientId: 'ing-egg', qty: 30 }] });
+    expect(received.ingredients[0].currentQty).toBe(90);
+    expect('shortFlag' in received.ingredients[0]).toBe(false);
+  });
+});
+
 describe('REMOVE_COOK', () => {
   const openTask = {
     id: 'task-manual-open',
@@ -920,6 +954,11 @@ describe('actions survive a JSON round trip', () => {
       name: 'RENAME_STATION',
       state: baseState({ stations: [{ id: 'station-hot', name: 'פס חם', createdAt: date }] }),
       action: { type: 'RENAME_STATION', id: 'station-hot', name: 'גריל' },
+    },
+    {
+      name: 'SET_INGREDIENT_SHORT',
+      state: baseState(),
+      action: { type: 'SET_INGREDIENT_SHORT', id: 'ing-egg', short: true },
     },
     {
       name: 'RENAME_COOK',

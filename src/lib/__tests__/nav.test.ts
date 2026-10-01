@@ -38,7 +38,7 @@ describe('isTabActive', () => {
   });
 
   it('keeps the menu tab lit on the screens it opens', () => {
-    for (const p of ['/menu', '/recipes', '/settings', '/stations', '/team', '/profile']) {
+    for (const p of ['/menu', '/recipes', '/settings', '/stations', '/team', '/profile', '/receiving', '/recurring']) {
       expect(isTabActive(tab('/menu'), p)).toBe(true);
     }
     expect(isTabActive(tab('/menu'), '/tasks')).toBe(false);

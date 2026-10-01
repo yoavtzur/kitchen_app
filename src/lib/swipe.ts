@@ -16,6 +16,14 @@ export function swipeProgress(dx: number, cardWidth: number): number {
   return Math.max(-1, Math.min(1, dx / cardWidth));
 }
 
+/** Which way a released swipe went. Physical, not logical: right is right on screen in RTL too,
+ * which is what a cook's thumb means and what the green/orange panels are drawn to match. */
+export type SwipeDirection = 'right' | 'left';
+
+export function swipeDirection(dx: number): SwipeDirection {
+  return dx >= 0 ? 'right' : 'left';
+}
+
 /** Whether a released swipe has traveled far enough to count as a completion. */
 export function shouldComplete(dx: number, cardWidth: number): boolean {
   const threshold = Math.max(cardWidth * COMPLETE_FRACTION, COMPLETE_MIN_PX);

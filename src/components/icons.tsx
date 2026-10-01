@@ -205,3 +205,49 @@ export function ChatIcon(p: IconProps) {
     </Svg>
   );
 }
+
+export function AlertIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M12 4.2 2.8 19.5h18.4L12 4.2z" />
+      <path d="M12 10v4.4" />
+      <circle cx="12" cy="17.1" r="0.9" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+export function ShortageIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M4 9h16l-1.5 9.2a2 2 0 0 1-2 1.8H7.5a2 2 0 0 1-2-1.8L4 9z" />
+      <path d="M9.5 14.5h5" />
+    </Svg>
+  );
+}
+
+export function WasteIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M5 7h14M10 7V4.5h4V7M7 7l.8 12a1.6 1.6 0 0 0 1.6 1.5h5.2a1.6 1.6 0 0 0 1.6-1.5L17 7" />
+      <path d="M10 11l4 5M14 11l-4 5" />
+    </Svg>
+  );
+}
+
+export function ReceivingIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M3.5 7.5 12 3.5l8.5 4v9L12 20.5l-8.5-4v-9z" />
+      <path d="M3.5 7.5 12 11.5l8.5-4M12 11.5v9" />
+    </Svg>
+  );
+}
+
+export function RepeatIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M4 11V9a3 3 0 0 1 3-3h11M15 3l3 3-3 3" />
+      <path d="M20 13v2a3 3 0 0 1-3 3H6M9 21l-3-3 3-3" />
+    </Svg>
+  );
+}

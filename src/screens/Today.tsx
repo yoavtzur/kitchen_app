@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useApp } from '../store/AppContext';
 import { useAuth } from '../auth/AuthContext';
 import { getDisplayTasks, groupByStation, sortDisplayTasks, taskProgress } from '../lib/tasks';
-import { dayName, todayStr } from '../lib/date';
+import { dayName } from '../lib/date';
+import { useToday } from '../lib/useToday';
 import { matchesQuery } from '../lib/search';
 import { EmptyState } from '../components/EmptyState';
 import { CookPill } from '../components/CookPill';
@@ -43,8 +44,13 @@ function formatToday(date: string): string {
 export function Today() {
   const { state } = useApp();
   const { membership } = useAuth();
-  const [date, setDate] = useState(todayStr());
+  // Follows the real date (it rolls over at midnight and when the app wakes) until the cook picks
+  // another day with the date picker; then their choice sticks.
+  const today = useToday();
+  const [picked, setPicked] = useState<string | null>(null);
+  const date = picked ?? today;
   const [addingManual, setAddingManual] = useState(false);
+  const [showDone, setShowDone] = useState(false);
   const [query, setQuery] = useState('');
   // Remembered across screens (and reloads): see lib/todayFilter.ts. `stored` is what the cook
   // picked; `category` is what is shown, which differs only when that station has been deleted.
@@ -73,6 +79,11 @@ export function Today() {
   // The bar reflects whatever the cook is actually looking at: with a station tab active, that
   // station's own progress is the number they want, not the kitchen's.
   const progress = taskProgress(visibleTasks);
+  // A finished task leaves the working list — the cook is looking at what is still to do — and
+  // waits under "הושלמו". It is still counted above and still one swipe (or tap on its box) from
+  // being undone, which is how a mistaken completion is recovered once the "בטל" toast is gone.
+  const openTasks = visibleTasks.filter((t) => !t.done);
+  const doneTasks = sortDisplayTasks(visibleTasks.filter((t) => t.done));
   const grouped = !searching && category === 'all';
 
   const stationName =
@@ -153,7 +164,7 @@ export function Today() {
         <input
           type="date"
           value={date}
-          onChange={(e) => setDate(e.target.value)}
+          onChange={(e) => setPicked(e.target.value || null)}
           aria-label="תאריך"
           className="date-chip"
         />
@@ -175,8 +186,10 @@ export function Today() {
                 : 'אין משימות ליום זה — הכל במלאי.'
           }
         />
+      ) : openTasks.length === 0 ? (
+        <EmptyState text="כל המשימות הושלמו ✓" />
       ) : grouped ? (
-        groupByStation(visibleTasks, state.stations).map((group) => (
+        groupByStation(openTasks, state.stations).map((group) => (
           <div key={group.value}>
             <h2 className="section-title">{group.label}</h2>
             <div className="tasks-grid">
@@ -188,9 +201,29 @@ export function Today() {
         ))
       ) : (
         <div className="tasks-grid">
-          {sortDisplayTasks(visibleTasks).map((t) => (
+          {sortDisplayTasks(openTasks).map((t) => (
             <TaskRow key={t.id} task={t} />
           ))}
+        </div>
+      )}
+
+      {doneTasks.length > 0 && (
+        <div className="no-print">
+          <button
+            type="button"
+            className="done-toggle"
+            aria-expanded={showDone}
+            onClick={() => setShowDone((v) => !v)}
+          >
+            הושלמו ({doneTasks.length}) {showDone ? '▴' : '▾'}
+          </button>
+          {showDone && (
+            <div className="tasks-grid">
+              {doneTasks.map((t) => (
+                <TaskRow key={t.id} task={t} />
+              ))}
+            </div>
+          )}
         </div>
       )}
 

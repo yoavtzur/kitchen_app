@@ -106,6 +106,10 @@ export type Action =
   | { type: 'DELETE_STATION'; id: string; moveToId: string }
   | { type: 'SET_ORDER_LINE_QTY'; ingredientId: string; date: string; qtyOverride?: number | null }
   | { type: 'SET_ORDER_LINE_ORDERED'; ingredientId: string; date: string; ordered: boolean }
+  /** Sets how much of one order line has arrived. Absolute — stock moves by the *difference* from
+   * what was recorded before, so replaying it, or two cooks tapping the same row, adds nothing
+   * twice; and undo is just this action with the previous number. */
+  | { type: 'SET_LINE_RECEIVED'; ingredientId: string; date: string; receivedQty: number }
   | { type: 'RECEIVE_ORDER'; date: string; receipts: { ingredientId: string; qty: number }[] }
   | { type: 'CLEAR_ORDER_SHEET'; date: string }
   // Absolute set (idempotent under replay), mirroring SET_ORDER_LINE_ORDERED's own reasoning:
@@ -733,6 +737,24 @@ export function reducer(state: AppState, action: Action): AppState {
     // intended state instead of a toggle flipping it back and forth under concurrent writes.
     case 'SET_ORDER_LINE_ORDERED':
       return upsertOrderLine(state, action.ingredientId, action.date, { ordered: action.ordered });
+    case 'SET_LINE_RECEIVED': {
+      const line = state.orderLines.find((l) => l.ingredientId === action.ingredientId && l.date === action.date);
+      if (!line || !line.ordered) return state;
+      const next = Math.max(0, Math.round(action.receivedQty * 1000) / 1000);
+      const delta = next - (line.receivedQty ?? 0);
+      if (delta === 0) return state;
+      return {
+        ...state,
+        ingredients: state.ingredients.map((i) =>
+          i.id === action.ingredientId ? withQty(i, Math.round((i.currentQty + delta) * 1000) / 1000) : i,
+        ),
+        orderLines: state.orderLines.map((l) => {
+          if (l !== line) return l;
+          const { receivedQty: _previous, ...rest } = l;
+          return next > 0 ? { ...rest, receivedQty: next } : rest;
+        }),
+      };
+    }
     case 'RECEIVE_ORDER': {
       // Goods arrived: add exactly what the sheet said into stock and clear those rows, leaving
       // anything still on order (or on another date) untouched. Only receipts for lines still

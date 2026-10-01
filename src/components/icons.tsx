@@ -233,3 +233,12 @@ export function WasteIcon(p: IconProps) {
     </Svg>
   );
 }
+
+export function ReceivingIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M3.5 7.5 12 3.5l8.5 4v9L12 20.5l-8.5-4v-9z" />
+      <path d="M3.5 7.5 12 11.5l8.5-4M12 11.5v9" />
+    </Svg>
+  );
+}

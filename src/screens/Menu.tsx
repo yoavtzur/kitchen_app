@@ -9,6 +9,7 @@ import {
   ChevronIcon,
   LegalIcon,
   LogoutIcon,
+  ReceivingIcon,
   RecipesIcon,
   SettingsIcon,
   StationsIcon,
@@ -76,6 +77,7 @@ export function Menu() {
 
       <div className="list-card">
         {isChef && <MenuLink to="/recipes" icon={<RecipesIcon size={22} />} label="מתכונים" />}
+        {isChef && <MenuLink to="/receiving" icon={<ReceivingIcon size={22} />} label="קבלת סחורה" />}
         {isChef && <MenuLink to="/stations" icon={<StationsIcon size={22} />} label="ניהול פסים" />}
         <MenuLink to="/team" icon={<TeamIcon size={22} />} label={!isSupabaseConfigured ? 'צוות' : isChef ? 'צוות והזמנות' : 'צוות ויצירת קשר'} />
         <MenuLink

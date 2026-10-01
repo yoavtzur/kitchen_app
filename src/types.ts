@@ -165,6 +165,10 @@ export type OrderLine = {
   /** Manual quantity typed by the user; when absent the suggested quantity is used. */
   qtyOverride?: number;
   ordered: boolean;
+  /** How much of the order has actually arrived (the "קבלת סחורה" screen). Absent means none.
+   * Kept on the line instead of deleting it, so a short delivery leaves the gap visible and the
+   * order history still shows what was asked for. */
+  receivedQty?: number;
 };
 
 export type RoundTo = 0.25 | 0.5 | 1 | null;

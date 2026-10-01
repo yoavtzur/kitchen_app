@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mapJoinStatus, mapRpcError } from '../rpcErrors';
+import { mapInviteStatus, mapRequestJoinStatus, mapRpcError } from '../rpcErrors';
 
 describe('mapRpcError', () => {
   it('tells the last chef to appoint a replacement rather than that they cannot be demoted', () => {
@@ -37,39 +37,51 @@ describe('mapRpcError', () => {
   });
 });
 
-describe('mapJoinStatus', () => {
-  const RID = '11111111-1111-1111-1111-111111111111';
+describe('mapRpcError, invites and join requests', () => {
+  it('does not call a request that was already answered a missing code', () => {
+    expect(mapRpcError({ code: 'P0002', message: 'no_such_request' })).toBe('הבקשה כבר טופלה');
+    expect(mapRpcError({ code: 'P0002', message: 'invalid_code' })).toBe('קוד לא נמצא');
+  });
 
-  it('reports no error for a successful join', () => {
-    expect(mapJoinStatus('ok', RID)).toBeNull();
+  it('explains the cap on open invitations', () => {
+    expect(mapRpcError({ code: '54000', message: 'too_many_invites' })).toContain('הזמנות פתוחות');
+  });
+});
+
+describe('mapRequestJoinStatus', () => {
+  it('reports no error only for a recorded request', () => {
+    expect(mapRequestJoinStatus('pending')).toBeNull();
   });
 
   it.each([
     ['invalid_code', 'קוד לא נמצא'],
+    ['invalid_invite', 'קישור חדש'],
+    ['invalid_name', 'שם פרטי'],
+    ['already_member', 'כבר משויך'],
+    ['full', 'יותר מדי בקשות'],
     ['rate_limited', 'יותר מדי ניסיונות'],
   ])('maps %s', (status, expected) => {
-    expect(mapJoinStatus(status, null)).toContain(expected);
+    expect(mapRequestJoinStatus(status)).toContain(expected);
   });
 
-  it('treats an unrecognised status as a refusal, not a success', () => {
-    // A server newer than this build. The one thing we know is that it did not say 'ok', and
-    // reading it as success would write a membership with no restaurant id.
-    expect(mapJoinStatus('something_new', RID)).toBeTruthy();
-    expect(mapJoinStatus('', RID)).toBeTruthy();
+  it('treats an unrecognised status as a refusal, not as a request that was recorded', () => {
+    expect(mapRequestJoinStatus('something_new')).toBeTruthy();
+    expect(mapRequestJoinStatus('ok')).toBeTruthy();
+    expect(mapRequestJoinStatus(undefined)).toBeTruthy();
+    expect(mapRequestJoinStatus(null)).toBeTruthy();
+  });
+});
+
+describe('mapInviteStatus', () => {
+  it('lets a valid link through', () => {
+    expect(mapInviteStatus('valid')).toBeNull();
   });
 
-  describe('against a server without migration 0007', () => {
-    // There is no `status` column there, and merging to main deploys before the migration is
-    // pasted in by hand — so this window is real, not hypothetical.
-    it('accepts a row with a real restaurant id as the success it is', () => {
-      expect(mapJoinStatus(undefined, RID)).toBeNull();
-      expect(mapJoinStatus(null, RID)).toBeNull();
-    });
-
-    it('still refuses when there is no restaurant id to join', () => {
-      expect(mapJoinStatus(undefined, null)).toBeTruthy();
-      expect(mapJoinStatus(undefined, undefined)).toBeTruthy();
-      expect(mapJoinStatus(undefined, '')).toBeTruthy();
-    });
+  it('says what is wrong with an unusable link, and always points to the chef', () => {
+    for (const status of ['expired', 'used', 'invalid', 'whatever']) {
+      expect(mapInviteStatus(status)).toContain('מהשף');
+    }
+    expect(mapInviteStatus('expired')).toContain('פג');
+    expect(mapInviteStatus('used')).toContain('נוצל');
   });
 });

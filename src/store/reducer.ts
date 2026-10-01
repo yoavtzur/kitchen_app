@@ -20,6 +20,7 @@ import type {
 import { todayStr } from '../lib/date';
 import { autoTaskId } from '../lib/tasks';
 import { pruneEntities } from '../lib/integrity';
+import { UNASSIGNED_CATEGORY } from '../lib/recipeCategories';
 import { convert } from '../lib/units';
 
 export type Action =
@@ -91,6 +92,11 @@ export type Action =
   | { type: 'DELETE_COOK'; id: string }
   | { type: 'REMOVE_COOK'; id: string }
   | { type: 'ADD_STATION'; station: Station }
+  | { type: 'RENAME_STATION'; id: string; name: string }
+  // `moveToId` is where this station's recipes and free-text tasks go: another station's id or
+  // 'general'. It is resolved against the state at apply time, so the op stays deterministic and
+  // an unknown target degrades to 'general' instead of orphaning anything.
+  | { type: 'DELETE_STATION'; id: string; moveToId: string }
   | { type: 'SET_ORDER_LINE_QTY'; ingredientId: string; date: string; qtyOverride?: number | null }
   | { type: 'SET_ORDER_LINE_ORDERED'; ingredientId: string; date: string; ordered: boolean }
   | { type: 'RECEIVE_ORDER'; date: string; receipts: { ingredientId: string; qty: number }[] }
@@ -636,6 +642,37 @@ export function reducer(state: AppState, action: Action): AppState {
       const exists = state.stations.some((s) => s.name.trim().toLowerCase() === name.toLowerCase());
       if (exists) return state;
       return { ...state, stations: [...state.stations, { ...action.station, name }] };
+    }
+
+    case 'RENAME_STATION': {
+      const name = action.name.trim();
+      if (!name) return state;
+      if (!state.stations.some((s) => s.id === action.id)) return state;
+      const clash = state.stations.some(
+        (s) => s.id !== action.id && s.name.trim().toLowerCase() === name.toLowerCase(),
+      );
+      if (clash) return state;
+      return { ...state, stations: state.stations.map((s) => (s.id === action.id ? { ...s, name } : s)) };
+    }
+
+    // Recipes carry the station (`recipe.category`) and auto-tasks are derived from their recipe,
+    // so re-pointing the recipes *is* moving the day's prep list. Free-text tasks carry their own
+    // `categoryOverride`. Nothing is deleted but the station row itself. A station that is
+    // already gone is a no-op, so replaying the op on a second device changes nothing.
+    case 'DELETE_STATION': {
+      if (!state.stations.some((s) => s.id === action.id)) return state;
+      const target =
+        action.moveToId !== action.id && state.stations.some((s) => s.id === action.moveToId)
+          ? action.moveToId
+          : UNASSIGNED_CATEGORY;
+      return {
+        ...state,
+        stations: state.stations.filter((s) => s.id !== action.id),
+        recipes: state.recipes.map((r) => (r.category === action.id ? { ...r, category: target } : r)),
+        tasks: state.tasks.map((t) =>
+          t.categoryOverride === action.id ? { ...t, categoryOverride: target } : t,
+        ),
+      };
     }
 
     // A chef removed a teammate's access to the restaurant. Unassign that cook from any *open*

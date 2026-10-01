@@ -4,6 +4,8 @@ import { usePermissions } from '../auth/usePermissions';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { useAppConfig } from '../lib/useAppConfig';
 import { Auth } from '../screens/Auth';
+import { JoinRejected } from '../screens/JoinRejected';
+import { PendingApproval } from '../screens/PendingApproval';
 import { ForgotPassword } from '../screens/ForgotPassword';
 import { NewPassword } from '../screens/NewPassword';
 import { Onboarding } from '../screens/Onboarding';
@@ -35,10 +37,16 @@ export function AuthGate({ children }: { children: ReactNode }) {
 }
 
 export function MembershipGate({ children }: { children: ReactNode }) {
-  const { membership, membershipLoading } = useAuth();
+  const { membership, membershipLoading, joinStatus } = useAuth();
   if (!isSupabaseConfigured) return <>{children}</>;
   if (!membership && membershipLoading) return <FullScreenMessage text="טוען..." />;
-  if (!membership) return <Onboarding />;
+  if (!membership) {
+    // Asked to join and waiting on a chef — or turned down. Neither is a member, so neither sees
+    // anything of the kitchen; both skip the onboarding form they have already filled in.
+    if (joinStatus?.status === 'pending') return <PendingApproval />;
+    if (joinStatus?.status === 'rejected') return <JoinRejected />;
+    return <Onboarding />;
+  }
   return <>{children}</>;
 }
 

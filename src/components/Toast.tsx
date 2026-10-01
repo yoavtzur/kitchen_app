@@ -16,10 +16,28 @@
  * DOM whose text merely changes is announced, but only if the region was there long enough to be
  * registered, and these all appear in the same tick as their text.
  */
-export function Toast({ message, tone = 'success' }: { message: string; tone?: 'success' | 'error' }) {
+export function Toast({
+  message,
+  tone = 'success',
+  action,
+}: {
+  message: string;
+  tone?: 'success' | 'error';
+  /** An optional button inside the toast — "ביטול" after a bulk change. The toast ignores taps
+   * everywhere else (so it never eats one meant for a row underneath), but this is the one thing
+   * on it that is meant to be tapped. */
+  action?: { label: string; onClick: () => void };
+}) {
   return (
     <div className="toast" role="status">
-      <span className={`pill ${tone === 'error' ? 'red' : 'green'}`}>{message}</span>
+      <span className={`pill ${tone === 'error' ? 'red' : 'green'}`}>
+        {message}
+        {action && (
+          <button type="button" className="toast-action" onClick={action.onClick}>
+            {action.label}
+          </button>
+        )}
+      </span>
     </div>
   );
 }

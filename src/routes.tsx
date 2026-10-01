@@ -3,6 +3,7 @@
 // themselves live in src/screens/ and are what Fast Refresh actually tracks.
 import { lazy } from 'react';
 import { Navigate } from 'react-router-dom';
+import { ChefRoute } from './components/ChefRoute';
 import { Today } from './screens/Today';
 
 // Every screen except the landing one is lazy. `Today` stays eager on purpose: it is the PWA's
@@ -11,14 +12,15 @@ import { Today } from './screens/Today';
 //
 // `Suspense` and the error boundary both live in the single wrapper in App.tsx that consumes
 // this table, so adding a screen here cannot forget either.
-const MorningDashboard = lazy(() => import('./screens/MorningDashboard').then((m) => ({ default: m.MorningDashboard })));
 const Recipes = lazy(() => import('./screens/Recipes').then((m) => ({ default: m.Recipes })));
 const Consumption = lazy(() => import('./screens/Consumption').then((m) => ({ default: m.Consumption })));
 const StockCount = lazy(() => import('./screens/StockCount').then((m) => ({ default: m.StockCount })));
 const Orders = lazy(() => import('./screens/Orders').then((m) => ({ default: m.Orders })));
 const Settings = lazy(() => import('./screens/Settings').then((m) => ({ default: m.Settings })));
-const More = lazy(() => import('./screens/More').then((m) => ({ default: m.More })));
+const Menu = lazy(() => import('./screens/Menu').then((m) => ({ default: m.Menu })));
+const Stations = lazy(() => import('./screens/Stations').then((m) => ({ default: m.Stations })));
 const NotFound = lazy(() => import('./screens/NotFound').then((m) => ({ default: m.NotFound })));
+const JoinRoute = lazy(() => import('./screens/JoinRoute').then((m) => ({ default: m.JoinRoute })));
 const Privacy = lazy(() => import('./screens/Legal').then((m) => ({ default: m.Privacy })));
 const Terms = lazy(() => import('./screens/Legal').then((m) => ({ default: m.Terms })));
 
@@ -47,15 +49,18 @@ export const APP_ROUTES: AppRoute[] = [
   // uses. This also removes a footgun: `NavLink to="/" end` needed that `end` prop precisely
   // because '/' prefixes every other path.
   { path: '/', name: 'home-redirect', element: <Navigate to="/tasks" replace />, redirect: true },
-  { path: '/morning', name: 'morning', element: <MorningDashboard /> },
+  // The morning order is the first segment of the Orders screen now, not a screen of its own.
+  { path: '/morning', name: 'morning-redirect', element: <Navigate to="/orders" replace />, redirect: true },
   { path: '/ingredients', name: 'ingredients-redirect', element: <Navigate to="/count" replace />, redirect: true },
   { path: '/recipes', name: 'recipes', element: <Recipes /> },
-  { path: '/consumption', name: 'consumption', element: <Consumption /> },
+  { path: '/consumption', name: 'consumption', element: <ChefRoute><Consumption /></ChefRoute> },
   { path: '/tasks', name: 'tasks', element: <Today /> },
   { path: '/count', name: 'count', element: <StockCount /> },
-  { path: '/orders', name: 'orders', element: <Orders /> },
+  { path: '/orders', name: 'orders', element: <ChefRoute><Orders /></ChefRoute> },
+  { path: '/stations', name: 'stations', element: <ChefRoute><Stations /></ChefRoute> },
   { path: '/settings', name: 'settings', element: <Settings /> },
-  { path: '/more', name: 'more', element: <More /> },
+  { path: '/menu', name: 'menu', element: <Menu /> },
+  { path: '/more', name: 'more-redirect', element: <Navigate to="/menu" replace />, redirect: true },
   // Without this, an unmatched hash rendered nothing at all: chrome, no content, no explanation.
   { path: '*', name: 'not-found', element: <NotFound /> },
 ];
@@ -75,4 +80,12 @@ export const APP_ROUTES: AppRoute[] = [
 export const LEGAL_ROUTES: AppRoute[] = [
   { path: '/legal/privacy', name: 'privacy', element: <Privacy /> },
   { path: '/legal/terms', name: 'terms', element: <Terms /> },
+];
+
+/**
+ * An invitation link (`#/join/<token>`), also **outside every gate**: whoever opens it has no
+ * account yet. It banks the token and redirects to `/`, where the gates take over — see JoinRoute.
+ */
+export const INVITE_ROUTES: AppRoute[] = [
+  { path: '/join/:token', name: 'join-invite', element: <JoinRoute /> },
 ];

@@ -1,7 +1,11 @@
 import { useMemo, useState } from 'react';
-import { useApp } from '../store/AppContext';
+import { useApp, useSync } from '../store/AppContext';
+import { usePermissions } from '../auth/usePermissions';
 import { coverageColor, daysOfSupply } from '../lib/calc';
+import { CategoryTabs } from '../components/CategoryTabs';
 import { EmptyState } from '../components/EmptyState';
+import { ScreenHeader } from '../components/ScreenHeader';
+import { Segmented } from '../components/Segmented';
 import { SearchInput } from '../components/SearchInput';
 import { NumberEditor } from '../components/NumberEditor';
 import { BottomSheet } from '../components/BottomSheet';
@@ -9,6 +13,16 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { WeekdayUsageEditor } from '../components/WeekdayUsageEditor';
 import { Toast } from '../components/Toast';
 import { matchesQuery } from '../lib/search';
+import {
+  ALL_CATEGORIES,
+  existingCategories,
+  ingredientCategoryTabs,
+  matchesCategory,
+  normalizeCategory,
+} from '../lib/ingredientCategories';
+import { productStation, productStationTabs } from '../lib/stations';
+import { isSupabaseConfigured } from '../lib/supabase';
+import { savedMessage } from '../lib/syncIndicator';
 import { useTimedFlag } from '../lib/useTimedFlag';
 import { todayStr } from '../lib/date';
 import { newId } from '../lib/ids';
@@ -25,6 +39,13 @@ const UNIT_OPTIONS: { value: Unit; label: string }[] = [
 ];
 
 type Draft = Record<string, string>;
+
+type CountView = 'ingredients' | 'products';
+
+const VIEW_OPTIONS: { value: CountView; label: string }[] = [
+  { value: 'ingredients', label: 'מצרכים' },
+  { value: 'products', label: 'מוצרים' },
+];
 
 /** A pending update: only entries whose typed value actually differs from what's stored. */
 function collectChanges<T extends { id: string; currentQty: number }>(
@@ -121,7 +142,8 @@ function IngredientCountTable({
   drafts: Draft;
   today: string;
   onDraftChange: (id: string, value: string) => void;
-  onOpenDetail: (id: string) => void;
+  /** Omitted for a cook: they count, they don't edit the ingredient database. */
+  onOpenDetail?: (id: string) => void;
 }) {
   return (
     <table className="data-table">
@@ -136,14 +158,18 @@ function IngredientCountTable({
         {ingredients.map((ing) => (
           <tr key={ing.id} className={isChanged(ing.id, ing.currentQty, drafts) ? 'count-row-changed' : undefined}>
             <td>
-              <button
-                type="button"
-                className="count-name-btn"
-                onClick={() => onOpenDetail(ing.id)}
-                aria-label={`פרטי ${ing.name}`}
-              >
-                <span>{ing.name}</span>
-              </button>
+              {onOpenDetail ? (
+                <button
+                  type="button"
+                  className="count-name-btn"
+                  onClick={() => onOpenDetail(ing.id)}
+                  aria-label={`פרטי ${ing.name}`}
+                >
+                  <span>{ing.name}</span>
+                </button>
+              ) : (
+                <span style={{ fontWeight: 600 }}>{ing.name}</span>
+              )}
             </td>
             <td>
               <div className="count-qty-cell">
@@ -205,6 +231,7 @@ function IngredientDetailSheet({ ingredient, onClose }: { ingredient: Ingredient
   const [nameDraft, setNameDraft] = useState(ingredient.name);
   const [supplierDraft, setSupplierDraft] = useState(ingredient.supplier ?? '');
   const [categoryDraft, setCategoryDraft] = useState(ingredient.category ?? '');
+  const categories = existingCategories(state.ingredients);
 
   function handlePickUnit(unit: Unit) {
     setPickingUnit(false);
@@ -235,7 +262,10 @@ function IngredientDetailSheet({ ingredient, onClose }: { ingredient: Ingredient
   }
 
   function commitCategory() {
-    const category = categoryDraft.trim() || undefined;
+    // Folds "ירקות " / "ירקות" onto the spelling already in use, so one shelf is one tab.
+    const normalized = normalizeCategory(categoryDraft, categories);
+    setCategoryDraft(normalized);
+    const category = normalized || undefined;
     if (category === ingredient.category) return;
     // Same undefined-key reasoning as commitSupplier above — an empty category clears the key
     // entirely rather than storing "null".
@@ -254,7 +284,13 @@ function IngredientDetailSheet({ ingredient, onClose }: { ingredient: Ingredient
       </div>
       <div className="field">
         <label>קטגוריה (לא חובה)</label>
-        <input value={categoryDraft} onChange={(e) => setCategoryDraft(e.target.value)} onBlur={commitCategory} />
+        <input
+          value={categoryDraft}
+          onChange={(e) => setCategoryDraft(e.target.value)}
+          onBlur={commitCategory}
+          list="ingredient-category-options"
+        />
+        <CategoryOptions categories={categories} />
       </div>
       <div className="row-item">
         <span>כמות במלאי</span>
@@ -362,8 +398,19 @@ function IngredientDetailSheet({ ingredient, onClose }: { ingredient: Ingredient
   );
 }
 
+function CategoryOptions({ categories }: { categories: string[] }) {
+  return (
+    <datalist id="ingredient-category-options">
+      {categories.map((c) => (
+        <option key={c} value={c} />
+      ))}
+    </datalist>
+  );
+}
+
 function AddIngredientSheet({ onClose }: { onClose: () => void }) {
-  const { dispatch } = useApp();
+  const { state, dispatch } = useApp();
+  const categories = existingCategories(state.ingredients);
   const [name, setName] = useState('');
   const [unit, setUnit] = useState<Unit>('kg');
   const [currentQty, setCurrentQty] = useState('0');
@@ -387,7 +434,7 @@ function AddIngredientSheet({ onClose }: { onClose: () => void }) {
         weeklyUsage: parseFloat(weeklyUsage) || 0,
         parLevel: Number.isNaN(parsedPar) ? undefined : parsedPar,
         supplier: supplier.trim() || undefined,
-        category: category.trim() || undefined,
+        category: normalizeCategory(category, categories) || undefined,
       },
     });
     onClose();
@@ -431,9 +478,10 @@ function AddIngredientSheet({ onClose }: { onClose: () => void }) {
       </div>
       <div className="field">
         <label>קטגוריה (לא חובה)</label>
-        <input value={category} onChange={(e) => setCategory(e.target.value)} />
+        <input value={category} onChange={(e) => setCategory(e.target.value)} list="ingredient-category-options" />
+        <CategoryOptions categories={categories} />
       </div>
-      <button type="button" className="btn btn-primary" style={{ width: '100%' }} onClick={save}>
+      <button type="button" className="btn btn-primary btn-block" onClick={save}>
         הוסף מצרך
       </button>
     </BottomSheet>
@@ -456,6 +504,12 @@ function AddIngredientSheet({ onClose }: { onClose: () => void }) {
  */
 export function StockCount() {
   const { state, dispatch } = useApp();
+  const { isChef } = usePermissions();
+  const sync = useSync();
+  const [view, setView] = useState<CountView>('ingredients');
+  const [category, setCategory] = useState(ALL_CATEGORIES);
+  const [station, setStation] = useState('all');
+  const [savedText, setSavedText] = useState('');
   const [query, setQuery] = useState('');
   const [ingredientDrafts, setIngredientDrafts] = useState<Draft>({});
   const [productDrafts, setProductDrafts] = useState<Draft>({});
@@ -467,8 +521,24 @@ export function StockCount() {
 
   const detailIngredient = state.ingredients.find((i) => i.id === detailId) ?? null;
 
-  const filteredIngredients = state.ingredients.filter((ing) => matchesQuery(query, ing.name, ing.supplier));
-  const filteredProducts = state.products.filter((p) => matchesQuery(query, p.name));
+  const ingredientTabs = useMemo(() => ingredientCategoryTabs(state.ingredients), [state.ingredients]);
+  const stationTabs = useMemo(
+    () => productStationTabs(state.products, state.recipes, state.stations),
+    [state.products, state.recipes, state.stations],
+  );
+  // A tab vanishes with its last item; falling back to "הכל" beats an empty list under a tab
+  // that no longer exists.
+  const activeCategory = ingredientTabs.some((t) => t.value === category) ? category : ALL_CATEGORIES;
+  const activeStation = stationTabs.some((t) => t.value === station) ? station : 'all';
+
+  const filteredIngredients = state.ingredients.filter(
+    (ing) => matchesQuery(query, ing.name, ing.supplier, ing.category) && matchesCategory(ing, activeCategory),
+  );
+  const filteredProducts = state.products.filter(
+    (p) =>
+      matchesQuery(query, p.name) &&
+      (activeStation === 'all' || productStation(p, state.recipes) === activeStation),
+  );
   const menuProducts = filteredProducts.filter((p) => p.kind === 'menu');
   const componentProducts = filteredProducts.filter((p) => p.kind === 'component');
 
@@ -491,6 +561,9 @@ export function StockCount() {
     });
     setIngredientDrafts({});
     setProductDrafts({});
+    // Offline, "saved" has to say *where*: in a walk-in the count is queued on this device and
+    // leaves on its own when signal returns, and a cook should not have to wonder if it was lost.
+    setSavedText(savedMessage(sync, isSupabaseConfigured).replace('נשמר ✓', 'הספירה נשמרה ✓'));
     flagSaved();
   }
 
@@ -513,42 +586,61 @@ export function StockCount() {
 
   const nothingToCount = state.ingredients.length === 0 && state.products.length === 0;
   const nothingFound = !nothingToCount && filteredIngredients.length === 0 && filteredProducts.length === 0;
+  const showingIngredients = view === 'ingredients';
 
   return (
     <div>
-      <div className="screen-header">
-        <h1 className="screen-title">מצרכים</h1>
-        <button type="button" className="btn btn-icon btn-primary" onClick={() => setAdding(true)} aria-label="הוסף מצרך">
-          +
-        </button>
-      </div>
-      <p className="muted" style={{ marginBottom: 'var(--space-4)' }}>
-        עברו על הרשימה, הזינו את הכמות שנספרה בפועל, ושמרו הכל בבת אחת בסוף.
-      </p>
+      <ScreenHeader
+        title="מלאי"
+        actions={
+          isChef ? (
+            <button type="button" className="btn btn-icon btn-primary" onClick={() => setAdding(true)} aria-label="הוסף מצרך">
+              +
+            </button>
+          ) : undefined
+        }
+      />
 
-      <SearchInput value={query} onChange={setQuery} placeholder="חיפוש מצרך או מוצר..." />
+      <Segmented options={VIEW_OPTIONS} value={view} onChange={setView} label="מה סופרים" />
+
+      <SearchInput
+        value={query}
+        onChange={setQuery}
+        placeholder={showingIngredients ? 'חיפוש מצרך...' : 'חיפוש מוצר...'}
+      />
+
+      <div className="sticky-tabs">
+        {showingIngredients ? (
+          <CategoryTabs tabs={ingredientTabs} value={activeCategory} onChange={setCategory} />
+        ) : (
+          <CategoryTabs tabs={stationTabs} value={activeStation} onChange={setStation} />
+        )}
+      </div>
 
       {nothingToCount ? (
-        <EmptyState text="אין עדיין מצרכים או מוצרים. הוסיפו מצרך כדי להתחיל." />
+        <EmptyState
+          text={
+            isChef
+              ? 'אין עדיין מצרכים או מוצרים. הוסיפו מצרך כדי להתחיל.'
+              : 'אין עדיין מצרכים או מוצרים לספירה. השף יוסיף אותם.'
+          }
+        />
       ) : nothingFound ? (
         <EmptyState text="לא נמצאו פריטים." />
       ) : (
         <>
-          {filteredIngredients.length > 0 && (
-            <>
-              <h2 className="section-title">מצרכים</h2>
-              <div className="card">
-                <IngredientCountTable
-                  ingredients={filteredIngredients}
-                  drafts={ingredientDrafts}
-                  today={today}
-                  onDraftChange={(id, value) => setIngredientDrafts((prev) => ({ ...prev, [id]: value }))}
-                  onOpenDetail={openDetail}
-                />
-              </div>
-            </>
+          {showingIngredients && filteredIngredients.length > 0 && (
+            <div className="card">
+              <IngredientCountTable
+                ingredients={filteredIngredients}
+                drafts={ingredientDrafts}
+                today={today}
+                onDraftChange={(id, value) => setIngredientDrafts((prev) => ({ ...prev, [id]: value }))}
+                onOpenDetail={isChef ? openDetail : undefined}
+              />
+            </div>
           )}
-          {menuProducts.length > 0 && (
+          {!showingIngredients && menuProducts.length > 0 && (
             <>
               <h2 className="section-title">מנות בתפריט</h2>
               <div className="card">
@@ -561,7 +653,7 @@ export function StockCount() {
               </div>
             </>
           )}
-          {componentProducts.length > 0 && (
+          {!showingIngredients && componentProducts.length > 0 && (
             <>
               <h2 className="section-title">מוצרים</h2>
               <div className="card">
@@ -574,21 +666,28 @@ export function StockCount() {
               </div>
             </>
           )}
+          {((showingIngredients && filteredIngredients.length === 0) ||
+            (!showingIngredients && filteredProducts.length === 0)) && (
+            <EmptyState text={showingIngredients ? 'אין מצרכים בתצוגה הזו.' : 'אין מוצרים בתצוגה הזו.'} />
+          )}
         </>
       )}
+      <div className="save-bar-spacer" />
 
-      {justSaved && changeCount === 0 && <Toast message="הספירה נשמרה ✓" />}
+      {justSaved && changeCount === 0 && <Toast message={savedText || 'הספירה נשמרה ✓'} />}
 
       {changeCount > 0 && (
         <div className="count-save-bar">
-          <button type="button" className="btn btn-primary" onClick={save}>
+          <button type="button" className="btn btn-primary btn-block" onClick={save}>
             שמור ספירה ({changeCount})
           </button>
         </div>
       )}
 
-      {detailIngredient && <IngredientDetailSheet ingredient={detailIngredient} onClose={() => setDetailId(null)} />}
-      {adding && <AddIngredientSheet onClose={() => setAdding(false)} />}
+      {isChef && detailIngredient && (
+        <IngredientDetailSheet ingredient={detailIngredient} onClose={() => setDetailId(null)} />
+      )}
+      {isChef && adding && <AddIngredientSheet onClose={() => setAdding(false)} />}
     </div>
   );
 }

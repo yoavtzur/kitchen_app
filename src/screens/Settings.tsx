@@ -14,6 +14,9 @@ import { useTimedFlag, useTimedMessage } from '../lib/useTimedFlag';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { CookPill } from '../components/CookPill';
 import { Toast } from '../components/Toast';
+import { InviteCookSheet } from '../components/InviteCookSheet';
+import { JoinRequestsBanner } from '../components/JoinRequestsBanner';
+import { buildInviteLink } from '../lib/invite';
 import type { AppState, Cook, MemberRole, RoundTo } from '../types';
 
 type MemberRow = {
@@ -43,7 +46,7 @@ const SYNC_STATUS_LABEL: Record<string, string> = {
 
 export function Settings() {
   const { state, dispatch } = useApp();
-  const { session, membership, signOut, setMemberPermissions, removeMember, rotateJoinCode, deleteMyAccount } =
+  const { session, membership, signOut, setMemberPermissions, removeMember, rotateJoinCode, deleteMyAccount, createInvite } =
     useAuth();
   const { isChef } = usePermissions();
   const sync = useSync();
@@ -73,6 +76,9 @@ export function Settings() {
   const [deleteTyped, setDeleteTyped] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [rotatedMessage, showRotatedMessage] = useTimedMessage(2500);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [inviting, setInviting] = useState(false);
+  const [inviteError, setInviteError] = useState('');
 
   const boundCookIds = new Set(members.map((m) => m.cookId).filter((id): id is string => !!id));
 
@@ -252,6 +258,20 @@ export function Settings() {
     }
   }
 
+  /** Two taps for the chef: this, then "שתף בוואטסאפ" in the sheet. Nothing to type — the cook
+   * fills in their own details, and the chef's say over who gets in is the approval. */
+  async function doInvite() {
+    setInviteError('');
+    setInviting(true);
+    const { token, error } = await createInvite();
+    setInviting(false);
+    if (error || !token) {
+      setInviteError(error ?? 'יצירת הקישור נכשלה. נסו שוב.');
+      return;
+    }
+    setInviteLink(buildInviteLink(window.location.origin, window.location.pathname, token));
+  }
+
   async function copyJoinCode() {
     if (!restaurant) return;
     try {
@@ -280,7 +300,9 @@ export function Settings() {
                 <span>{session.user.email}</span>
               </div>
             )}
-            {restaurant && (
+            {/* The join code is the key to the kitchen: a cook has no business reading it off
+                their own settings screen. */}
+            {restaurant && isChef && (
               <div className="row-item">
                 <span className="muted">קוד הצטרפות</span>
                 <div className="row" style={{ gap: 8, width: 'auto', alignItems: 'center' }}>
@@ -297,11 +319,9 @@ export function Settings() {
                   >
                     {copied ? 'הועתק!' : restaurant.joinCode}
                   </button>
-                  {isChef && (
-                    <button type="button" className="btn" disabled={rotating} onClick={() => setConfirmRotate(true)}>
-                      {rotating ? 'מחליף...' : 'החלף קוד'}
-                    </button>
-                  )}
+                  <button type="button" className="btn" disabled={rotating} onClick={() => setConfirmRotate(true)}>
+                    {rotating ? 'מחליף...' : 'החלף קוד'}
+                  </button>
                 </div>
               </div>
             )}
@@ -327,6 +347,14 @@ export function Settings() {
 
       {isSupabaseConfigured && isChef && (
         <>
+          <h2 className="section-title">צוות</h2>
+          <div className="card stack-gap-3">
+            <button type="button" className="btn btn-primary btn-block" disabled={inviting} onClick={doInvite}>
+              {inviting ? 'יוצר קישור...' : 'הזמן טבח'}
+            </button>
+            {inviteError && <p style={{ color: 'var(--color-red)' }}>{inviteError}</p>}
+          </div>
+          <JoinRequestsBanner />
           <h2 className="section-title">הרשאות צוות</h2>
           <div className="card stack-gap-2">
             {permError && <p style={{ color: 'var(--color-red)' }}>{permError}</p>}
@@ -405,6 +433,8 @@ export function Settings() {
         </>
       )}
 
+      {isChef && (
+        <>
       <h2 className="section-title">חישוב</h2>
       <div className="card stack-gap-3">
         <div className="field" style={{ marginBottom: 0 }}>
@@ -461,6 +491,8 @@ export function Settings() {
           </button>
         </div>
       </div>
+        </>
+      )}
 
       <h2 className="section-title">פרטיות וחשבון</h2>
       <div className="card stack-gap-3">
@@ -504,6 +536,8 @@ export function Settings() {
         )}
       </div>
 
+      {isChef && (
+        <>
       <h2 className="section-title">גיבוי ושחזור</h2>
       <div className="card stack-gap-3">
         <p className="muted">
@@ -538,6 +572,8 @@ export function Settings() {
           }}
         />
       </div>
+        </>
+      )}
 
       {deleteCandidate && (
         <ConfirmDialog
@@ -554,6 +590,10 @@ export function Settings() {
             את עצמו מחדש.
           </p>
         </ConfirmDialog>
+      )}
+
+      {inviteLink && (
+        <InviteCookSheet link={inviteLink} restaurantName={membership?.restaurantName} onClose={() => setInviteLink(null)} />
       )}
 
       {removeCandidate && (

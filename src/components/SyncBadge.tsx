@@ -1,64 +1,21 @@
-import { useEffect, useState } from 'react';
 import { useSync } from '../store/AppContext';
+import { useDelayedVisible } from '../lib/useDelayedVisible';
 import { isSupabaseConfigured } from '../lib/supabase';
+import { syncIndicator } from '../lib/syncIndicator';
 
-/** A small indicator of sync state, so a cook on a bad kitchen wifi knows whether their last
- * change actually reached the team. Renders nothing in local mode — there's no restaurant to
- * sync with, so any sync chrome there would just be confusing noise. It's also silent while
- * everything is healthy: a permanently-on "מסונכרן" pill is noise, not signal, so it only
- * appears (debounced by 1s, to avoid flashing during routine reconnects) once there's something
- * a cook would actually want to know about. */
+/** The loud half of the sync chrome: a pill with words, for the states that need a person —
+ * refresh the app, a stuck queue, an error, read-only mode. Everything that needs no action
+ * (offline in a walk-in, changes waiting to send) is the quiet `SyncDot` in the screen header
+ * instead, which is why this renders nothing for those.
+ *
+ * Renders nothing in local mode — there's no restaurant to sync with, so any sync chrome there
+ * would just be confusing noise — and is debounced by 1s so a routine reconnect never flashes. */
 export function SyncBadge() {
-  const { status, pendingCount, stalePendingMinutes } = useSync();
-  const quiet = status === 'live' && pendingCount === 0 && stalePendingMinutes === undefined;
-  const [visible, setVisible] = useState(false);
+  const info = useSync();
+  const indicator = syncIndicator(info);
+  const shouldShow = indicator.kind === 'pill';
+  const visible = useDelayedVisible(shouldShow, 1000);
 
-  useEffect(() => {
-    if (quiet) {
-      setVisible(false);
-      return;
-    }
-    const t = setTimeout(() => setVisible(true), 1000);
-    return () => clearTimeout(t);
-  }, [quiet]);
-
-  if (!isSupabaseConfigured || !visible) return null;
-
-  let label: string;
-  let tone: 'red' | 'yellow' | 'green';
-  if (status === 'upgrade-required') {
-    // Checked first: it's the most actionable explanation for a stuck queue there is, so it
-    // should never be masked by the more generic "stuck sending" warning below.
-    label = 'יש לרענן את האפליקציה';
-    tone = 'red';
-  } else if (status === 'read-only') {
-    // Deliberately NOT "refresh the app". Writes are off because an operator switched them off
-    // (or this build is below min_client_version) — refreshing changes nothing, and saying so
-    // would train a cook to ignore the message above, which is the one time it does.
-    label = pendingCount > 0 ? `במצב קריאה בלבד (${pendingCount} ממתינים)` : 'במצב קריאה בלבד';
-    tone = 'yellow';
-  } else if (stalePendingMinutes !== undefined) {
-    // A queue stuck for 10+ minutes is worth flagging even while `status` still looks like a
-    // routine retry loop (e.g. a captive portal that answers every request, so we're technically
-    // "online" but never actually getting through).
-    label = `שליחה תקועה (${stalePendingMinutes} דק')`;
-    tone = 'red';
-  } else if (status === 'offline') {
-    label = pendingCount > 0 ? `לא מקוון (${pendingCount})` : 'לא מקוון';
-    tone = 'yellow';
-  } else if (status === 'error') {
-    label = 'שגיאת סנכרון';
-    tone = 'red';
-  } else if (pendingCount > 0) {
-    label = `שולח... (${pendingCount})`;
-    tone = 'yellow';
-  } else if (status === 'live') {
-    label = 'מסונכרן';
-    tone = 'green';
-  } else {
-    label = 'מתחבר...';
-    tone = 'yellow';
-  }
-
-  return <div className={`pill ${tone} sync-badge`}>{label}</div>;
+  if (!isSupabaseConfigured || !visible || indicator.kind !== 'pill') return null;
+  return <div className={`pill ${indicator.tone} sync-badge`}>{indicator.label}</div>;
 }

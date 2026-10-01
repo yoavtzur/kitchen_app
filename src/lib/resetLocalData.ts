@@ -20,6 +20,10 @@ export const MEMBERSHIP_KEY = 'kitchen-auth-membership';
 /** Debug escape hatch. Clearing it is harmless, and fixes the "why is my data empty" case where
  * someone flipped it on and forgot. */
 export const FORCE_LOCAL_KEY = 'kitchen-force-local';
+/** The Settings toggle for anonymous usage statistics (lib/analytics.ts). Clearing it turns
+ * reporting back on if the build has it configured — a choice the person made is lost, which is
+ * why the crash screen's tiers leave it alone unless everything is wiped. */
+export const ANALYTICS_OPT_OUT_KEY = 'kitchen-analytics-optout';
 /** `ops.client_id`, debugging only. Regenerates on next use. */
 export const DEVICE_KEY = 'kitchen-device-id';
 

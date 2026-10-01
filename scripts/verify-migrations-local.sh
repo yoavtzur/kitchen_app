@@ -46,7 +46,9 @@ fi
 rm -rf "$PGROOT"; mkdir -p "$PGROOT"
 [ -n "$AS_PG" ] && chown postgres:postgres "$PGROOT"
 chmod 700 "$PGROOT"
-run_pg "initdb -D $PGROOT/data -A trust" >/dev/null 2>&1 || { echo "initdb failed"; exit 1; }
+# -U postgres: initdb names the superuser after the OS user, and everything below connects as
+# "postgres". That only coincided when run as root via `su postgres`; a CI runner is not root.
+run_pg "initdb -D $PGROOT/data -A trust -U postgres" >/dev/null 2>&1 || { echo "initdb failed"; exit 1; }
 run_pg "pg_ctl -D $PGROOT/data -o '-k $PGROOT -p $PORT -h 127.0.0.1' -l $PGROOT/log start" >/dev/null
 trap 'run_pg "pg_ctl -D $PGROOT/data -m immediate stop" >/dev/null 2>&1' EXIT
 for _ in $(seq 20); do psql -h 127.0.0.1 -p "$PORT" -U postgres -tAqc 'select 1' >/dev/null 2>&1 && break; sleep 0.5; done

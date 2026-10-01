@@ -2,6 +2,7 @@
 // subscribe/getSnapshot pair. Nothing in here contains sync *logic* — that all lives in engine.ts
 // and log.ts; this file only ever calls out to an adapter or a KVStore.
 import { newUuid } from '../lib/ids';
+import { trackAction } from '../lib/analytics';
 import { addOpBreadcrumb } from '../lib/sentry';
 import { createSeedState } from '../data/seed';
 import type { Action } from '../store/reducer';
@@ -179,6 +180,8 @@ function createSyncStore(adapter: SyncAdapter, initial: SyncState, kv?: KVStore,
       // CONFIRM_AUTO_TASK_COMPLETION, crash") is the most useful thing this app can tell a
       // crash report. See lib/sentry.ts, and the test that pins the crumb's shape.
       addOpBreadcrumb(action.type);
+      // Same rule, same reason: the type only. lib/analytics.ts decides whether it is reportable.
+      trackAction(action.type);
       apply({ type: 'DISPATCH', opId: newUuid(), action });
     },
     setReadOnly(readOnly) {

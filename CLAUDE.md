@@ -20,9 +20,9 @@ npm run preview   # preview a production build
 
 Run a single test file: `npx vitest run src/lib/__tests__/calc.test.ts`
 
-There are 22 test files (319 tests), colocated in `__tests__` folders next to what they cover:
+There are 23 test files (338 tests), colocated in `__tests__` folders next to what they cover:
 `src/lib/__tests__/` (calc, date, ids, integrity, tasks, swipe, units-adjacent helpers, geminiScanner,
-recipeDraft, migrateStations, sentry, appConfig, focusTrap, rpcErrors),
+recipeDraft, migrateStations, sentry, analytics, appConfig, focusTrap, rpcErrors),
 `src/store/__tests__/{reducer,storage,importValidation}.test.ts`,
 `src/sync/__tests__/{backoff,engine,localAdapter,log,persist}.test.ts`, and **`api/__tests__/` — the one
 test directory outside `src/`**, covering the scan endpoint's guards (see "Closing /api/scan-recipe").
@@ -570,7 +570,7 @@ this app was built against:
 `vite-plugin-pwa` is configured with `injectRegister: null` and `UpdatePrompt.tsx` registers the
 worker from app code instead. `style-src` needs `'unsafe-inline'` and always will: this codebase
 uses React `style={{…}}` attributes on almost every screen. `connect-src` covers Supabase over
-both https and wss plus `*.sentry.io`; **Phase 7's PostHog will need adding here**, and a missing
+both https and wss plus `*.sentry.io`; `*.i.posthog.com` (analytics) is there too; a missing
 entry fails as a silent network error, not a build error. `https://challenges.cloudflare.com` is
 in `script-src` **and** `frame-src` — Turnstile renders itself in an iframe, so allowing only the
 script gives a widget that never appears; it costs nothing while `VITE_TURNSTILE_SITE_KEY` is
@@ -807,7 +807,7 @@ to a real restaurant crew — no white screen mid-shift, no torched Gemini accou
 loss. Run as ordered phases, **one PR per phase, each verified live and merged only on explicit
 approval in chat**. The architecture sections above describe what each landed; this is the status.
 
-**Done — phases 1 to 6:**
+**Done — phases 1 to 7:**
 
 1. **Resilience** — error boundaries, the `routes.tsx` route table, the missing 404 screen, Sentry with
    aggressive scrubbing, the three reset tiers. See "Nothing white-screens" above.
@@ -835,15 +835,34 @@ approval in chat**. The architecture sections above describe what each landed; t
    `privacy@example.com` in it is not a notice, and that is the one blocking item in
    LAUNCH-CHECKLIST.md that no code change can clear.
 
-**Not started — phase 7**, the last one the plan sets:
+7. **CI, analytics, process.** Landed on `claude/wizardly-hawking-fj6znn`. Three parts:
 
-7. **CI, analytics, process.** There is no `.github/` directory at all. PostHog with
-   `autocapture: false` — non-negotiable, since `$el_text` would capture the visible text of every
-   clicked element, which in this app is ingredient, recipe, cook and task names. Supabase CLI so
-   migrations stop being manual paste. **PostHog also needs adding to `connect-src` in `vercel.json`**,
-   where a missing entry fails as a silent network error rather than a build error — **and to the
-   privacy notice in `Legal.tsx`, in the same commit**, which currently states outright that this
-   app has no analytics and no tracking of any kind.
+   - **CI** — `.github/workflows/ci.yml`: `lint` + `test` + `build` on every PR and push to `main`,
+     and a second job running `scripts/verify-migrations-local.sh` against the runner's own
+     PostgreSQL (the only check that exercises a migration before it is pasted anywhere). **Turn
+     on branch protection for `main` requiring both jobs** — the workflow alone stops nothing.
+   - **Analytics** — `src/lib/analytics.ts`. **Deliberately not `posthog-js`**: that SDK ships
+     autocapture (`$el_text` = the text of every clicked element = ingredient/recipe/cook names),
+     session recording, a cookie, flag polling and lazily loaded scripts, each defaulting the
+     wrong way here. The module posts to PostHog's `/batch/` endpoint directly and can send three
+     events only — `app_opened`, `screen_viewed` (route *name*, never a pathname), and `action`
+     (an `Action['type']` from a short allowlist, never its payload) — built from a closed type,
+     with the wire format pinned in `analytics.test.ts`. Dormant three ways: no
+     `VITE_POSTHOG_KEY`; **local mode** (that mode promises no network); or opted out (Settings
+     toggle, Do Not Track, Global Privacy Control). `distinct_id` lives in memory for one page
+     load — nothing is written to the device, so no consent banner is owed, at the cost that a
+     returning cook is a new visitor each launch. `store.ts`'s `dispatch` calls `trackAction`
+     beside `addOpBreadcrumb`; `AnalyticsContext` (sibling of `SentryContext`) reports screens.
+     `Legal.tsx` was updated in the same commit, as it said it had to be. Verified live against
+     a Chromium: on → exactly one `app_opened`; no key, local mode, DNT, opted out → no request.
+     `screen_viewed`/`action` live behind the auth gate and are covered by unit tests only.
+   - **Process** — `supabase/config.toml` and `.github/workflows/supabase-migrate.yml`, a
+     **manual-only, dry-run-by-default** `supabase db push`. First use needs a one-time
+     `supabase migration repair --status applied 0001 … 0007`, because the live history is empty
+     (see the workflow header). **This workflow has not been run** — the CLI isn't installable
+     from here — so treat the first dry run as its test.
+
+   Remaining item that no code can clear: **`OPERATOR` in `Legal.tsx`** (see LAUNCH-CHECKLIST.md).
 
 **Environment reminder:** this dev machine already has a working `.env.local` — running
 `npm run dev` here exercises real Supabase auth, not local mode. Use

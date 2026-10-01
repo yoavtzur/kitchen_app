@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthContext';
 import { usePermissions } from '../auth/usePermissions';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { mapRpcError } from '../lib/rpcErrors';
+import { analyticsAvailable, isOptedOut, setOptedOut } from '../lib/analytics';
 import { exportStateAsJson, parseImportedState } from '../store/storage';
 import type { ImportSummary } from '../store/importValidation';
 import { SCHEMA_VERSION } from '../data/seed';
@@ -58,6 +59,7 @@ export function Settings() {
   // one fewer cascading render than announcing it afterwards.
   const [membersLoading, setMembersLoading] = useState(() => isSupabaseConfigured && Boolean(membership));
   const [copied, flagCopied] = useTimedFlag(1500);
+  const [analyticsOptOut, setAnalyticsOptOut] = useState(isOptedOut);
   const [deleteCandidate, setDeleteCandidate] = useState<Cook | null>(null);
   const [removeCandidate, setRemoveCandidate] = useState<MemberRow | null>(null);
   const [removedMessage, showRemovedMessage] = useTimedMessage(1500);
@@ -470,6 +472,24 @@ export function Settings() {
             תנאי שימוש
           </Link>
         </div>
+        {analyticsAvailable(isSupabaseConfigured) && (
+          <label className="row" style={{ gap: 8, alignItems: 'flex-start' }}>
+            <input
+              type="checkbox"
+              checked={!analyticsOptOut}
+              onChange={(e) => {
+                setOptedOut(!e.target.checked);
+                setAnalyticsOptOut(!e.target.checked);
+              }}
+            />
+            <span>
+              שיתוף סטטיסטיקות שימוש אנונימיות
+              <span className="muted" style={{ display: 'block' }}>
+                אילו מסכים נפתחים ואילו פעולות מבוצעות — לעולם לא שמות, כמויות או תוכן של המטבח.
+              </span>
+            </span>
+          </label>
+        )}
         {accountError && <p style={{ color: 'var(--color-red)' }}>{accountError}</p>}
         {isSupabaseConfigured && session && (
           <>

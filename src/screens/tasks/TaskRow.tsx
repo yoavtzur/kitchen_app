@@ -77,7 +77,6 @@ export function TaskRow({ task }: { task: DisplayTask }) {
     : task.title ?? 'משימה';
 
   return (
-    <>
     <SwipeToComplete
       onComplete={task.done ? undoDone : markDone}
       label={task.done ? '↩ בטל בוצע' : '✓ בוצע'}
@@ -165,11 +164,12 @@ export function TaskRow({ task }: { task: DisplayTask }) {
           </select>
         </div>
         {detailOpen && <TaskDetailSheet task={task} onClose={() => setDetailOpen(false)} />}
+        {/* Inside the card, like the detail sheet: a sibling of the swipe wrapper would become a second
+            child of `.tasks-grid` and break its "lone last card spans the row" rule. */}
+        {actionsOpen && recipe && (
+          <QuickActionsSheet task={task} recipe={recipe} onClose={() => setActionsOpen(false)} />
+        )}
       </div>
     </SwipeToComplete>
-    {actionsOpen && recipe && (
-      <QuickActionsSheet task={task} recipe={recipe} onClose={() => setActionsOpen(false)} />
-    )}
-    </>
   );
 }

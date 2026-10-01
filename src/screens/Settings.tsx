@@ -280,7 +280,9 @@ export function Settings() {
                 <span>{session.user.email}</span>
               </div>
             )}
-            {restaurant && (
+            {/* The join code is the key to the kitchen: a cook has no business reading it off
+                their own settings screen. */}
+            {restaurant && isChef && (
               <div className="row-item">
                 <span className="muted">קוד הצטרפות</span>
                 <div className="row" style={{ gap: 8, width: 'auto', alignItems: 'center' }}>
@@ -297,11 +299,9 @@ export function Settings() {
                   >
                     {copied ? 'הועתק!' : restaurant.joinCode}
                   </button>
-                  {isChef && (
-                    <button type="button" className="btn" disabled={rotating} onClick={() => setConfirmRotate(true)}>
-                      {rotating ? 'מחליף...' : 'החלף קוד'}
-                    </button>
-                  )}
+                  <button type="button" className="btn" disabled={rotating} onClick={() => setConfirmRotate(true)}>
+                    {rotating ? 'מחליף...' : 'החלף קוד'}
+                  </button>
                 </div>
               </div>
             )}
@@ -405,6 +405,8 @@ export function Settings() {
         </>
       )}
 
+      {isChef && (
+        <>
       <h2 className="section-title">חישוב</h2>
       <div className="card stack-gap-3">
         <div className="field" style={{ marginBottom: 0 }}>
@@ -461,6 +463,8 @@ export function Settings() {
           </button>
         </div>
       </div>
+        </>
+      )}
 
       <h2 className="section-title">פרטיות וחשבון</h2>
       <div className="card stack-gap-3">
@@ -504,6 +508,8 @@ export function Settings() {
         )}
       </div>
 
+      {isChef && (
+        <>
       <h2 className="section-title">גיבוי ושחזור</h2>
       <div className="card stack-gap-3">
         <p className="muted">
@@ -538,6 +544,8 @@ export function Settings() {
           }}
         />
       </div>
+        </>
+      )}
 
       {deleteCandidate && (
         <ConfirmDialog

@@ -2,11 +2,14 @@ import { useMemo, useState } from 'react';
 import { useApp } from '../store/AppContext';
 import { orderQtyForIngredient, weeklyNeedForIngredient } from '../lib/calc';
 import { formatQty } from '../lib/units';
-import { addDays, dayOfWeek, dayShortLabel, orderLineKey, todayStr } from '../lib/date';
+import { addDays, dayName, dayOfWeek, dayShortLabel, orderLineKey, todayStr } from '../lib/date';
 import { EmptyState } from '../components/EmptyState';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { SearchInput } from '../components/SearchInput';
-import { CategoryTabs } from '../components/CategoryTabs';
+import { ScreenHeader } from '../components/ScreenHeader';
+import { Segmented } from '../components/Segmented';
+import { MorningOrder } from './orders/MorningOrder';
+import { useAuth } from '../auth/AuthContext';
 import { matchesQuery } from '../lib/search';
 import { useTimedFlag } from '../lib/useTimedFlag';
 import type { AppState, Ingredient } from '../types';
@@ -56,7 +59,7 @@ function ReceiveDialog({ date, onClose }: { date: string; onClose: () => void })
   }
 
   return (
-    <ConfirmDialog title="קבלת סחורה" confirmLabel="הוסף למלאי" onClose={onClose} onConfirm={confirm}>
+    <ConfirmDialog title="קבלת סחורה" confirmLabel="אשר קליטה" onClose={onClose} onConfirm={confirm}>
       {receipts.length === 0 ? (
         <p className="muted">לא סומן שום מצרך כ&quot;הוזמן&quot;.</p>
       ) : (
@@ -338,25 +341,31 @@ function OrderHistory() {
   );
 }
 
-type OrdersTab = 'current' | 'history';
+type OrdersTab = 'morning' | 'supplier' | 'history';
 
 const TABS: { value: OrdersTab; label: string }[] = [
-  { value: 'current', label: 'הזמנה נוכחית' },
-  { value: 'history', label: 'היסטוריה שבועית' },
+  { value: 'morning', label: 'בוקר' },
+  { value: 'supplier', label: 'לפי ספק' },
+  { value: 'history', label: 'היסטוריה' },
 ];
 
+/**
+ * Everything about ordering in one place, as three views of the same sheet: the morning count
+ * and approval (the default — it is what a chef opens this for), the same order grouped by
+ * supplier for sending and receiving, and the weekly history. They used to be two separate tabs
+ * in the nav showing the same numbers in different shapes.
+ */
 export function Orders() {
-  const [tab, setTab] = useState<OrdersTab>('current');
+  const [tab, setTab] = useState<OrdersTab>('morning');
+  const { membership } = useAuth();
 
   return (
     <div>
-      <div className="screen-header">
-        <h1 className="screen-title">הזמנת אספקה</h1>
-      </div>
+      <ScreenHeader title={membership?.restaurantName?.trim() || 'הזמנות'} subtitle={`הזמנות · ${dayName(todayStr())}`} />
 
-      <CategoryTabs tabs={TABS} value={tab} onChange={setTab} />
+      <Segmented options={TABS} value={tab} onChange={setTab} label="תצוגת הזמנות" />
 
-      {tab === 'current' ? <CurrentOrder /> : <OrderHistory />}
+      {tab === 'morning' ? <MorningOrder /> : tab === 'supplier' ? <CurrentOrder /> : <OrderHistory />}
     </div>
   );
 }

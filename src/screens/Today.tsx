@@ -9,6 +9,7 @@ import { CookPill } from '../components/CookPill';
 import { SearchInput } from '../components/SearchInput';
 import { CategoryTabs } from '../components/CategoryTabs';
 import { PrintStationButton } from '../components/PrintStationButton';
+import { ScreenHeader } from '../components/ScreenHeader';
 import { categoryTabs, UNASSIGNED_CATEGORY, UNASSIGNED_LABEL, type CategoryFilter } from '../lib/recipeCategories';
 import { TaskRow } from './tasks/TaskRow';
 import { AddManualTaskSheet } from './tasks/AddManualTaskSheet';
@@ -87,22 +88,22 @@ export function Today() {
       <div className="home-hero">
         <span className="home-blob home-blob-a" aria-hidden="true" />
         <span className="home-blob home-blob-b" aria-hidden="true" />
-        <div className="screen-header">
-          <div>
-            <h1 className="screen-title">{title}</h1>
-            <p className="muted">{formatToday(date)} &middot; המטבח מחכה לך</p>
-          </div>
-          <div className="row no-print" style={{ gap: 8 }}>
-            <PrintStationButton label="הדפס רשימת עמדה" iconOnly />
-            <div className="home-mascot" aria-hidden="true">
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 10h16v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-6z" />
-                <path d="M4 10a8 8 0 0 1 16 0" />
-                <circle cx="12" cy="5" r="1.6" fill="#FFFFFF" stroke="none" />
-              </svg>
+        <ScreenHeader
+          title={title}
+          subtitle={<>{formatToday(date)} &middot; המטבח מחכה לך</>}
+          actions={
+            <div className="row no-print" style={{ gap: 8, width: 'auto' }}>
+              <PrintStationButton label="הדפס רשימת עמדה" iconOnly />
+              <div className="home-mascot" aria-hidden="true">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 10h16v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-6z" />
+                  <path d="M4 10a8 8 0 0 1 16 0" />
+                  <circle cx="12" cy="5" r="1.6" fill="#FFFFFF" stroke="none" />
+                </svg>
+              </div>
             </div>
-          </div>
-        </div>
+          }
+        />
       </div>
 
       <div className="print-only print-banner">

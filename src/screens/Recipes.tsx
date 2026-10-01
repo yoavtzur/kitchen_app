@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../store/AppContext';
 import { usePermissions } from '../auth/usePermissions';
 import { CategoryTabs } from '../components/CategoryTabs';
+import { ScreenHeader } from '../components/ScreenHeader';
 import { BottomSheet } from '../components/BottomSheet';
 import { EmptyState } from '../components/EmptyState';
 import { SearchInput } from '../components/SearchInput';
@@ -342,23 +343,25 @@ export function Recipes() {
 
   return (
     <div>
-      <div className="screen-header">
-        <h1 className="screen-title">מתכונים</h1>
-        <div className="row" style={{ gap: 8, width: 'auto' }}>
-          {canEditRecipes && (
-            <>
-              {aiAvailable === true && (
-                <button type="button" className="btn btn-icon" onClick={() => setScanning(true)} aria-label="סרוק מתכון">
-                  <CameraIcon />
+      <ScreenHeader
+        title="מתכונים"
+        actions={
+          <div className="row" style={{ gap: 8, width: 'auto' }}>
+            {canEditRecipes && (
+              <>
+                {aiAvailable === true && (
+                  <button type="button" className="btn btn-icon" onClick={() => setScanning(true)} aria-label="סרוק מתכון">
+                    <CameraIcon />
+                  </button>
+                )}
+                <button type="button" className="btn btn-icon btn-primary" onClick={() => setAdding(true)} aria-label="הוסף פריט">
+                  +
                 </button>
-              )}
-              <button type="button" className="btn btn-icon btn-primary" onClick={() => setAdding(true)} aria-label="הוסף פריט">
-                +
-              </button>
-            </>
-          )}
-        </div>
-      </div>
+              </>
+            )}
+          </div>
+        }
+      />
 
       <SearchInput value={query} onChange={setQuery} placeholder="חיפוש מתכון..." />
 

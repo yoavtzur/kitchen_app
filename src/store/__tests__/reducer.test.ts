@@ -490,6 +490,82 @@ describe('ADD_STATION', () => {
   });
 });
 
+describe('RENAME_STATION / DELETE_STATION', () => {
+  const hot = { id: 'station-hot', name: 'פס חם', createdAt: date };
+  const cold = { id: 'station-cold', name: 'פס קר', createdAt: date };
+  const manualTask = {
+    id: 'task-clean',
+    date,
+    title: 'לנקות מדפים',
+    multiplier: 1,
+    priority: 'yellow' as const,
+    done: false,
+    source: 'manual' as const,
+    categoryOverride: 'station-hot',
+  };
+
+  it('renames a station and keeps its id, so recipes stay attached', () => {
+    const state = baseState({ stations: [hot], recipes: [{ ...recipe, category: 'station-hot' }] });
+    const next = reducer(state, { type: 'RENAME_STATION', id: 'station-hot', name: '  גריל ' });
+    expect(next.stations).toEqual([{ ...hot, name: 'גריל' }]);
+    expect(next.recipes[0].category).toBe('station-hot');
+  });
+
+  it('ignores a rename to an empty name, a clashing name, or an unknown station', () => {
+    const state = baseState({ stations: [hot, cold] });
+    expect(reducer(state, { type: 'RENAME_STATION', id: 'station-hot', name: '   ' })).toBe(state);
+    expect(reducer(state, { type: 'RENAME_STATION', id: 'station-hot', name: 'פס קר' })).toBe(state);
+    expect(reducer(state, { type: 'RENAME_STATION', id: 'nope', name: 'גריל' })).toBe(state);
+  });
+
+  it('allows renaming a station to a differently-cased version of its own name', () => {
+    const state = baseState({ stations: [{ ...hot, name: 'grill' }] });
+    const next = reducer(state, { type: 'RENAME_STATION', id: 'station-hot', name: 'Grill' });
+    expect(next.stations[0].name).toBe('Grill');
+  });
+
+  it('moves recipes and free-text tasks to the chosen station, then removes the station', () => {
+    const state = baseState({
+      stations: [hot, cold],
+      recipes: [{ ...recipe, category: 'station-hot' }, { ...recipe, id: 'r2', category: 'station-cold' }],
+      tasks: [manualTask],
+    });
+    const next = reducer(state, { type: 'DELETE_STATION', id: 'station-hot', moveToId: 'station-cold' });
+    expect(next.stations.map((s) => s.id)).toEqual(['station-cold']);
+    expect(next.recipes.map((r) => r.category)).toEqual(['station-cold', 'station-cold']);
+    expect(next.tasks[0].categoryOverride).toBe('station-cold');
+  });
+
+  it('moves to "general" when asked to, and when the target is unknown or the station itself', () => {
+    const state = baseState({ stations: [hot], recipes: [{ ...recipe, category: 'station-hot' }], tasks: [manualTask] });
+    for (const moveToId of ['general', 'station-missing', 'station-hot']) {
+      const next = reducer(state, { type: 'DELETE_STATION', id: 'station-hot', moveToId });
+      expect(next.stations).toEqual([]);
+      expect(next.recipes[0].category).toBe('general');
+      expect(next.tasks[0].categoryOverride).toBe('general');
+    }
+  });
+
+  it('leaves recipes of other stations alone and loses no recipe or task', () => {
+    const state = baseState({
+      stations: [hot, cold],
+      recipes: [{ ...recipe, category: 'station-cold' }],
+      tasks: [manualTask],
+    });
+    const next = reducer(state, { type: 'DELETE_STATION', id: 'station-hot', moveToId: 'general' });
+    expect(next.recipes).toHaveLength(1);
+    expect(next.recipes[0].category).toBe('station-cold');
+    expect(next.tasks).toHaveLength(1);
+  });
+
+  it('is a no-op the second time, so replaying the op on another device changes nothing', () => {
+    const state = baseState({ stations: [hot], recipes: [{ ...recipe, category: 'station-hot' }] });
+    const once = reducer(state, { type: 'DELETE_STATION', id: 'station-hot', moveToId: 'general' });
+    const twice = reducer(once, { type: 'DELETE_STATION', id: 'station-hot', moveToId: 'general' });
+    expect(twice).toBe(once);
+  });
+});
+
 describe('order sheet', () => {
   it('persists a typed quantity and the ordered flag per ingredient', () => {
     const withQty = reducer(baseState(), {
@@ -805,6 +881,22 @@ describe('actions survive a JSON round trip', () => {
         date,
         ingredientDeltas: [{ id: 'ing-egg', delta: 9 }],
       },
+    },
+    {
+      name: 'DELETE_STATION moving recipes to another station',
+      state: baseState({
+        stations: [
+          { id: 'station-hot', name: 'פס חם', createdAt: date },
+          { id: 'station-cold', name: 'פס קר', createdAt: date },
+        ],
+        recipes: [{ ...recipe, category: 'station-hot' }],
+      }),
+      action: { type: 'DELETE_STATION', id: 'station-hot', moveToId: 'station-cold' },
+    },
+    {
+      name: 'RENAME_STATION',
+      state: baseState({ stations: [{ id: 'station-hot', name: 'פס חם', createdAt: date }] }),
+      action: { type: 'RENAME_STATION', id: 'station-hot', name: 'גריל' },
     },
     {
       name: 'REMOVE_COOK unassigning open tasks',

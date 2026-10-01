@@ -1298,3 +1298,335 @@ textarea {
     animation: none !important;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Tabit-style structure: one full-width primary action, tall list rows inside a
+   single card, a wide segmented switch. The palette is unchanged — this is
+   layout, size and contrast, not colour (the neon green stays the brand).
+   --------------------------------------------------------------------------- */
+.btn-block {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: var(--btn-height);
+  border-radius: var(--radius-card);
+  font-size: 17px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.list-card {
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.list-card + .list-card {
+  margin-top: var(--space-4);
+}
+
+/* A row inside .list-card: icon at the start edge (right in RTL), label, chevron at the end.
+   Hairlines sit between rows rather than around each, so the card reads as one object. */
+.menu-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 64px;
+  padding: 0 var(--space-4);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-size: 17px;
+  font-weight: 500;
+  text-align: start;
+  text-decoration: none;
+  font-family: inherit;
+}
+
+.menu-row:last-child {
+  border-bottom: none;
+}
+
+.menu-row .menu-row-icon {
+  display: inline-flex;
+  color: var(--color-text-muted);
+}
+
+.menu-row .menu-row-label {
+  flex: 1;
+}
+
+.menu-row .chevron {
+  display: inline-flex;
+  color: var(--color-text-muted);
+}
+
+[dir='ltr'] .menu-row .chevron svg {
+  transform: scaleX(-1);
+}
+
+.menu-row.danger {
+  color: var(--color-red);
+}
+
+.menu-row.danger .menu-row-icon {
+  color: var(--color-red);
+}
+
+.profile-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+.avatar {
+  flex-shrink: 0;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--color-surface-2);
+}
+
+.profile-card .profile-name {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.profile-card .profile-sub {
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
+/* Wide two- or three-way switch. Used where the old UI abused the category pills as a view
+   switch (Orders) and for the stock screen's ingredients / products split. */
+.segmented {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+}
+
+.segmented button {
+  flex: 1;
+  min-height: 44px;
+  border: none;
+  border-radius: calc(var(--radius-card) - 4px);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+}
+
+.segmented button[aria-selected='true'] {
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+}
+
+/* Category tabs that stay put while a long list scrolls underneath. The background matters:
+   without it the rows would show through behind the pills. */
+.sticky-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin-inline: calc(var(--space-4) * -1);
+  padding: var(--space-2) var(--space-4) 0;
+  background: var(--color-bg);
+}
+
+/* A small status dot. Not .priority-dot: that one means task urgency and pulses. */
+.dot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-text-muted);
+}
+
+.dot.amber {
+  background: var(--color-yellow);
+}
+
+.dot.red {
+  background: var(--color-red);
+}
+
+.dot.gray {
+  background: var(--color-text-muted);
+  opacity: 0.7;
+}
+
+.screen-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.screen-subtitle {
+  font-size: 14px;
+  margin-top: 2px;
+}
+
+/* The dot is a 10px mark, but the button around it is a full touch target — a cook tapping it
+   with a gloved thumb should not have to aim. */
+.sync-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.sync-dot-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.sync-dot-label {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.toast-action {
+  pointer-events: auto;
+  margin-inline-start: var(--space-3);
+  padding: 4px 12px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+}
+
+/* Morning order: one line per ingredient. Row height is the shared --row-height, so a phone shows
+   eight or nine of them where the old cards showed two. The two cells are fixed-width so the
+   column header above them lines up without a table. */
+.morning-head,
+.morning-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-inline: var(--space-3);
+}
+
+.morning-head {
+  padding-block: var(--space-2) 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.morning-row {
+  min-height: var(--row-height);
+  padding-block: 6px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.morning-row:last-child {
+  border-bottom: none;
+}
+
+.morning-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.morning-row-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.morning-row-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.morning-row-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.morning-cells {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--space-2);
+}
+
+.morning-head .morning-cells > span {
+  width: 68px;
+  text-align: center;
+}
+
+.morning-input {
+  width: 68px;
+  height: 44px;
+  padding: 0 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 17px;
+  text-align: center;
+}
+
+.morning-input.count {
+  color: var(--color-text-muted);
+}
+
+.morning-input.order {
+  border-color: var(--color-primary);
+  background: transparent;
+  font-weight: 700;
+}
+
+.info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
+.save-bar-spacer {
+  height: calc(var(--save-bar-height) + var(--space-5));
+}

@@ -3,9 +3,9 @@
      See design/kitchen-directions/Direction-MichelinCockpit.html for the prototype
      this was migrated from. */
   --color-bg: #090a0f;
-  --color-surface: #12141c;
-  --color-surface-2: #181b26;
-  --color-border: #242838;
+  --color-surface: #161926;
+  --color-surface-2: #1f2333;
+  --color-border: #2b3044;
   --color-text: #e7eaf3;
   --color-text-muted: #8891a8;
   --color-primary: #00ff87;
@@ -53,7 +53,13 @@
   /* The save bar's button height. A token because two unrelated rules need to agree on it:
      .count-save-bar sizes its button to it, and .toast has to clear that bar to sit above it
      without covering the control it is confirming. */
-  --save-bar-height: 48px;
+  --save-bar-height: 56px;
+
+  /* Tabit-style structure: one row height and one primary-button height, so a list of 50
+     ingredients and a full-width action read as the same system rather than per-screen values. */
+  --row-height: 56px;
+  --btn-height: 56px;
+  --radius-card: 16px;
 
   --nav-height: 64px;
   /* The bar's own height plus whatever the device reserves below it (the iPhone home

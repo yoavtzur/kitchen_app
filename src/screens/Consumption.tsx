@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { ScreenHeader } from '../components/ScreenHeader';
 import { useApp } from '../store/AppContext';
 import { multiplierForProduct, toPrepare, weekdayValue } from '../lib/calc';
 import { addDays, dayName, dayOfWeek, todayStr, weekDates } from '../lib/date';
@@ -95,9 +96,7 @@ export function Consumption() {
 
   return (
     <div>
-      <div className="screen-header">
-        <h1 className="screen-title">צריכה שבועית ויומית</h1>
-      </div>
+      <ScreenHeader title="צריכה שבועית ויומית" />
 
       <div className="row" style={{ marginBottom: 'var(--space-2)' }}>
         <button type="button" className="btn" onClick={() => goToWeek(-7)}>

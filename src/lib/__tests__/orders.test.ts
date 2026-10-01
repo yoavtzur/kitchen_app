@@ -3,10 +3,12 @@ import {
   buildOrderLines,
   collectCountChanges,
   effectiveCount,
+  groupBySupplier,
   lowStockTone,
   parseQty,
   planFillToPar,
   suggestedQty,
+  supplierMessages,
 } from '../orders';
 import type { AppState, Ingredient, OrderLine } from '../../types';
 
@@ -164,5 +166,45 @@ describe('an ingredient flagged short', () => {
   it('shows a red dot, and puts the ingredient in the order', () => {
     expect(lowStockTone(flagged, flagged.currentQty, date)).toBe('red');
     expect(buildOrderLines(stateWith([flagged]), {}, date)).toEqual([{ ingredientId: 'salt', qty: 4 }]);
+  });
+});
+
+describe('supplierMessages', () => {
+  const dairy: Ingredient = { ...flour, id: 'milk', name: 'חלב', unit: 'l', supplier: 'תנובה' };
+  const mill: Ingredient = { ...flour, supplier: 'מילה' };
+  const loose: Ingredient = { ...salt };
+
+  it('splits one message per supplier, alphabetically, with no-supplier last', () => {
+    const lines = [
+      { ingredientId: 'salt', qty: 1 },
+      { ingredientId: 'milk', qty: 12 },
+      { ingredientId: 'flour', qty: 5 },
+    ];
+    const out = supplierMessages(lines, [mill, dairy, loose]);
+    expect(out.map((m) => m.supplier)).toEqual(['מילה', 'תנובה', 'ללא ספק']);
+    expect(out[1]).toEqual({ supplier: 'תנובה', count: 1, text: '*תנובה*\n• חלב: 12 ליטר' });
+  });
+
+  it('puts several items of one supplier in one message and drops empty quantities', () => {
+    const second: Ingredient = { ...mill, id: 'rye', name: 'שיפון' };
+    const out = supplierMessages(
+      [{ ingredientId: 'flour', qty: 5 }, { ingredientId: 'rye', qty: 2 }, { ingredientId: 'salt', qty: 0 }],
+      [mill, second, loose],
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].count).toBe(2);
+    expect(out[0].text.split('\n')).toHaveLength(3);
+  });
+
+  it('is empty for an empty order', () => {
+    expect(supplierMessages([], [mill])).toEqual([]);
+  });
+});
+
+describe('groupBySupplier', () => {
+  it('keeps each ingredient under its supplier in the same order as the messages', () => {
+    const a: Ingredient = { ...flour, supplier: 'תנובה' };
+    const groups = groupBySupplier([salt, a, { ...egg, supplier: 'תנובה' }]);
+    expect(groups.map((g) => [g.supplier, g.ingredients.length])).toEqual([['תנובה', 2], ['ללא ספק', 1]]);
   });
 });

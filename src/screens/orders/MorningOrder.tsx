@@ -7,18 +7,22 @@ import { EmptyState } from '../../components/EmptyState';
 import { NumberEditor } from '../../components/NumberEditor';
 import { SearchInput } from '../../components/SearchInput';
 import { Toast } from '../../components/Toast';
+import { SendOrdersSheet } from './SendOrdersSheet';
 import { daysOfSupply, weekdayValue } from '../../lib/calc';
 import { addDays, dayOfWeek, todayStr } from '../../lib/date';
 import { ALL_CATEGORIES, categoryOf, ingredientCategoryTabs, matchesCategory } from '../../lib/ingredientCategories';
 import {
   buildOrderLines,
   collectCountChanges,
+  groupBySupplier,
   effectiveCount,
   lowStockTone,
   parseQty,
   planFillToPar,
   suggestedQty,
+  supplierMessages,
   type CountDrafts,
+  type SupplierMessage,
 } from '../../lib/orders';
 import { matchesQuery } from '../../lib/search';
 import { isSupabaseConfigured } from '../../lib/supabase';
@@ -194,6 +198,7 @@ export function MorningOrder() {
   const [drafts, setDrafts] = useState<CountDrafts>({});
   const [info, setInfo] = useState<Ingredient | null>(null);
   const { showUndo } = useUndo();
+  const [sending, setSending] = useState<SupplierMessage[] | null>(null);
   const [message, showMessage] = useTimedMessage(2500);
 
   const tabs = useMemo(() => ingredientCategoryTabs(state.ingredients), [state.ingredients]);
@@ -212,7 +217,11 @@ export function MorningOrder() {
     if (changes.length > 0) {
       dispatch({ type: 'BULK_UPDATE_QUANTITIES', ingredients: changes, products: [], today });
     }
-    if (lines.length > 0) dispatch({ type: 'SUBMIT_ORDER', date: today, lines });
+    if (lines.length > 0) {
+      dispatch({ type: 'SUBMIT_ORDER', date: today, lines });
+      // Built from the very lines just submitted, so what is sent is what was approved.
+      setSending(supplierMessages(lines, state.ingredients));
+    }
     setDrafts({});
     showMessage(
       sync.online && sync.status !== 'offline' ? 'הספירה וההזמנה נשמרו ✓' : savedMessage(sync, isSupabaseConfigured),
@@ -266,23 +275,28 @@ export function MorningOrder() {
               <span>הזמנה</span>
             </span>
           </div>
-          {filtered.map((ing) => {
-            const count = effectiveCount(ing, drafts);
-            return (
-              <MorningRow
-                key={ing.id}
-                ingredient={ing}
-                countValue={drafts[ing.id] ?? fmt(ing.currentQty)}
-                order={suggestedQty(ing, state, today, drafts)}
-                tone={lowStockTone(ing, count, today)}
-                onCountChange={(id, value) => setDrafts((prev) => ({ ...prev, [id]: value }))}
-                onOrderCommit={(i, qtyOverride) =>
-                  dispatch({ type: 'SET_ORDER_LINE_QTY', ingredientId: i.id, date: today, qtyOverride })
-                }
-                onInfo={setInfo}
-              />
-            );
-          })}
+          {groupBySupplier(filtered).map((group) => (
+            <div key={group.supplier}>
+              <div className="morning-supplier">{group.supplier}</div>
+              {group.ingredients.map((ing) => {
+                const count = effectiveCount(ing, drafts);
+                return (
+                  <MorningRow
+                    key={ing.id}
+                    ingredient={ing}
+                    countValue={drafts[ing.id] ?? fmt(ing.currentQty)}
+                    order={suggestedQty(ing, state, today, drafts)}
+                    tone={lowStockTone(ing, count, today)}
+                    onCountChange={(id, value) => setDrafts((prev) => ({ ...prev, [id]: value }))}
+                    onOrderCommit={(i, qtyOverride) =>
+                      dispatch({ type: 'SET_ORDER_LINE_QTY', ingredientId: i.id, date: today, qtyOverride })
+                    }
+                    onInfo={setInfo}
+                  />
+                );
+              })}
+            </div>
+          ))}
         </div>
       )}
       {/* Room for the fixed approve bar, so the last row can scroll clear of it. */}
@@ -296,6 +310,8 @@ export function MorningOrder() {
           onClose={() => setInfo(null)}
         />
       )}
+
+      {sending && sending.length > 0 && <SendOrdersSheet messages={sending} onClose={() => setSending(null)} />}
 
       {message && <Toast message={message} />}
 

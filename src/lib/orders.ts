@@ -1,4 +1,6 @@
 import { coverageColor, daysOfSupply, orderQtyForIngredient } from './calc';
+import { NO_SUPPLIER } from './receiving';
+import { formatQty } from './units';
 import type { AppState, Ingredient } from '../types';
 
 /**
@@ -107,4 +109,40 @@ export function planFillToPar(state: AppState, date: string): { ingredientId: st
   return state.orderLines
     .filter((l) => l.date === date && l.qtyOverride !== undefined && !l.ordered)
     .map((l) => ({ ingredientId: l.ingredientId, previous: l.qtyOverride as number }));
+}
+
+/** One supplier's slice of an order, ready to send. */
+export type SupplierMessage = { supplier: string; count: number; text: string };
+
+/**
+ * An order split by supplier, each with the message that would go to them — the unit the chef
+ * actually sends, since a delivery is arranged supplier by supplier.
+ *
+ * Takes the lines as they are about to be submitted (`buildOrderLines`), so what is sent is
+ * exactly what was approved and never a second calculation that could drift from it. Suppliers
+ * come out alphabetically with "no supplier" last, matching the receiving screen.
+ */
+export function supplierMessages(lines: { ingredientId: string; qty: number }[], ingredients: Ingredient[]): SupplierMessage[] {
+  const groups = new Map<string, string[]>();
+  for (const { ingredientId, qty } of lines) {
+    const ing = ingredients.find((i) => i.id === ingredientId);
+    if (!ing || qty <= 0) continue;
+    const supplier = ing.supplier?.trim() || NO_SUPPLIER;
+    groups.set(supplier, [...(groups.get(supplier) ?? []), `• ${ing.name}: ${formatQty(qty, ing.unit)}`]);
+  }
+  return [...groups.entries()]
+    .sort(([a], [b]) => (a === NO_SUPPLIER ? 1 : b === NO_SUPPLIER ? -1 : a.localeCompare(b, 'he')))
+    .map(([supplier, rows]) => ({ supplier, count: rows.length, text: `*${supplier}*\n${rows.join('\n')}` }));
+}
+
+/** Ingredients grouped under their supplier, in the same order `supplierMessages` uses. */
+export function groupBySupplier(ingredients: Ingredient[]): { supplier: string; ingredients: Ingredient[] }[] {
+  const groups = new Map<string, Ingredient[]>();
+  for (const ing of ingredients) {
+    const supplier = ing.supplier?.trim() || NO_SUPPLIER;
+    groups.set(supplier, [...(groups.get(supplier) ?? []), ing]);
+  }
+  return [...groups.entries()]
+    .sort(([a], [b]) => (a === NO_SUPPLIER ? 1 : b === NO_SUPPLIER ? -1 : a.localeCompare(b, 'he')))
+    .map(([supplier, list]) => ({ supplier, ingredients: list }));
 }

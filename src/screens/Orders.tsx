@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '../store/AppContext';
-import { orderQtyForIngredient, weeklyNeedForIngredient } from '../lib/calc';
+import { weeklyNeedForIngredient } from '../lib/calc';
+import { suggestedQty, supplierMessages } from '../lib/orders';
 import { formatQty } from '../lib/units';
 import { addDays, dayOfWeek, dayShortLabel, orderLineKey, todayStr } from '../lib/date';
 import { EmptyState } from '../components/EmptyState';
@@ -12,31 +13,17 @@ import { MorningOrder } from './orders/MorningOrder';
 import { useAuth } from '../auth/AuthContext';
 import { matchesQuery } from '../lib/search';
 import { useTimedFlag } from '../lib/useTimedFlag';
-import { orderedLines, stillOwed } from '../lib/receiving';
+import { NO_SUPPLIER, orderedLines, stillOwed } from '../lib/receiving';
 import type { AppState, Ingredient } from '../types';
 
-const NO_SUPPLIER = 'ללא ספק';
 
-/** Quantity to order today: the user's typed override if there is one, else the suggestion. */
-function orderQtyFor(ingredient: Ingredient, date: string, state: AppState): number {
-  const line = state.orderLines.find((l) => l.ingredientId === ingredient.id && l.date === date);
-  if (line?.qtyOverride !== undefined) return line.qtyOverride;
-  return Math.round(orderQtyForIngredient(ingredient.id, state) * 100) / 100;
-}
+/** Quantity to order today — the same function the morning view and its approve button use, so
+ * the two screens can never show a different number for the same ingredient. */
+const orderQtyFor = (ingredient: Ingredient, date: string, state: AppState) => suggestedQty(ingredient, state, date, {});
 
 function buildOrderText(date: string, state: AppState): string {
-  const bySupplier = new Map<string, string[]>();
-  for (const ing of state.ingredients) {
-    const qty = orderQtyFor(ing, date, state);
-    if (qty <= 0) continue;
-    const supplier = ing.supplier?.trim() || NO_SUPPLIER;
-    const lines = bySupplier.get(supplier) ?? [];
-    lines.push(`• ${ing.name}: ${formatQty(qty, ing.unit)}`);
-    bySupplier.set(supplier, lines);
-  }
-  return [...bySupplier.entries()]
-    .map(([supplier, lines]) => `*${supplier}*\n${lines.join('\n')}`)
-    .join('\n\n');
+  const lines = state.ingredients.map((ing) => ({ ingredientId: ing.id, qty: orderQtyFor(ing, date, state) }));
+  return supplierMessages(lines, state.ingredients).map((m) => m.text).join('\n\n');
 }
 
 function CurrentOrder() {

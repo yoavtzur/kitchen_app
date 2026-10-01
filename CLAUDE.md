@@ -22,7 +22,8 @@ Run a single test file: `npx vitest run src/lib/__tests__/calc.test.ts`
 
 There are 30 test files (440 tests), colocated in `__tests__` folders next to what they cover:
 `src/lib/__tests__/` (calc, date, ids, integrity, tasks, swipe, units-adjacent helpers, geminiScanner,
-recipeDraft, migrateStations, sentry, analytics, appConfig, focusTrap, rpcErrors),
+recipeDraft, migrateStations, sentry, analytics, appConfig, focusTrap, rpcErrors, nav, orders,
+ingredientCategories, stations, syncIndicator, invite, cookName),
 `src/store/__tests__/{reducer,storage,importValidation}.test.ts`,
 `src/sync/__tests__/{backoff,engine,localAdapter,log,persist}.test.ts`, and **`api/__tests__/` — the one
 test directory outside `src/`**, covering the scan endpoint's guards (see "Closing /api/scan-recipe").
@@ -356,7 +357,7 @@ was called. It compiled, it read correctly, and it was decoration. `consume_scan
 already had this right — it *returns* `{"status":"quota"}` — and that precedent is the one to
 follow for anything that must both record an attempt and refuse it. Raising is still correct for
 "not authenticated", where nothing has been written and a rollback loses nothing. Client side,
-`mapJoinStatus` (`lib/rpcErrors.ts`) turns the status into Hebrew and treats an **unrecognised**
+`mapJoinStatus` (`lib/rpcErrors.ts`, since replaced by `mapRequestJoinStatus` for the 0008 flow — same rule) turns the status into Hebrew and treats an **unrecognised**
 status as a refusal, because reading it as success would cache a membership with a null
 restaurant id.
 
@@ -535,7 +536,7 @@ There are deliberately **two shapes**, not one:
   copy and submit, `Settings`'s join-code pill, `CrashScreen`'s crash id). The answer belongs where
   the tap was; a floating message would be strictly worse.
 - **`components/Toast.tsx`**, fixed above the nav, for confirmations with no button to live in
-  (`StockCount`, `MorningDashboard`, `Settings`'s member removal). These used to render in document
+  (`StockCount`, the morning order, `Settings`'s member removal). These used to render in document
   flow — on `StockCount` that put "הספירה נשמרה ✓" *below a full ingredient table*, off the bottom
   of the document, where the cook who just tapped the sticky save bar never saw it. `role="status"`
   because a message that appears silently and removes itself is invisible to a screen reader, and

@@ -38,14 +38,14 @@ describe('isTabActive', () => {
   });
 
   it('keeps the menu tab lit on the screens it opens', () => {
-    for (const p of ['/menu', '/recipes', '/settings', '/stations']) {
+    for (const p of ['/menu', '/recipes', '/settings', '/stations', '/team', '/profile']) {
       expect(isTabActive(tab('/menu'), p)).toBe(true);
     }
     expect(isTabActive(tab('/menu'), '/tasks')).toBe(false);
   });
 
   it('lights exactly one tab for any chef path', () => {
-    for (const p of ['/tasks', '/count', '/orders', '/consumption', '/menu', '/recipes', '/stations']) {
+    for (const p of ['/tasks', '/count', '/orders', '/consumption', '/menu', '/recipes', '/stations', '/team', '/profile']) {
       expect(chef.filter((t) => isTabActive(t, p))).toHaveLength(1);
     }
   });

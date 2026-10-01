@@ -1,5 +1,6 @@
 import { useId, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
+import { PasswordField } from '../components/PasswordField';
 
 /** Step 2 of password recovery: the emailed link already signed this user in, so all that's left
  * is setting a new password. Rendered by AuthGate whenever `recovering` is true. */
@@ -68,31 +69,25 @@ export function NewPassword() {
           readOnly
           hidden
         />
-        <div className="field" style={{ marginBottom: 0 }}>
-          <label htmlFor={passwordId}>סיסמה חדשה</label>
-          <input
-            id={passwordId}
-            name="new-password"
-            type="password"
-            autoComplete="new-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoFocus
-          />
-        </div>
-        <div className="field" style={{ marginBottom: 0 }}>
-          <label htmlFor={confirmId}>אישור סיסמה</label>
-          <input
-            id={confirmId}
-            name="confirm-password"
-            // Also `new-password`: a manager fills both boxes of a change form with the same
-            // generated value, which is exactly what the equality check below wants.
-            autoComplete="new-password"
-            type="password"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-          />
-        </div>
+        <PasswordField
+          id={passwordId}
+          label="סיסמה חדשה"
+          name="new-password"
+          autoComplete="new-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          autoFocus
+        />
+        <PasswordField
+          id={confirmId}
+          label="אישור סיסמה"
+          name="confirm-password"
+          // Also `new-password`: a manager fills both boxes of a change form with the same
+          // generated value, which is exactly what the equality check below wants.
+          autoComplete="new-password"
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+        />
         {error && <p style={{ color: 'var(--color-red)' }}>{error}</p>}
         <button type="submit" className="btn btn-primary" disabled={busy}>
           {busy ? 'שומר...' : 'שמירת סיסמה'}

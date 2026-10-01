@@ -22,14 +22,22 @@ export function validateJoinDetails(
     return { ok: false, error: `שם יכול להכיל עד ${NAME_MAX} תווים` };
   }
 
-  const phone = input.phone.trim();
-  if (!phone) return { ok: true, value: { first, last } };
+  const phone = validatePhone(input.phone);
+  if (!phone.ok) return phone;
+  return { ok: true, value: phone.value ? { first, last, phone: phone.value } : { first, last } };
+}
+
+/** An optional phone number: empty is fine and means "none". Shared by the join form and the
+ * profile screen so both accept and refuse exactly the same numbers. */
+export function validatePhone(raw: string): { ok: true; value: string | undefined } | { ok: false; error: string } {
+  const phone = raw.trim();
+  if (!phone) return { ok: true, value: undefined };
   // Loose on purpose: Israeli numbers come as 050-1234567, +972 50 123 4567 or (03) 123-4567, and
   // a strict pattern would turn away a real number over punctuation. It only has to look like one.
   if (!/^[0-9+\-()\s]+$/.test(phone) || phone.replace(/\D/g, '').length < 7 || phone.length > PHONE_MAX) {
     return { ok: false, error: 'מספר הטלפון אינו תקין' };
   }
-  return { ok: true, value: { first, last, phone } };
+  return { ok: true, value: phone };
 }
 
 /** The `Cook` name an approved request becomes. */

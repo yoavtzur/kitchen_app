@@ -29,6 +29,17 @@ export type JoinRequestRow = {
   createdAt: string;
 };
 
+/** One person the caller may contact — see `list_team_contacts` (migration 0009). `phone` and
+ * `email` are null when the person has none on file, or when the caller may not see it (only a
+ * chef ever receives an e-mail address). */
+export type TeamContact = {
+  userId: string;
+  cookId: string | null;
+  role: 'chef' | 'cook';
+  phone: string | null;
+  email: string | null;
+};
+
 type AuthContextValue = {
   /** Still resolving the initial session on first load. */
   loading: boolean;
@@ -56,6 +67,15 @@ type AuthContextValue = {
   signOut(): Promise<void>;
   resetPassword(email: string, captchaToken?: string): Promise<ActionResult>;
   updatePassword(password: string): Promise<ActionResult>;
+  /** Asks Supabase to move the account to a new address. It does not take effect until the person
+   * confirms from the mail it sends, so `session.user.email` keeps the old address until then. */
+  updateEmail(email: string): Promise<ActionResult>;
+  /** The caller's own contact number (migration 0009), or null if none is saved. */
+  getMyPhone(): Promise<{ phone: string | null; error: string | null }>;
+  /** An empty string removes the number. */
+  setMyPhone(phone: string): Promise<ActionResult>;
+  /** A chef gets every member's number and e-mail; a cook gets the chefs' numbers only. */
+  listTeamContacts(): Promise<{ contacts: TeamContact[]; error: string | null }>;
   createRestaurant(name: string, snapshot: unknown, schemaVersion: number): Promise<ActionResult>;
   /** Asks to join a kitchen — by invite token or by the six-character code — and records who is
    * asking. Does NOT make the caller a member: a chef has to approve first. */
@@ -91,6 +111,9 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 function mapAuthError(message: string): string {
   if (message.includes('Invalid login credentials')) return 'אימייל או סיסמה שגויים';
   if (message.includes('User already registered')) return 'כבר קיים חשבון עם האימייל הזה';
+  if (message.includes('should be different')) return 'הסיסמה החדשה חייבת להיות שונה מהנוכחית';
+  if (message.includes('already been registered') || message.includes('already exists'))
+    return 'כבר קיים חשבון עם האימייל הזה';
   // Checked before the generic 'email'/'password' substring cases below, which would otherwise
   // mislabel a delivery failure or a throttle as "invalid address".
   if (message.includes('Error sending')) return 'שליחת המייל נכשלה, נסה שוב';
@@ -239,6 +262,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // established, which is exactly what makes a reset possible without the old password.
     const { error } = await supabase.auth.updateUser({ password });
     return { error: error ? mapAuthError(error.message) : null };
+  }
+
+  async function updateEmail(email: string): Promise<ActionResult> {
+    if (!supabase) return { error: 'Supabase אינו מוגדר' };
+    const { error } = await supabase.auth.updateUser({ email });
+    return { error: error ? mapAuthError(error.message) : null };
+  }
+
+  async function getMyPhone(): Promise<{ phone: string | null; error: string | null }> {
+    if (!supabase) return { phone: null, error: 'Supabase אינו מוגדר' };
+    const { data, error } = await supabase.rpc('get_my_phone');
+    if (error) return { phone: null, error: mapRpcError(error) };
+    return { phone: typeof data === 'string' && data ? data : null, error: null };
+  }
+
+  async function setMyPhone(phone: string): Promise<ActionResult> {
+    if (!supabase) return { error: 'Supabase אינו מוגדר' };
+    const { error } = await supabase.rpc('set_my_phone', { p_phone: phone });
+    return { error: error ? mapRpcError(error) : null };
+  }
+
+  async function listTeamContacts(): Promise<{ contacts: TeamContact[]; error: string | null }> {
+    if (!supabase) return { contacts: [], error: 'Supabase אינו מוגדר' };
+    const { data, error } = await supabase.rpc('list_team_contacts');
+    if (error) return { contacts: [], error: mapRpcError(error) };
+    return {
+      contacts: ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+        userId: r.user_id as string,
+        cookId: (r.cook_id as string | null) ?? null,
+        role: r.role === 'chef' ? 'chef' : 'cook',
+        phone: (r.phone as string | null) ?? null,
+        email: (r.email as string | null) ?? null,
+      })),
+      error: null,
+    };
   }
 
   async function createRestaurant(name: string, snapshot: unknown, schemaVersion: number): Promise<ActionResult> {
@@ -442,6 +500,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signOut,
         resetPassword,
         updatePassword,
+        updateEmail,
+        getMyPhone,
+        setMyPhone,
+        listTeamContacts,
         createRestaurant,
         requestJoin,
         peekInvite,

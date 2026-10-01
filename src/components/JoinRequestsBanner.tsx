@@ -18,7 +18,7 @@ import { newCook } from '../lib/cooks';
  * approved cook never meets the "who am I" screen. If the server refuses, the cook row is
  * withdrawn again, so a failed approval cannot leave a stray name in the team list.
  */
-export function JoinRequestsBanner() {
+export function JoinRequestsBanner({ onApproved }: { onApproved?: () => void } = {}) {
   const { dispatch } = useApp();
   const { resolveJoinRequest } = useAuth();
   const { requests, reload, drop } = useJoinRequests();
@@ -41,6 +41,7 @@ export function JoinRequestsBanner() {
       return;
     }
     drop(r.userId);
+    onApproved?.();
   }
 
   async function reject(r: JoinRequestRow) {

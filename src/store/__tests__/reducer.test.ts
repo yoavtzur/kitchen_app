@@ -413,6 +413,29 @@ describe('SET_TASK_ASSIGNEE', () => {
   });
 });
 
+describe('RENAME_COOK', () => {
+  const state = baseState({
+    cooks: [
+      { id: 'cook-1', name: 'דני', color: '#fff' },
+      { id: 'cook-2', name: 'רוני', color: '#000' },
+    ],
+  });
+
+  it('renames only the named cook and tidies spacing', () => {
+    const next = reducer(state, { type: 'RENAME_COOK', id: 'cook-1', name: '  דניאל   כהן ' });
+    expect(next.cooks.map((c) => c.name)).toEqual(['דניאל כהן', 'רוני']);
+  });
+
+  it.each([
+    ['a blank name', { id: 'cook-1', name: '   ' }],
+    ['an over-long name', { id: 'cook-1', name: 'א'.repeat(41) }],
+    ['an unknown cook', { id: 'cook-9', name: 'חדש' }],
+    ['the same name again', { id: 'cook-1', name: 'דני' }],
+  ])('is a no-op for %s, returning the same state', (_label, patch) => {
+    expect(reducer(state, { type: 'RENAME_COOK', ...patch })).toBe(state);
+  });
+});
+
 describe('REMOVE_COOK', () => {
   const openTask = {
     id: 'task-manual-open',
@@ -897,6 +920,11 @@ describe('actions survive a JSON round trip', () => {
       name: 'RENAME_STATION',
       state: baseState({ stations: [{ id: 'station-hot', name: 'פס חם', createdAt: date }] }),
       action: { type: 'RENAME_STATION', id: 'station-hot', name: 'גריל' },
+    },
+    {
+      name: 'RENAME_COOK',
+      state: baseState({ cooks: [{ id: 'cook-1', name: 'דני', color: '#fff' }] }),
+      action: { type: 'RENAME_COOK', id: 'cook-1', name: 'דניאל' },
     },
     {
       name: 'REMOVE_COOK unassigning open tasks',

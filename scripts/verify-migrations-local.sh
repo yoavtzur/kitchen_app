@@ -269,6 +269,33 @@ ck "the request exists" "$($Q -c "select count(*) from public.join_requests wher
 as "$PD" "select public.delete_my_account()" >/dev/null
 ck "the request went with the account" "$($Q -c "select count(*) from public.join_requests where user_id='$PD'")" "0"
 
+echo; echo "== 0009: member contacts =="
+as "$COOK" "select public.set_my_phone('050-1234567')" >/dev/null
+ck "a member can save their own number" "$(as "$COOK" "select public.get_my_phone()")" "050-1234567"
+NM=$(newuser nomember@t)
+ck "a non-member cannot save a number" "$(as "$NM" "select public.set_my_phone('050-1')" 2>&1 >/dev/null | grep -c not_a_member)" "1"
+ck "a number over 20 characters is refused" \
+   "$(as "$COOK" "select public.set_my_phone('$(printf '1%.0s' $(seq 21))')" 2>&1 >/dev/null | grep -c phone_too_long)" "1"
+ck "a refused number left the old one in place" "$(as "$COOK" "select public.get_my_phone()")" "050-1234567"
+ck "a chef sees every member, with the cook's number and e-mail" \
+   "$(as "$CHEF" "select phone || '|' || email from public.list_team_contacts() where user_id = '$COOK'")" "050-1234567|cook@t"
+ck "a chef's list has one row per member" \
+   "$(as "$CHEF" "select count(*) from public.list_team_contacts()")" \
+   "$($Q -c "select count(*) from public.memberships where restaurant_id='$RID1'")"
+ck "a cook's list holds only the chef" "$(as "$COOK" "select count(*) from public.list_team_contacts() where role <> 'chef'")" "0"
+ck "...and never an e-mail address" "$(as "$COOK" "select count(email) from public.list_team_contacts()")" "0"
+ck "a non-member gets no list" "$(as "$NM" "select 1 from public.list_team_contacts()" 2>&1 >/dev/null | grep -c not_a_member)" "1"
+ck "the table itself is closed to a signed-in client" \
+   "$(asrls "$COOK" "select count(*) from public.member_contacts" 2>&1 >/dev/null | grep -c 'permission denied')" "1"
+as "$COOK" "select public.set_my_phone('   ')" >/dev/null
+ck "an empty number clears it" "$([ -z "$(as "$COOK" "select public.get_my_phone()")" ] && echo y)" "y"
+PH=$(newuser phone@t)
+as "$PH" "select status from public.request_join('$CODE2', null, 'א', 'ב', '052-9998888')" >/dev/null
+approve "$PH" >/dev/null
+ck "approving a request keeps the number the cook typed" "$(as "$PH" "select public.get_my_phone()")" "052-9998888"
+as "$CHEF" "select public.remove_member('$PH'::uuid)" >/dev/null
+ck "removing the member removes their number" "$($Q -c "select count(*) from public.member_contacts where user_id='$PH'")" "0"
+
 echo; echo "== delete_my_account =="
 # The cook authors an op first, so we can see what deletion does to the restaurant's history.
 as "$COOK" "select 1 from public.append_ops('$(as "$CHEF" "select restaurant_id from public.memberships where user_id='$CHEF'")'::uuid, 'dev-cook', jsonb_build_array(jsonb_build_object('op_id', gen_random_uuid(), 'action', '{\"type\":\"SET_PRODUCT_QTY\"}'::jsonb)))" >/dev/null

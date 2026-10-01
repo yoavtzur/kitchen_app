@@ -31,6 +31,10 @@ export const DEVICE_KEY = 'kitchen-device-id';
  * on its own as soon as it is used or the account turns out to be a member already. */
 export const INVITE_KEY = 'kitchen-pending-invite';
 
+/** Which station tab the task list was left on (lib/todayFilter.ts). A device preference, not
+ * data: clearing it only puts the list back on "הכל". */
+export const TODAY_STATION_KEY = 'kitchen-today-station';
+
 const ALL_PREFIX = 'kitchen-';
 
 function safeKeys(): string[] {

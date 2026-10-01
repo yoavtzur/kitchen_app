@@ -89,6 +89,7 @@ export type Action =
   | { type: 'UPDATE_SPECIAL_EVENT'; event: SpecialEvent }
   | { type: 'DELETE_SPECIAL_EVENT'; id: string }
   | { type: 'ADD_COOK'; cook: Cook }
+  | { type: 'RENAME_COOK'; id: string; name: string }
   | { type: 'DELETE_COOK'; id: string }
   | { type: 'REMOVE_COOK'; id: string }
   | { type: 'ADD_STATION'; station: Station }
@@ -630,6 +631,14 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case 'ADD_COOK':
       return { ...state, cooks: [...state.cooks, action.cook] };
+    // A person correcting how their own name appears on tasks. Blank, unchanged or unknown is a
+    // silent no-op for the same replay reason as RENAME_STATION below.
+    case 'RENAME_COOK': {
+      const name = action.name.trim().replace(/\s+/g, ' ');
+      if (!name || name.length > 40) return state;
+      if (!state.cooks.some((c) => c.id === action.id && c.name !== name)) return state;
+      return { ...state, cooks: state.cooks.map((c) => (c.id === action.id ? { ...c, name } : c)) };
+    }
     case 'DELETE_COOK':
       return { ...state, cooks: state.cooks.filter((c) => c.id !== action.id) };
 

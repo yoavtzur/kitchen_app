@@ -33,7 +33,7 @@ const CHEF_TABS: NavTab[] = [
   COUNT,
   { to: '/orders', label: 'הזמנות', icon: 'orders', alsoActiveOn: ['/morning'] },
   { to: '/consumption', label: 'צריכה', icon: 'consumption' },
-  { to: '/menu', label: 'תפריט', icon: 'menu', alsoActiveOn: ['/recipes', '/settings', '/stations'] },
+  { to: '/menu', label: 'תפריט', icon: 'menu', alsoActiveOn: ['/recipes', '/settings', '/stations', '/team', '/profile'] },
 ];
 
 // A cook gets the menu tab too, deliberately: sign-out and account deletion live behind it, and
@@ -43,7 +43,7 @@ const COOK_TABS: NavTab[] = [
   TASKS,
   { to: '/recipes', label: 'מתכונים', icon: 'recipes' },
   COUNT,
-  { to: '/menu', label: 'תפריט', icon: 'menu', alsoActiveOn: ['/settings'] },
+  { to: '/menu', label: 'תפריט', icon: 'menu', alsoActiveOn: ['/settings', '/team', '/profile'] },
 ];
 
 export function navTabsFor(role: MemberRole): NavTab[] {

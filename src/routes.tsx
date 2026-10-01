@@ -18,6 +18,7 @@ const StockCount = lazy(() => import('./screens/StockCount').then((m) => ({ defa
 const Orders = lazy(() => import('./screens/Orders').then((m) => ({ default: m.Orders })));
 const Settings = lazy(() => import('./screens/Settings').then((m) => ({ default: m.Settings })));
 const Receiving = lazy(() => import('./screens/Receiving').then((m) => ({ default: m.Receiving })));
+const RecurringTasks = lazy(() => import('./screens/RecurringTasks').then((m) => ({ default: m.RecurringTasks })));
 const Team = lazy(() => import('./screens/Team').then((m) => ({ default: m.Team })));
 const Profile = lazy(() => import('./screens/Profile').then((m) => ({ default: m.Profile })));
 const Menu = lazy(() => import('./screens/Menu').then((m) => ({ default: m.Menu })));
@@ -46,6 +47,7 @@ export function preloadScreens(): void {
     void import('./screens/Consumption');
     void import('./screens/Settings');
     void import('./screens/Receiving');
+    void import('./screens/RecurringTasks');
     void import('./screens/Team');
     void import('./screens/Profile');
     void import('./screens/Stations');
@@ -90,6 +92,7 @@ export const APP_ROUTES: AppRoute[] = [
   { path: '/count', name: 'count', element: <StockCount /> },
   { path: '/orders', name: 'orders', element: <ChefRoute><Orders /></ChefRoute> },
   { path: '/receiving', name: 'receiving', element: <ChefRoute><Receiving /></ChefRoute> },
+  { path: '/recurring', name: 'recurring', element: <ChefRoute><RecurringTasks /></ChefRoute> },
   { path: '/stations', name: 'stations', element: <ChefRoute><Stations /></ChefRoute> },
   { path: '/settings', name: 'settings', element: <Settings /> },
   { path: '/menu', name: 'menu', element: <Menu /> },

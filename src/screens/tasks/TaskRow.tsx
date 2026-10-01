@@ -147,6 +147,7 @@ export function TaskRow({ task }: { task: DisplayTask }) {
             ✕
           </button>
         </div>
+        {task.recurring && <p className="recurring-tag">↻ קבועה</p>}
         {task.carriedFrom && !task.done && (
           <p className="carried-note">{carriedLabel(daysBetween(task.carriedFrom, today))}</p>
         )}

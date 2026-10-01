@@ -8,6 +8,7 @@ import type {
   Priority,
   Product,
   Recipe,
+  RecurringTask,
   Settings,
   SpecialEvent,
   Station,
@@ -22,6 +23,7 @@ import { autoTaskId } from '../lib/tasks';
 import { pruneEntities } from '../lib/integrity';
 import { applyRestore, type Restore } from '../lib/restore';
 import { carryOver } from '../lib/carryOver';
+import { materializeRecurring } from '../lib/recurring';
 import { ackAllFor, ackRecipeNotice, noteRecipeChange } from '../lib/notices';
 import { UNASSIGNED_CATEGORY } from '../lib/recipeCategories';
 import { convert } from '../lib/units';
@@ -102,6 +104,12 @@ export type Action =
   /** Start of a new day: open manual tasks move to `today` and auto-task assignee/priority carry
    * over (lib/carryOver.ts). `today` comes from the dispatcher, never the clock. Idempotent. */
   | { type: 'CARRY_OVER_TASKS'; today: string }
+  /** A standing task and, if it is due today, today's first instance (lib/recurring.ts). */
+  | { type: 'ADD_RECURRING_TASK'; rule: RecurringTask; today: string }
+  | { type: 'UPDATE_RECURRING_TASK'; rule: RecurringTask }
+  | { type: 'DELETE_RECURRING_TASK'; id: string }
+  /** Makes today's task from every standing task that is due and has not been made yet. */
+  | { type: 'MATERIALIZE_RECURRING'; today: string }
   | { type: 'ADD_COOK'; cook: Cook }
   | { type: 'RENAME_COOK'; id: string; name: string }
   | { type: 'DELETE_COOK'; id: string }
@@ -670,6 +678,38 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case 'CARRY_OVER_TASKS':
       return carryOver(state, action.today);
+
+    // Blank title or a duplicate id is a silent no-op: this op replays on every device, and a
+    // reducer that throws would break replay everywhere, not just for whoever made the mistake.
+    case 'ADD_RECURRING_TASK': {
+      const title = action.rule.title.trim();
+      const existing = state.recurringTasks ?? [];
+      if (!title || existing.some((r) => r.id === action.rule.id)) return state;
+      const withRule: AppState = {
+        ...state,
+        recurringTasks: [...existing, { ...action.rule, title, lastMaterialized: undefined }],
+      };
+      return materializeRecurring(withRule, action.today);
+    }
+    case 'UPDATE_RECURRING_TASK': {
+      const title = action.rule.title.trim();
+      const existing = state.recurringTasks ?? [];
+      if (!title || !existing.some((r) => r.id === action.rule.id)) return state;
+      // Editing changes what happens on *future* days; it must not reset which day was already
+      // made, or saving a rule twice in one day would make today's task twice.
+      return {
+        ...state,
+        recurringTasks: existing.map((r) =>
+          r.id === action.rule.id ? { ...action.rule, title, lastMaterialized: r.lastMaterialized } : r,
+        ),
+      };
+    }
+    case 'DELETE_RECURRING_TASK': {
+      if (!state.recurringTasks?.some((r) => r.id === action.id)) return state;
+      return { ...state, recurringTasks: state.recurringTasks.filter((r) => r.id !== action.id) };
+    }
+    case 'MATERIALIZE_RECURRING':
+      return materializeRecurring(state, action.today);
 
     case 'RESTORE_ENTITIES':
       return applyRestore(state, action.restore);

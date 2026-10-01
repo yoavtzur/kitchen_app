@@ -30,6 +30,8 @@ export type DisplayTask = {
   blocked?: string[];
   /** For a manual task carried over from an earlier day: the day it was first planned for. */
   carriedFrom?: string;
+  /** Made from a standing task — shown with a small "↻ קבועה" tag. */
+  recurring?: boolean;
 };
 
 /**
@@ -88,6 +90,7 @@ export function getDisplayTasks(date: string, state: AppState): DisplayTask[] {
         note: t.note,
         appliedCompletion: t.appliedCompletion,
         carriedFrom: t.carriedFrom,
+        recurring: t.recurringId ? true : undefined,
       };
       return recipe ? withBlocked(display, blockedIngredients(recipe, t.multiplier, state)) : display;
     });

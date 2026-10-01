@@ -33,7 +33,7 @@ const CHEF_TABS: NavTab[] = [
   COUNT,
   { to: '/orders', label: 'הזמנות', icon: 'orders', alsoActiveOn: ['/morning'] },
   { to: '/consumption', label: 'צריכה', icon: 'consumption' },
-  { to: '/menu', label: 'תפריט', icon: 'menu', alsoActiveOn: ['/recipes', '/settings', '/stations', '/team', '/profile', '/receiving'] },
+  { to: '/menu', label: 'תפריט', icon: 'menu', alsoActiveOn: ['/recipes', '/settings', '/stations', '/team', '/profile', '/receiving', '/recurring'] },
 ];
 
 // A cook gets the menu tab too, deliberately: sign-out and account deletion live behind it, and

@@ -20,10 +20,10 @@ npm run preview   # preview a production build
 
 Run a single test file: `npx vitest run src/lib/__tests__/calc.test.ts`
 
-There are 37 test files (540 tests), colocated in `__tests__` folders next to what they cover:
+There are 38 test files (561 tests), colocated in `__tests__` folders next to what they cover:
 `src/lib/__tests__/` (calc, date, ids, integrity, tasks, swipe, units-adjacent helpers, geminiScanner,
 recipeDraft, migrateStations, sentry, analytics, appConfig, focusTrap, rpcErrors, nav, orders,
-ingredientCategories, stations, syncIndicator, invite, cookName, phone, todayFilter, restore, receiving, notices, quickActions, carryOver),
+ingredientCategories, stations, syncIndicator, invite, cookName, phone, todayFilter, restore, receiving, notices, quickActions, carryOver, recurring),
 `src/store/__tests__/{reducer,storage,importValidation}.test.ts`,
 `src/sync/__tests__/{backoff,engine,localAdapter,log,persist}.test.ts`, and **`api/__tests__/` — the one
 test directory outside `src/`**, covering the scan endpoint's guards (see "Closing /api/scan-recipe").
@@ -197,10 +197,10 @@ they're pure functions over `AppState` and don't care where it came from.
   focus all trigger.
 
 **Supabase schema**: `supabase/migrations/0001_init.sql` through
-`0009_member_contacts.sql`, **applied by hand to the live project** (0007 is the
+`0010_recurring_tasks_chef_only.sql`, **applied by hand to the live project** (0007 is the
 one to check first if account deletion, code rotation or join rate limiting misbehaves, 0008 for
 invites, join requests and chef-only station edits, 0009 for phone numbers and the team's contact
-list — see LAUNCH-CHECKLIST.md). Nothing in the build applies migrations, so any *future*
+list, 0010 for chef-only standing tasks — see LAUNCH-CHECKLIST.md). Nothing in the build applies migrations, so any *future*
 migration needs the same manual step before synced clients can use it — until then they sit at
 `upgrade-required` and refuse to append, which is the expected signal that it hasn't landed yet.
 `LAUNCH-CHECKLIST.md` at the repo root is the operator-facing version of this.
@@ -236,7 +236,7 @@ against a local dev server and a real browser instead (see "Commands" above).
 **`scripts/verify-migrations-local.sh` is the one that runs before shipping a migration**, and it
 exists because nothing else could: every other SQL check talks to the live project, so a migration
 could only be tested *after* being pasted into the dashboard by hand. It spins up a throwaway
-local PostgreSQL with a two-table stand-in for `auth`, applies all nine migrations in order, and
+local PostgreSQL with a two-table stand-in for `auth`, applies all ten migrations in order, and
 then exercises the RPCs. The property that makes it worth keeping is that **every RPC call is its
 own `psql -c`, hence its own transaction**, exactly as PostgREST gives each call. Driving the same
 functions from inside one `DO` block hides a whole class of bug, because an exception handler's
@@ -758,6 +758,33 @@ from the real clock rather than a fixed 24h, so a device that slept through midn
 when it wakes): `Today` follows it until the cook picks another date, and `BottomNav` uses it instead of a
 `todayStr()` read once inside a memo, which went stale on an app left open overnight. Known edge: a device
 whose clock runs ahead carries tasks onto a date other devices have not reached yet.
+
+### Standing tasks: "clean the shelves" every day (2026-10-01, migration 0010 optional)
+
+**A rule, not a task.** `RecurringTask` (`AppState.recurringTasks?`, optional — no schema bump) holds a
+title, the weekdays it is due on, station, priority and assignee. Each day it is due,
+`materializeRecurring(state, today)` (`lib/recurring.ts`, pure) makes an **ordinary manual `Task`** from it,
+tagged `recurringId`. That is the whole design: from its first moment the task is indistinguishable from one
+a person typed, so completing, assigning, deleting, undo and the carry-over all work by code that already
+exists, and there is no second display path to keep in step. Free-text only — a recipe-backed prep task
+already comes back by itself from stock.
+
+Three rules in it are load-bearing. **`lastMaterialized` is why a deleted instance does not come back:** the
+rule has already answered for that day, so the idempotent re-run does not make it again (without it, ✕ on
+today's task would be undone by the next render). **No stacking:** an instance still open — typically
+yesterday's, carried over — *is* the task for today, so a daily task left undone does not become a pile;
+`DayRollover` runs the carry-over **before** the materialize for exactly that reason. **Ids are
+deterministic** (`rec-<rule>-<date>`), so two devices making the same day's task make the same task. No
+back-fill for days nobody opened the app. `UPDATE_RECURRING_TASK` keeps `lastMaterialized`, so saving a rule
+twice in a day does not make today's task twice, and it changes future days only.
+
+**Chef only, and the server agrees.** `ADD/UPDATE/DELETE_RECURRING_TASK` are `'chef'` in `action_requires`
+(migration 0010, same mechanism 0008 used for stations; `scripts/verify-migrations-local.sh` covers it).
+**`MATERIALIZE_RECURRING` is deliberately open to every member**: it is sent by whichever device opens the
+app first, very often a cook's, and it is a pure function of state and date. Until 0010 is applied nothing
+breaks — the actions are simply open, as for any action the server does not list. UI: a "חזרה" block in
+`AddManualTaskSheet` (chef, free-text tasks), and `screens/RecurringTasks.tsx` (`/recurring`, from the menu)
+to edit, pause or delete a rule (`deleteWithUndo`, so no confirmation). `WeekdayPicker` is seven real toggles.
 
 ### Tablet, focus, motion
 

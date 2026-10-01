@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useApp } from '../store/AppContext';
+import { useAuth } from '../auth/AuthContext';
 import { usePermissions } from '../auth/usePermissions';
 import { BottomSheet } from '../components/BottomSheet';
 import { useUndo } from '../lib/undo';
@@ -125,6 +126,9 @@ type Props = {
  */
 export function RecipeEditor({ recipe, defaultCategory, onClose, draft = null }: Props) {
   const { state, dispatch } = useApp();
+  const { membership } = useAuth();
+  // Who is saving: a recipe change leaves a "read this" notice for the cooks, but not for its author.
+  const byCookId = membership?.cookId ?? undefined;
   const { deleteWithUndo } = useUndo();
   const { canEditRecipes, canDeleteRecipes } = usePermissions();
 
@@ -265,7 +269,11 @@ export function RecipeEditor({ recipe, defaultCategory, onClose, draft = null }:
     };
 
     if (!tracksStock) {
-      dispatch({ type: recipe ? 'UPDATE_RECIPE' : 'ADD_RECIPE', recipe: basePayload } as never);
+      dispatch(
+        (recipe
+          ? { type: 'UPDATE_RECIPE', recipe: basePayload, byCookId }
+          : { type: 'ADD_RECIPE', recipe: basePayload }) as never,
+      );
       onClose();
       return;
     }
@@ -290,6 +298,7 @@ export function RecipeEditor({ recipe, defaultCategory, onClose, draft = null }:
       type: 'SAVE_PREP_ITEM',
       recipe: { ...basePayload, producesProductId: productId },
       product,
+      byCookId,
     });
     onClose();
   }

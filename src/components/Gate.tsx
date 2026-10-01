@@ -2,6 +2,9 @@ import { useState, type ReactNode } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { usePermissions } from '../auth/usePermissions';
 import { isSupabaseConfigured } from '../lib/supabase';
+import { pendingNoticesFor } from '../lib/notices';
+import { useApp } from '../store/AppContext';
+import { RecipeNoticeScreen } from './RecipeNoticeScreen';
 import { useAppConfig } from '../lib/useAppConfig';
 import { Auth } from '../screens/Auth';
 import { JoinRejected } from '../screens/JoinRejected';
@@ -79,6 +82,33 @@ export function MaintenanceGate({ children }: { children: ReactNode }) {
  * may dispatch ADD_COOK for a brand-new one, both only available once the restaurant's state is
  * loaded. A membership always exists here (MembershipGate already guaranteed it) — only its
  * `cookId` can still be unset, right after joining/creating a restaurant. */
+/**
+ * "The chef changed a recipe — read it first." Until a cook has pressed "קראתי והבנתי" for every
+ * recipe changed since they last looked, they see this instead of the app — the task list, the nav,
+ * everything. Gating the whole layout (not just the task screen) is the point: a gate on `/tasks`
+ * alone could be walked around by opening another tab and coming back.
+ *
+ * Only a signed-in cook sees it. A chef made the change, and local mode has no cooks to inform.
+ * Sits inside `AppProvider` (it reads the state) and after `CookGate` (it needs to know who the
+ * cook is). `UpdatePrompt` stays above every gate, as before. See lib/notices.ts.
+ */
+export function NoticeGate({ children }: { children: ReactNode }) {
+  const { state, dispatch } = useApp();
+  const { membership } = useAuth();
+  if (!isSupabaseConfigured || membership?.role !== 'cook' || !membership.cookId) return <>{children}</>;
+  const cookId = membership.cookId;
+  const pending = pendingNoticesFor(state, cookId);
+  if (pending.length === 0) return <>{children}</>;
+  return (
+    <RecipeNoticeScreen
+      pending={pending}
+      onAcknowledge={() => {
+        for (const n of pending) dispatch({ type: 'ACK_RECIPE_NOTICE', recipeId: n.recipeId, rev: n.rev, cookId });
+      }}
+    />
+  );
+}
+
 export function CookGate({ children }: { children: ReactNode }) {
   const { membership } = useAuth();
   if (!isSupabaseConfigured) return <>{children}</>;

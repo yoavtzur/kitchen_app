@@ -21,6 +21,7 @@ import { todayStr } from '../lib/date';
 import { autoTaskId } from '../lib/tasks';
 import { pruneEntities } from '../lib/integrity';
 import { applyRestore, type Restore } from '../lib/restore';
+import { ackAllFor, ackRecipeNotice, noteRecipeChange } from '../lib/notices';
 import { UNASSIGNED_CATEGORY } from '../lib/recipeCategories';
 import { convert } from '../lib/units';
 
@@ -50,9 +51,12 @@ export type Action =
   | { type: 'ADD_PRODUCT'; product: Product }
   | { type: 'UPDATE_PRODUCT'; product: Product }
   | { type: 'DELETE_PRODUCT'; id: string }
-  | { type: 'SAVE_PREP_ITEM'; recipe: Recipe; product: Product }
+  /** `byCookId` is who made the edit: they wrote it, so they are not asked to acknowledge it. */
+  | { type: 'SAVE_PREP_ITEM'; recipe: Recipe; product: Product; byCookId?: string }
   | { type: 'ADD_RECIPE'; recipe: Recipe }
-  | { type: 'UPDATE_RECIPE'; recipe: Recipe }
+  | { type: 'UPDATE_RECIPE'; recipe: Recipe; byCookId?: string }
+  /** A cook has read revision `rev` of a recipe's change notice (lib/notices.ts). */
+  | { type: 'ACK_RECIPE_NOTICE'; recipeId: string; rev: number; cookId: string }
   | { type: 'DELETE_RECIPE'; id: string }
   | { type: 'ADD_TASK'; task: Task }
   | { type: 'UPDATE_TASK'; task: Task }
@@ -495,7 +499,8 @@ export function reducer(state: AppState, action: Action): AppState {
           ? withProduct.recipes.map((r) => (r.id === action.recipe.id ? action.recipe : r))
           : [...withProduct.recipes, action.recipe],
       };
-      return linkRecipeProduct(withRecipe, action.recipe.id, action.product.id);
+      const linked = linkRecipeProduct(withRecipe, action.recipe.id, action.product.id);
+      return noteRecipeChange(linked, hasRecipe ? state.recipes.find((r) => r.id === action.recipe.id) : undefined, action.recipe, action.byCookId);
     }
     case 'ADD_RECIPE': {
       const withRecipe: AppState = { ...state, recipes: [...state.recipes, action.recipe] };
@@ -506,8 +511,11 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         recipes: state.recipes.map((r) => (r.id === action.recipe.id ? action.recipe : r)),
       };
-      return linkRecipeProduct(withRecipe, action.recipe.id, action.recipe.producesProductId);
+      const linked = linkRecipeProduct(withRecipe, action.recipe.id, action.recipe.producesProductId);
+      return noteRecipeChange(linked, state.recipes.find((r) => r.id === action.recipe.id), action.recipe, action.byCookId);
     }
+    case 'ACK_RECIPE_NOTICE':
+      return ackRecipeNotice(state, action.recipeId, action.rev, action.cookId);
     case 'DELETE_RECIPE':
       return pruneEntities(state, { recipeIds: [action.id] });
 
@@ -660,7 +668,8 @@ export function reducer(state: AppState, action: Action): AppState {
       return applyRestore(state, action.restore);
 
     case 'ADD_COOK':
-      return { ...state, cooks: [...state.cooks, action.cook] };
+      // A new cook has no history to catch up on: notices already posted count as read for them.
+      return ackAllFor({ ...state, cooks: [...state.cooks, action.cook] }, action.cook.id);
     // A person correcting how their own name appears on tasks. Blank, unchanged or unknown is a
     // silent no-op for the same replay reason as RENAME_STATION below.
     case 'RENAME_COOK': {

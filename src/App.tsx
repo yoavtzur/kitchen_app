@@ -1,7 +1,7 @@
 import { HashRouter, Outlet, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './auth/AuthContext';
 import { AnalyticsContext } from './components/AnalyticsContext';
-import { AuthGate, MaintenanceGate, MembershipGate, CookGate } from './components/Gate';
+import { AuthGate, MaintenanceGate, MembershipGate, CookGate, NoticeGate } from './components/Gate';
 import { AppProvider } from './store/AppContext';
 import { BottomNav } from './components/BottomNav';
 import { RouteBoundary } from './components/RouteBoundary';
@@ -32,15 +32,17 @@ function GatedApp() {
         <MaintenanceGate>
           <AppProvider>
             <CookGate>
-              {/* Above the Outlet and inside AppProvider: the "בטל" toast has to outlive the sheet
-                  that triggered it, and it needs `dispatch` to undo. */}
-              <UndoProvider>
-                <SentryContext />
-                <AnalyticsContext />
-                <SyncBadge />
-                <Outlet />
-                <BottomNav />
-              </UndoProvider>
+              <NoticeGate>
+                {/* Above the Outlet and inside AppProvider: the "בטל" toast has to outlive the sheet
+                    that triggered it, and it needs `dispatch` to undo. */}
+                <UndoProvider>
+                  <SentryContext />
+                  <AnalyticsContext />
+                  <SyncBadge />
+                  <Outlet />
+                  <BottomNav />
+                </UndoProvider>
+              </NoticeGate>
             </CookGate>
           </AppProvider>
         </MaintenanceGate>

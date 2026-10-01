@@ -179,6 +179,13 @@ export type Settings = {
   roundMultiplierTo: RoundTo;
 };
 
+/** What differs in a recipe that a cook doing the prep would care about — see lib/notices.ts. */
+export type RecipeChange = 'name' | 'items' | 'steps' | 'yield';
+
+/** The standing "this recipe changed" notice for one recipe. `rev` counts content changes;
+ * `ackedBy` holds the cook ids that have read the current revision. */
+export type RecipeNotice = { rev: number; changed: RecipeChange[]; ackedBy: string[] };
+
 export type AppState = {
   schemaVersion: number;
   ingredients: Ingredient[];
@@ -192,4 +199,6 @@ export type AppState = {
   cooks: Cook[];
   stations: Station[];
   settings: Settings;
+  /** Per recipe id. Optional, so no schema bump: an old snapshot or backup simply has none. */
+  recipeNotices?: Record<string, RecipeNotice>;
 };

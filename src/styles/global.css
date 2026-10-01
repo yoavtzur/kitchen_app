@@ -1419,7 +1419,7 @@ textarea {
   display: flex;
   gap: 4px;
   padding: 4px;
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-3);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
@@ -1544,7 +1544,7 @@ textarea {
 
 .morning-row {
   min-height: var(--row-height);
-  padding-block: 6px;
+  padding-block: 4px;
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -1666,4 +1666,20 @@ textarea {
 .join-request-actions .btn {
   min-height: 44px;
   min-width: 72px;
+}
+
+.morning-toolbar {
+  margin-bottom: var(--space-2);
+}
+
+.btn-sm {
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 14px;
+}
+
+/* Inside the sticky strip the tab row's own bottom margin is dead space on every scroll position
+   — the strip itself already separates the tabs from the list. */
+.sticky-tabs .tabs {
+  margin-bottom: var(--space-2);
 }

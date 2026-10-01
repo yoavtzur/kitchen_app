@@ -20,7 +20,7 @@ npm run preview   # preview a production build
 
 Run a single test file: `npx vitest run src/lib/__tests__/calc.test.ts`
 
-There are 23 test files (338 tests), colocated in `__tests__` folders next to what they cover:
+There are 30 test files (440 tests), colocated in `__tests__` folders next to what they cover:
 `src/lib/__tests__/` (calc, date, ids, integrity, tasks, swipe, units-adjacent helpers, geminiScanner,
 recipeDraft, migrateStations, sentry, analytics, appConfig, focusTrap, rpcErrors),
 `src/store/__tests__/{reducer,storage,importValidation}.test.ts`,
@@ -196,9 +196,9 @@ they're pure functions over `AppState` and don't care where it came from.
   focus all trigger.
 
 **Supabase schema**: `supabase/migrations/0001_init.sql` through
-`0007_privacy_join_code_and_rate_limits.sql`, **applied by hand to the live project** (0007 is the
-one to check first if account deletion, code rotation or join rate limiting misbehaves — see
-LAUNCH-CHECKLIST.md). Nothing in the build applies migrations, so any *future*
+`0008_team_invites_and_stations.sql`, **applied by hand to the live project** (0007 is the
+one to check first if account deletion, code rotation or join rate limiting misbehaves, 0008 for
+invites, join requests and chef-only station edits — see LAUNCH-CHECKLIST.md). Nothing in the build applies migrations, so any *future*
 migration needs the same manual step before synced clients can use it — until then they sit at
 `upgrade-required` and refuse to append, which is the expected signal that it hasn't landed yet.
 `LAUNCH-CHECKLIST.md` at the repo root is the operator-facing version of this.
@@ -234,7 +234,7 @@ against a local dev server and a real browser instead (see "Commands" above).
 **`scripts/verify-migrations-local.sh` is the one that runs before shipping a migration**, and it
 exists because nothing else could: every other SQL check talks to the live project, so a migration
 could only be tested *after* being pasted into the dashboard by hand. It spins up a throwaway
-local PostgreSQL with a two-table stand-in for `auth`, applies all seven migrations in order, and
+local PostgreSQL with a two-table stand-in for `auth`, applies all eight migrations in order, and
 then exercises the RPCs. The property that makes it worth keeping is that **every RPC call is its
 own `psql -c`, hence its own transaction**, exactly as PostgREST gives each call. Driving the same
 functions from inside one `DO` block hides a whole class of bug, because an exception handler's
@@ -448,10 +448,19 @@ two screens showing the same list — Home was read-only and every card on it me
 so a cook saw their work twice before touching it once. `/` redirects to `/tasks` (same pattern
 `/ingredients` → `/count` already used), which also retires the `NavLink to="/" end` footgun.
 
-`BottomNav` slots: **משימות** (with an open-task badge) · מצרכים (`/count`) · בוקר · מתכונים ·
-הזמנות · עוד. Anything else (Settings, Consumption) is under "עוד". The Ingredients slot routes to
-`/count` — `StockCount.tsx` is both the ingredient database and the stock-count walk-through (see
-below); there is no separate `/ingredients` screen.
+**`BottomNav` is role-based** — `navTabsFor(role)` in `src/lib/nav.ts` (pure, tested) is the one place
+that decides what each role sees. A **chef** gets משימות (open-task badge) · מלאי (`/count`) ·
+הזמנות · צריכה · תפריט; a **cook** gets משימות · מתכונים · מלאי · תפריט. The cook keeps a תפריט tab on
+purpose: sign-out and account deletion live behind it, and migration 0007's erasure right is not a
+chef-only right. `/orders`, `/consumption` and `/stations` are wrapped in `ChefRoute`, so a cook who
+types the URL lands on `/tasks`. **All of that is presentation** — the boundary is still `append_ops`.
+`/morning` redirects to `/orders` and `/more` to `/menu`. `isTabActive` keeps תפריט lit on the screens
+it opens (`/recipes`, `/settings`, `/stations`). `StockCount.tsx` is both the ingredient database and
+the stock-count walk-through; there is no separate `/ingredients` screen.
+
+In local mode there are no accounts and `usePermissions` makes everyone a chef, so **the cook's view
+can only be checked against a real cook account** (in a preview) — `nav.test.ts` covers the logic,
+nothing local covers the rendering.
 
 **Grouping vs. filtering on `Today`** — the same shape `Recipes.tsx` uses, so it is one pattern used
 twice rather than two to learn. Tab "הכל" renders station groups with headings; a single station tab
@@ -537,6 +546,79 @@ The strip above the bottom nav now holds three things — `.sync-badge` (start e
 screens that render one the two are driven by the same tap: the bar is the control, the toast is its
 answer, and a toast drawn over it would cover what it is confirming. `--save-bar-height` in
 `tokens.css` is what keeps those two rules agreeing.
+
+### Orders, stock tabs, stations, the quiet sync dot (2026-10-01)
+
+**Orders is one screen with three views** (`components/Segmented.tsx`): **בוקר** (default) · לפי ספק ·
+היסטוריה. The morning view (`screens/orders/MorningOrder.tsx`) replaced the card-per-ingredient
+`MorningDashboard`: one ~56px row per ingredient, the **order** box at the far edge (bold) and the
+**count** box beside it (muted), the unit in the sub-line instead of a label, a coloured dot only when
+stock is low (`lowStockTone`), and an (i) sheet for days-of-supply / weekend forecast / par level.
+Everything arithmetic is in `src/lib/orders.ts` (`suggestedQty`, `buildOrderLines`, `planFillToPar`),
+tested. Two things worth keeping true:
+
+- **The approve button is enabled by exactly one thing: the order has lines** (`buildOrderLines` is
+  non-empty). It used to be `changedCounts.length === 0`, so a correct suggestion could not be sent
+  without a made-up edit. `approve()` already only dispatched `SUBMIT_ORDER` when no count changed.
+- **"מלא לפי המינימום" clears hand-typed quantities back to the automatic suggestion** (max of weekly
+  need and par, minus stock), with undo in the toast. It skips lines already `ordered`: that quantity
+  is what went to the supplier, not a draft. The order box commits on blur/Enter, not per keystroke —
+  each commit is an op.
+
+**`StockCount`** has an ingredients | products switch. Ingredients get sticky, dynamic category tabs
+(`lib/ingredientCategories.ts`: "הכל" first, a category only while an ingredient carries it, "ללא
+קטגוריה" last and only if used); products get tabs by **station** (a product's station is its
+recipe's `category`, `productStation`). Ingredient `category` is still free text, so the edit field has a
+`<datalist>` and `normalizeCategory` folds spacing/case onto the existing spelling — it deliberately
+does **not** merge "ירק" with "ירקות". For a cook the screen is count-only: no add, no detail sheet.
+
+**Stations** (`screens/Stations.tsx`, chef only, reached from תפריט): add, rename, delete behind an
+"עריכה" toggle — never a swipe. `RENAME_STATION` and `DELETE_STATION` (`reducer.ts`) re-point
+`recipe.category` and free-text `task.categoryOverride` to the chosen station or `'general'`; because
+auto-tasks derive from the recipe, that *is* moving the day's prep list. Both are idempotent under
+replay and chef-only in `append_ops` (migration 0008 added a `'chef'` kind to `action_requires`, which
+returns null — open to anyone — for every action it does not list).
+
+**Sync chrome is split by whether a person must act.** `syncIndicator()` (`lib/syncIndicator.ts`, pure):
+offline/pending is a quiet **dot** beside the screen title (`SyncDot` inside `ScreenHeader` — grey =
+offline with nothing waiting, amber = something waiting, never red), and only refresh / stuck / error /
+read-only stay a **pill with words** (`SyncBadge`). That is the walk-in rule: no signal is a fact, not
+an alarm. After a save with no connection the toast says "נשמר במכשיר, יסונכרן כשתחזור קליטה"
+(`savedMessage`). Local mode renders neither.
+
+**Design language** (Tabit Shift, structure not palette — the neon green stays): `--row-height` /
+`--btn-height` 56px, `.btn-block` full-width actions, `.list-card` + `.menu-row` for lists, `.segmented`,
+`.sticky-tabs`, `.dot`. Red/yellow/green remain safety/status signals.
+
+### Joining a kitchen: invite link → request → chef approval (migration 0008)
+
+Anyone holding the six-character code used to be a member instantly. Now **every** join — by code or by
+a chef's one-time link — is a *request* a chef approves. The shape is dictated by one fact:
+`is_member()` (hence every RLS policy and `append_ops`) treats a `memberships` row as full access, so a
+"pending" person **must not be a membership row**. They live in `join_requests`, which has RLS on and
+no policy and no grant (like `scan_usage`), and become a membership only in `resolve_join_request`.
+
+- **Chef:** Settings → "הזמן טבח" → `create_invite()` returns a 32-hex token **once** (only its SHA-256
+  is stored; 72h; one use) → `InviteCookSheet` ("שתף בוואטסאפ" / copy). `JoinRequestsBanner` (top of
+  `Today` and in the team section) shows "{שם} מבקש/ת להצטרף [אשר] [דחה]"; `useJoinRequests` polls
+  (mount, focus, 60s) — no realtime, per the project rule that realtime is only a latency optimisation.
+  Approve = `ADD_COOK` op first, then `resolve_join_request(user, true, cookId)`; on failure the cook row
+  is withdrawn. That binding is why an approved cook skips the "who am I" screen.
+- **Cook:** `#/join/<token>` (`INVITE_ROUTES`, above every gate like the legal routes) banks the token in
+  `kitchen-pending-invite` and redirects; `Auth` starts on sign-up, `Onboarding` shows first / last /
+  phone (optional) and calls `request_join`. Then `MembershipGate` shows `PendingApproval` (polls
+  `my_join_status` every 10s and on focus — a pending person can't use realtime, which rides on the
+  RLS that keeps them out) or `JoinRejected`.
+- **`request_join` returns a `status` instead of raising**, for the 0007 reason: `RAISE` rolls back the
+  counter bump the refusal was based on. Same two counters and asymmetry (only a failed lookup spends
+  the global one, so a live invite or correct code works with the bucket full). An invite is claimed
+  only after every check that could still refuse, so a refusal never burns a link. A cap of 20 waiting
+  requests per kitchen stops anyone who has seen the code from burying the chef's banner.
+- The old `join_restaurant` is kept as a **refusal** (`approval_required`), not dropped: left alone it
+  would let a stale cached client turn a code into instant membership, around the approval.
+- A four-digit personal passcode was requested and **not built**: Supabase requires 6+ character
+  passwords and four digits is 10,000 guesses. Cooks still use email + password.
+- The privacy notice and terms (`Legal.tsx`) describe the name/phone request data; keep them in step.
 
 ### Tablet, focus, motion
 

@@ -251,11 +251,16 @@ export function MorningOrder() {
 
       <SearchInput value={query} onChange={setQuery} placeholder="חיפוש מצרך או קטגוריה..." />
 
-      <div className="row" style={{ marginBottom: 'var(--space-3)' }}>
+      <div className="row morning-toolbar">
         <span className="muted">
           {lines.length > 0 ? `${lines.length} פריטים בהזמנה` : 'אין מה להזמין כרגע'}
         </span>
-        <button type="button" className="btn" disabled={fillPlan.length === 0} onClick={() => setConfirmFill(true)}>
+        <button
+          type="button"
+          className="btn btn-sm"
+          disabled={fillPlan.length === 0}
+          onClick={() => setConfirmFill(true)}
+        >
           מלא לפי המינימום
         </button>
       </div>

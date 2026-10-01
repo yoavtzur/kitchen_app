@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useApp } from '../store/AppContext';
 import { orderQtyForIngredient, weeklyNeedForIngredient } from '../lib/calc';
 import { formatQty } from '../lib/units';
-import { addDays, dayName, dayOfWeek, dayShortLabel, orderLineKey, todayStr } from '../lib/date';
+import { addDays, dayOfWeek, dayShortLabel, orderLineKey, todayStr } from '../lib/date';
 import { EmptyState } from '../components/EmptyState';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { SearchInput } from '../components/SearchInput';
@@ -361,7 +361,9 @@ export function Orders() {
 
   return (
     <div>
-      <ScreenHeader title={membership?.restaurantName?.trim() || 'הזמנות'} subtitle={`הזמנות · ${dayName(todayStr())}`} />
+      {/* No subtitle: on a phone every 20px here is a third of an ingredient row, and the chef
+          opens this screen to see rows. */}
+      <ScreenHeader title={membership?.restaurantName?.trim() || 'הזמנות'} />
 
       <Segmented options={TABS} value={tab} onChange={setTab} label="תצוגת הזמנות" />
 

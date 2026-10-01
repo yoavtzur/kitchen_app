@@ -7,6 +7,7 @@ import { BottomNav } from './components/BottomNav';
 import { RouteBoundary } from './components/RouteBoundary';
 import { SentryContext } from './components/SentryContext';
 import { SyncBadge } from './components/SyncBadge';
+import { UndoProvider } from './components/UndoProvider';
 import { UpdatePrompt } from './components/UpdatePrompt';
 import { APP_ROUTES, INVITE_ROUTES, LEGAL_ROUTES } from './routes';
 
@@ -31,11 +32,15 @@ function GatedApp() {
         <MaintenanceGate>
           <AppProvider>
             <CookGate>
-              <SentryContext />
-              <AnalyticsContext />
-              <SyncBadge />
-              <Outlet />
-              <BottomNav />
+              {/* Above the Outlet and inside AppProvider: the "בטל" toast has to outlive the sheet
+                  that triggered it, and it needs `dispatch` to undo. */}
+              <UndoProvider>
+                <SentryContext />
+                <AnalyticsContext />
+                <SyncBadge />
+                <Outlet />
+                <BottomNav />
+              </UndoProvider>
             </CookGate>
           </AppProvider>
         </MaintenanceGate>

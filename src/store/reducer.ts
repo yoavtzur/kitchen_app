@@ -20,6 +20,7 @@ import type {
 import { todayStr } from '../lib/date';
 import { autoTaskId } from '../lib/tasks';
 import { pruneEntities } from '../lib/integrity';
+import { applyRestore, type Restore } from '../lib/restore';
 import { UNASSIGNED_CATEGORY } from '../lib/recipeCategories';
 import { convert } from '../lib/units';
 
@@ -88,6 +89,9 @@ export type Action =
   | { type: 'ADD_SPECIAL_EVENT'; event: SpecialEvent }
   | { type: 'UPDATE_SPECIAL_EVENT'; event: SpecialEvent }
   | { type: 'DELETE_SPECIAL_EVENT'; id: string }
+  /** Puts back what a deletion took out (see lib/restore.ts) — the "בטל" after deleting a recipe,
+   * ingredient, station or cook. An upsert, so replaying it is harmless. */
+  | { type: 'RESTORE_ENTITIES'; restore: Restore }
   | { type: 'ADD_COOK'; cook: Cook }
   | { type: 'RENAME_COOK'; id: string; name: string }
   | { type: 'DELETE_COOK'; id: string }
@@ -628,6 +632,9 @@ export function reducer(state: AppState, action: Action): AppState {
       };
     case 'DELETE_SPECIAL_EVENT':
       return { ...state, specialEvents: state.specialEvents.filter((e) => e.id !== action.id) };
+
+    case 'RESTORE_ENTITIES':
+      return applyRestore(state, action.restore);
 
     case 'ADD_COOK':
       return { ...state, cooks: [...state.cooks, action.cook] };

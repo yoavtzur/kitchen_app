@@ -5,6 +5,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { PencilIcon, TrashIcon } from '../components/icons';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { newId } from '../lib/ids';
+import { useUndo } from '../lib/undo';
 import { stationOptions, UNASSIGNED_CATEGORY, UNASSIGNED_LABEL } from '../lib/recipeCategories';
 import { stationImpact, stationNameError } from '../lib/stations';
 import type { Station } from '../types';
@@ -19,6 +20,7 @@ import type { Station } from '../types';
  */
 export function Stations() {
   const { state, dispatch } = useApp();
+  const { deleteWithUndo } = useUndo();
   const [editing, setEditing] = useState(false);
   const [newName, setNewName] = useState('');
   const [addError, setAddError] = useState('');
@@ -65,7 +67,7 @@ export function Stations() {
 
   function confirmDelete() {
     if (!deleting) return;
-    dispatch({ type: 'DELETE_STATION', id: deleting.id, moveToId: moveTo });
+    deleteWithUndo({ type: 'DELETE_STATION', id: deleting.id, moveToId: moveTo }, `הפס "${deleting.name}" נמחק`);
     setDeleting(null);
   }
 
@@ -196,7 +198,7 @@ export function Stations() {
               ))}
             </select>
           </div>
-          <p className="muted">הפעולה אינה ניתנת לביטול. הפס יימחק לכל הצוות בכל המכשירים.</p>
+          <p className="muted">הפס יימחק לכל הצוות בכל המכשירים. אפשר לבטל מיד אחרי המחיקה.</p>
         </ConfirmDialog>
       )}
     </div>

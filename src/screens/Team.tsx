@@ -7,6 +7,7 @@ import { isSupabaseConfigured } from '../lib/supabase';
 import { newCook } from '../lib/cooks';
 import { buildInviteLink } from '../lib/invite';
 import { useTimedMessage } from '../lib/useTimedFlag';
+import { useUndo } from '../lib/undo';
 import type { Cook } from '../types';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { CookPill } from '../components/CookPill';
@@ -33,6 +34,7 @@ export function Team() {
   const { state, dispatch } = useApp();
   const { session, membership, setMemberPermissions, removeMember, createInvite, listTeamContacts } = useAuth();
   const { isChef } = usePermissions();
+  const { deleteWithUndo } = useUndo();
   const { members, loading, error: membersError, reload, retry } = useTeamMembers();
 
   const [contacts, setContacts] = useState<Map<string, TeamContact>>(new Map());
@@ -40,7 +42,6 @@ export function Team() {
   const [newCookName, setNewCookName] = useState('');
   const [permError, setPermError] = useState('');
   const [removeCandidate, setRemoveCandidate] = useState<MemberRow | null>(null);
-  const [deleteCandidate, setDeleteCandidate] = useState<Cook | null>(null);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState('');
@@ -118,10 +119,9 @@ export function Team() {
   }
 
   /** Cooks that do have an account get the "remove from kitchen" flow instead; this is only for
-   * the ones that don't, where deleting the row is the whole story. */
+   * the ones that don't, where deleting the row is the whole story — and a mis-tap is one "בטל" away. */
   function deleteAccountlessCook(cook: Cook) {
-    dispatch({ type: 'DELETE_COOK', id: cook.id });
-    setDeleteCandidate(null);
+    deleteWithUndo({ type: 'DELETE_COOK', id: cook.id }, `"${cook.name}" נמחק`);
   }
 
   const cookOf = (id: string | null) => (id ? state.cooks.find((c) => c.id === id) : undefined);
@@ -251,7 +251,7 @@ export function Team() {
                     type="button"
                     className="btn btn-icon"
                     aria-label={`מחק את ${cook.name}`}
-                    onClick={() => setDeleteCandidate(cook)}
+                    onClick={() => deleteAccountlessCook(cook)}
                   >
                     ✕
                   </button>
@@ -287,18 +287,6 @@ export function Team() {
             </form>
           </div>
         </>
-      )}
-
-      {deleteCandidate && (
-        <ConfirmDialog
-          title="מחיקת טבח"
-          confirmLabel="מחק"
-          destructive
-          onClose={() => setDeleteCandidate(null)}
-          onConfirm={() => deleteAccountlessCook(deleteCandidate)}
-        >
-          <p>למחוק את "{deleteCandidate.name}" מרשימת הטבחים?</p>
-        </ConfirmDialog>
       )}
 
       {removeCandidate && (

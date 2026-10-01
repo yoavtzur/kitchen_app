@@ -5,19 +5,26 @@ import { PriorityDot, PriorityPill } from '../../components/PriorityDot';
 import { SwipeToComplete } from '../../components/SwipeToComplete';
 import { completeTask } from './completeTask';
 import { TaskDetailSheet } from './TaskDetailSheet';
+import { QuickActionsSheet } from './QuickActionsSheet';
+import { useUndo } from '../../lib/undo';
 import type { Priority } from '../../types';
 
 const PRIORITY_CYCLE: Priority[] = ['red', 'yellow', 'green'];
 
 export function TaskRow({ task }: { task: DisplayTask }) {
   const { state, dispatch } = useApp();
+  const { showUndo } = useUndo();
   const [detailOpen, setDetailOpen] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
   const recipe = state.recipes.find((r) => r.id === task.recipeId);
 
   const isAuto = task.source === 'auto';
 
   function markDone() {
     completeTask(task, recipe, task.multiplier, state, dispatch);
+    // The completed card leaves the open list, so a slip of the thumb has to be undoable from
+    // where the cook is looking — this toast now, or "הושלמו" at the bottom of the list later.
+    showUndo('המשימה הושלמה', undoDone);
   }
 
   function cyclePriority() {
@@ -69,9 +76,12 @@ export function TaskRow({ task }: { task: DisplayTask }) {
     : task.title ?? 'משימה';
 
   return (
+    <>
     <SwipeToComplete
       onComplete={task.done ? undoDone : markDone}
       label={task.done ? '↩ בטל בוצע' : '✓ בוצע'}
+      // Left is quick actions on a recipe-backed task; a free-text one has no ingredients to report.
+      onAction={recipe ? () => setActionsOpen(true) : undefined}
     >
       <div className={`card priority-card task-card-compact ${task.priority}${task.done ? ' done' : ''}`}>
         <div className="row">
@@ -148,5 +158,9 @@ export function TaskRow({ task }: { task: DisplayTask }) {
         {detailOpen && <TaskDetailSheet task={task} onClose={() => setDetailOpen(false)} />}
       </div>
     </SwipeToComplete>
+    {actionsOpen && recipe && (
+      <QuickActionsSheet task={task} recipe={recipe} onClose={() => setActionsOpen(false)} />
+    )}
+    </>
   );
 }

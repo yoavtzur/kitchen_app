@@ -26,6 +26,8 @@ import { convert } from '../lib/units';
 
 export type Action =
   | { type: 'SET_INGREDIENT_QTY'; id: string; qty: number }
+  /** Absolute, not a toggle: two cooks tapping "חסר" on the same ingredient agree. */
+  | { type: 'SET_INGREDIENT_SHORT'; id: string; short: boolean }
   | { type: 'SET_INGREDIENT_USAGE'; id: string; dailyUsage?: number; weeklyUsage?: number }
   | { type: 'SET_INGREDIENT_PAR'; id: string; parLevel: number }
   | { type: 'SET_INGREDIENT_WEEKDAY_USAGE'; id: string; weekday: Weekday; dailyUsage?: number }
@@ -305,14 +307,31 @@ function withWeekdayOverride<T extends { dailyUsageByWeekday?: WeekdayUsage }>(
   return { ...entity, dailyUsageByWeekday: Object.keys(next).length > 0 ? next : undefined };
 }
 
+/** Sets an ingredient's stock. Raising it clears a "חסר" flag: the shortage was about what was on
+ * the shelf, and a count or a delivery that adds stock has answered it. Lowering it (a waste
+ * report, a count that found less) leaves the flag as it was. */
+function withQty(ingredient: Ingredient, qty: number): Ingredient {
+  if (!ingredient.shortFlag || qty <= ingredient.currentQty) return { ...ingredient, currentQty: qty };
+  const { shortFlag: _cleared, ...rest } = ingredient;
+  return { ...rest, currentQty: qty };
+}
+
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'SET_INGREDIENT_QTY':
       return {
         ...state,
-        ingredients: state.ingredients.map((i) =>
-          i.id === action.id ? { ...i, currentQty: action.qty } : i,
-        ),
+        ingredients: state.ingredients.map((i) => (i.id === action.id ? withQty(i, action.qty) : i)),
+      };
+    case 'SET_INGREDIENT_SHORT':
+      return {
+        ...state,
+        ingredients: state.ingredients.map((i) => {
+          if (i.id !== action.id || Boolean(i.shortFlag) === action.short) return i;
+          if (action.short) return { ...i, shortFlag: true };
+          const { shortFlag: _cleared, ...rest } = i;
+          return rest;
+        }),
       };
     case 'SET_INGREDIENT_USAGE':
       return {
@@ -403,7 +422,7 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         ingredients: state.ingredients.map((i) => {
           const update = action.ingredients.find((u) => u.id === i.id);
-          return update ? { ...i, currentQty: update.qty } : i;
+          return update ? withQty(i, update.qty) : i;
         }),
       };
       for (const update of action.products) {
@@ -729,7 +748,7 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         ingredients: state.ingredients.map((i) => {
           const receipt = openReceipts.find((r) => r.ingredientId === i.id);
-          return receipt ? { ...i, currentQty: i.currentQty + receipt.qty } : i;
+          return receipt ? withQty(i, i.currentQty + receipt.qty) : i;
         }),
         orderLines: state.orderLines.filter(
           (l) => !(l.date === action.date && received.has(l.ingredientId)),

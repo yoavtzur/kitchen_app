@@ -1,11 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
-import { resolveAxis, shouldComplete, type SwipeAxis } from '../lib/swipe';
+import { resolveAxis, shouldComplete, swipeDirection, type SwipeAxis } from '../lib/swipe';
 
 type Props = {
+  /** A swipe to the right: the card slides away and this runs. */
   onComplete: () => void;
+  /** A swipe to the left: the card springs back and this runs — it opens the quick-action menu
+   * rather than finishing anything. Absent means left does nothing (the card just springs back),
+   * which is right for a card that has no quick actions. */
+  onAction?: () => void;
   disabled?: boolean;
-  /** Text shown on the reveal panel behind the card as it's dragged aside. */
+  /** Text on the green panel revealed by dragging right. */
   label?: string;
+  /** Text on the orange panel revealed by dragging left. */
+  actionLabel?: string;
   children: React.ReactNode;
 };
 
@@ -37,7 +44,14 @@ function suppressNextClick() {
  * abandoned immediately so the page's native scroll takes over — see the `.swipe-surface`
  * touch-action rule, which is what actually guarantees scrolling can never be blocked.
  */
-export function SwipeToComplete({ onComplete, disabled, label = '✓ בוצע', children }: Props) {
+export function SwipeToComplete({
+  onComplete,
+  onAction,
+  disabled,
+  label = '✓ בוצע',
+  actionLabel = '⚡ פעולות מהירות',
+  children,
+}: Props) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const startRef = useRef<{ x: number; y: number } | null>(null);
   const axisRef = useRef<SwipeAxis>('undecided');
@@ -102,6 +116,15 @@ export function SwipeToComplete({ onComplete, disabled, label = '✓ בוצע', 
     if (axisRef.current === 'horizontal') {
       const width = surfaceRef.current?.offsetWidth ?? 0;
       if (shouldComplete(dx, width)) {
+        if (swipeDirection(dx) === 'left') {
+          // Left is not a completion: the card springs back and the menu opens. The synthetic
+          // click is swallowed for the same reason as below — a finger lifting over a button.
+          suppressNextClick();
+          setReleasing(true);
+          reset();
+          onAction?.();
+          return;
+        }
         // Swallow the synthetic click the browser fires after a touch sequence.
         //
         // Without this, a swipe that ends with the finger over a button inside the card fires
@@ -125,9 +148,16 @@ export function SwipeToComplete({ onComplete, disabled, label = '✓ בוצע', 
 
   return (
     <div className="swipe-wrap">
-      <div className="swipe-action" aria-hidden="true">
+      {/* Two panels, one per direction, only the one being revealed is visible: green behind a
+          rightward drag ("done"), orange behind a leftward one ("actions"). */}
+      <div className="swipe-action" aria-hidden="true" style={{ opacity: dx > 0 ? 1 : 0 }}>
         {label}
       </div>
+      {onAction && (
+        <div className="swipe-action swipe-action-menu" aria-hidden="true" style={{ opacity: dx < 0 ? 1 : 0 }}>
+          {actionLabel}
+        </div>
+      )}
       <div
         ref={surfaceRef}
         className="swipe-surface"

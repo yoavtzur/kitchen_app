@@ -57,7 +57,22 @@ export function suggestedQty(ingredient: Ingredient, state: AppState, date: stri
     count === ingredient.currentQty
       ? state
       : { ...state, ingredients: state.ingredients.map((i) => (i.id === ingredient.id ? { ...i, currentQty: count } : i)) };
-  return Math.round(orderQtyForIngredient(ingredient.id, scoped) * 100) / 100;
+  const qty = Math.round(orderQtyForIngredient(ingredient.id, scoped) * 100) / 100;
+  // A cook flagged it short and the numbers see no reason to order (usage data missing, or stock
+  // looks fine on paper): the flag wins, with a floor of one par level so the line is worth sending.
+  return isFlaggedShort(ingredient, count) && qty <= 0 ? shortFloor(ingredient, state) : qty;
+}
+
+/** Flagged short, and not since counted back up (a typed count above the stored one answers it). */
+function isFlaggedShort(ingredient: Ingredient, count: number): boolean {
+  return Boolean(ingredient.shortFlag) && count <= ingredient.currentQty;
+}
+
+/** What to order for something flagged short that the usual calculation says needs nothing:
+ * its par level, else a day's cover, else one — never zero, or the flag would do nothing. */
+function shortFloor(ingredient: Ingredient, state: AppState): number {
+  const floor = ingredient.parLevel && ingredient.parLevel > 0 ? ingredient.parLevel : ingredient.dailyUsage * state.settings.defaultCoverageDays;
+  return Math.round((floor > 0 ? floor : 1) * 100) / 100;
 }
 
 /** The order as it would be submitted right now. Empty only when there is genuinely nothing to
@@ -72,6 +87,7 @@ export function buildOrderLines(state: AppState, drafts: CountDrafts, date: stri
  * flag. Plenty-of-stock rows deliberately carry no marker at all: on a list of fifty, the eye
  * should land only on what needs it. */
 export function lowStockTone(ingredient: Ingredient, count: number, date: string): 'red' | 'yellow' | null {
+  if (isFlaggedShort(ingredient, count)) return 'red';
   const days = daysOfSupply({ ...ingredient, currentQty: count }, date);
   if (!Number.isFinite(days)) return null;
   const tone = coverageColor(days);

@@ -136,3 +136,33 @@ describe('planFillToPar', () => {
     expect(planFillToPar(state, date)).toEqual([]);
   });
 });
+
+describe('an ingredient flagged short', () => {
+  const flagged: Ingredient = { ...salt, shortFlag: true, parLevel: 4 };
+
+  it('is ordered at its par level even when the numbers see no need', () => {
+    expect(suggestedQty(salt, stateWith([salt]), date, {})).toBe(0);
+    expect(suggestedQty(flagged, stateWith([flagged]), date, {})).toBe(4);
+  });
+
+  it('falls back to a day of cover, then to one, when there is no par level', () => {
+    const daily = { ...flagged, parLevel: undefined, dailyUsage: 3 };
+    expect(suggestedQty(daily, stateWith([daily]), date, {})).toBe(3);
+    const none = { ...flagged, parLevel: undefined, dailyUsage: 0 };
+    expect(suggestedQty(none, stateWith([none]), date, {})).toBe(1);
+  });
+
+  it('does not override a quantity the chef typed', () => {
+    const state = stateWith([flagged], [{ ingredientId: 'salt', date, qtyOverride: 2, ordered: false }]);
+    expect(suggestedQty(flagged, state, date, {})).toBe(2);
+  });
+
+  it('is answered by a typed count above the stored one', () => {
+    expect(suggestedQty(flagged, stateWith([flagged]), date, { salt: '9' })).toBe(0);
+  });
+
+  it('shows a red dot, and puts the ingredient in the order', () => {
+    expect(lowStockTone(flagged, flagged.currentQty, date)).toBe('red');
+    expect(buildOrderLines(stateWith([flagged]), {}, date)).toEqual([{ ingredientId: 'salt', qty: 4 }]);
+  });
+});

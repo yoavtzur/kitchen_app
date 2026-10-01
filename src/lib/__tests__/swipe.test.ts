@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveAxis, shouldComplete, swipeProgress } from '../swipe';
+import { resolveAxis, shouldComplete, swipeDirection, swipeProgress } from '../swipe';
 
 describe('resolveAxis', () => {
   it('stays undecided inside the dead zone', () => {
@@ -59,5 +59,12 @@ describe('shouldComplete', () => {
 
   it('is direction-agnostic', () => {
     expect(shouldComplete(-200, 400)).toBe(true);
+  });
+});
+
+describe('swipeDirection', () => {
+  it('is physical: positive travel is right, negative is left', () => {
+    expect(swipeDirection(120)).toBe('right');
+    expect(swipeDirection(-120)).toBe('left');
   });
 });

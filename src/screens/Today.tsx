@@ -45,6 +45,7 @@ export function Today() {
   const { membership } = useAuth();
   const [date, setDate] = useState(todayStr());
   const [addingManual, setAddingManual] = useState(false);
+  const [showDone, setShowDone] = useState(false);
   const [query, setQuery] = useState('');
   // Remembered across screens (and reloads): see lib/todayFilter.ts. `stored` is what the cook
   // picked; `category` is what is shown, which differs only when that station has been deleted.
@@ -73,6 +74,11 @@ export function Today() {
   // The bar reflects whatever the cook is actually looking at: with a station tab active, that
   // station's own progress is the number they want, not the kitchen's.
   const progress = taskProgress(visibleTasks);
+  // A finished task leaves the working list — the cook is looking at what is still to do — and
+  // waits under "הושלמו". It is still counted above and still one swipe (or tap on its box) from
+  // being undone, which is how a mistaken completion is recovered once the "בטל" toast is gone.
+  const openTasks = visibleTasks.filter((t) => !t.done);
+  const doneTasks = sortDisplayTasks(visibleTasks.filter((t) => t.done));
   const grouped = !searching && category === 'all';
 
   const stationName =
@@ -175,8 +181,10 @@ export function Today() {
                 : 'אין משימות ליום זה — הכל במלאי.'
           }
         />
+      ) : openTasks.length === 0 ? (
+        <EmptyState text="כל המשימות הושלמו ✓" />
       ) : grouped ? (
-        groupByStation(visibleTasks, state.stations).map((group) => (
+        groupByStation(openTasks, state.stations).map((group) => (
           <div key={group.value}>
             <h2 className="section-title">{group.label}</h2>
             <div className="tasks-grid">
@@ -188,9 +196,29 @@ export function Today() {
         ))
       ) : (
         <div className="tasks-grid">
-          {sortDisplayTasks(visibleTasks).map((t) => (
+          {sortDisplayTasks(openTasks).map((t) => (
             <TaskRow key={t.id} task={t} />
           ))}
+        </div>
+      )}
+
+      {doneTasks.length > 0 && (
+        <div className="no-print">
+          <button
+            type="button"
+            className="done-toggle"
+            aria-expanded={showDone}
+            onClick={() => setShowDone((v) => !v)}
+          >
+            הושלמו ({doneTasks.length}) {showDone ? '▴' : '▾'}
+          </button>
+          {showDone && (
+            <div className="tasks-grid">
+              {doneTasks.map((t) => (
+                <TaskRow key={t.id} task={t} />
+              ))}
+            </div>
+          )}
         </div>
       )}
 

@@ -205,3 +205,31 @@ export function ChatIcon(p: IconProps) {
     </Svg>
   );
 }
+
+export function AlertIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M12 4.2 2.8 19.5h18.4L12 4.2z" />
+      <path d="M12 10v4.4" />
+      <circle cx="12" cy="17.1" r="0.9" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+export function ShortageIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M4 9h16l-1.5 9.2a2 2 0 0 1-2 1.8H7.5a2 2 0 0 1-2-1.8L4 9z" />
+      <path d="M9.5 14.5h5" />
+    </Svg>
+  );
+}
+
+export function WasteIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M5 7h14M10 7V4.5h4V7M7 7l.8 12a1.6 1.6 0 0 0 1.6 1.5h5.2a1.6 1.6 0 0 0 1.6-1.5L17 7" />
+      <path d="M10 11l4 5M14 11l-4 5" />
+    </Svg>
+  );
+}

@@ -23,6 +23,10 @@ export type Ingredient = {
    * prep stations for recipes and tasks, not a way to group ingredients themselves. */
   category?: string;
   note?: string;
+  /** A cook flagged this as running out (swipe → "חסר"). Surfaces it on the morning order and on
+   * the prep cards that need it; cleared once stock goes up (a count, a delivery). Optional, so
+   * no schema bump: an old snapshot simply has none. */
+  shortFlag?: boolean;
 };
 
 export type ProductKind = 'menu' | 'component';

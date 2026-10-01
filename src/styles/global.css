@@ -681,6 +681,11 @@ textarea {
   font-size: 16px;
 }
 
+.swipe-action-menu {
+  background: rgba(255, 140, 0, 0.18);
+  color: var(--color-orange, #ff8c00);
+}
+
 .swipe-surface {
   position: relative;
   touch-action: pan-y;
@@ -1829,4 +1834,71 @@ textarea {
 
 .bottom-nav a.active:active .nav-icon-box {
   filter: brightness(0.85);
+}
+
+/* Quick actions opened by a left swipe on a task: big targets, no typing. Orange to match the
+   panel the swipe reveals, so the colour tells a cook which gesture brought them here. */
+.quick-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.quick-grid-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.quick-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 120px;
+  padding: var(--space-3);
+  border: 2px solid rgba(255, 140, 0, 0.5);
+  border-radius: var(--radius-card);
+  background: rgba(255, 140, 0, 0.12);
+  color: var(--color-text);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.quick-tile:active {
+  background: rgba(255, 140, 0, 0.28);
+}
+
+.quick-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--row-height);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  font-size: 17px;
+  font-weight: 600;
+  text-align: start;
+}
+
+.quick-row:active {
+  background: var(--color-border);
+}
+
+/* "הושלמו (N)" under the task list: finished work, out of the way but one tap from undoing. */
+.done-toggle {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  margin: var(--space-4) 0 var(--space-2);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-card);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 15px;
+  font-weight: 600;
 }

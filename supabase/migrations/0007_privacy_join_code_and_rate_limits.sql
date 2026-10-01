@@ -55,11 +55,10 @@ alter table public.scan_usage drop constraint if exists scan_usage_scope_check;
 alter table public.scan_usage add constraint scan_usage_scope_check
   check (scope in ('user', 'restaurant', 'global', 'join_user', 'join_global'));
 
--- ── join_restaurant: same behaviour, now with a ceiling ──────────────────────
+-- ── join_restaurant: a ceiling on guessing, reported rather than raised ──────
 
 /**
- * Unchanged for anyone typing a real code. What is new is the two counters, and the asymmetry
- * between them is the whole design:
+ * Two counters, and the asymmetry between them is the design:
  *
  *   • EVERY attempt bumps the per-account counter. That is what stops one account grinding
  *     through the code space.
@@ -73,12 +72,28 @@ alter table public.scan_usage add constraint scan_usage_scope_check
  * an attacker mints a fresh account every ten guesses. The global counter is the real ceiling,
  * and the split above is what makes it safe to set low.
  *
- * Counting happens before judging, exactly as in consume_scan_quota(): hammering an
- * already-exhausted account costs the attacker the same as a legitimate call, so there is no
- * cheap probe for "am I still allowed to guess".
+ * **Why this returns a `status` instead of raising, which is the whole reason the signature
+ * changed:** a refusal used to be `raise exception 'invalid_code'`, and RAISE aborts the
+ * transaction — which rolls back the counter bump the refusal was based on. Counting before
+ * judging buys nothing if judging erases the count: measured against a real database, every
+ * failed guess left `scan_usage` exactly as it found it, `join_global` never got a single row,
+ * and the limit never triggered no matter how many times it was called. It was decoration.
+ *
+ * `consume_scan_quota()` in 0006 already had this right — it *returns* `{"status":"quota"}`
+ * rather than raising, for exactly this reason — and that precedent is the one to follow for
+ * anything that must both record an attempt and refuse it. Raising is still correct for
+ * "not authenticated", because nothing has been written at that point and there is nothing a
+ * rollback can lose.
+ *
+ * `status` is one of 'ok' | 'invalid_code' | 'rate_limited'. On a refusal `restaurant_id` and
+ * `name` are null. Note that this REPLACES the two-column return type, so the function has to be
+ * dropped first and a client built against the old shape will mis-read a refusal — one more
+ * reason this migration belongs with its deploy rather than ahead of it.
  */
-create or replace function public.join_restaurant(p_code text)
-returns table (restaurant_id uuid, name text)
+drop function if exists public.join_restaurant(text);
+
+create function public.join_restaurant(p_code text)
+returns table (restaurant_id uuid, name text, status text)
 language plpgsql security definer set search_path = public, pg_temp as $$
 declare
   v_id     uuid;
@@ -93,26 +108,43 @@ begin
 
   select * into v_cfg from public.app_config where id;
 
-  insert into public.scan_usage (day, scope, scope_id, used)
-  values (v_day, 'join_user', v_uid, 1)
-  on conflict (day, scope, scope_id) do update set used = public.scan_usage.used + 1
-  returning used into v_used;
+  -- Written as a CTE with `select ... into` rather than the shorter
+  -- `insert ... returning used into v_used`, deliberately: the CTE form is exactly what
+  -- consume_scan_quota() in 0006 uses and is the only shape of this statement proven to compile
+  -- on the live project. An earlier draft of this file used the short form and PL/pgSQL rejected
+  -- it there with `syntax error at or near "raise"` — reported against the *next* statement,
+  -- which is what makes that failure so confusing to read. Do not "simplify" this back.
+  with bumped as (
+    insert into public.scan_usage (day, scope, scope_id, used)
+    values (v_day, 'join_user', v_uid, 1)
+    on conflict (day, scope, scope_id) do update set used = public.scan_usage.used + 1
+    returning scan_usage.used
+  )
+  select b.used into v_used from bumped b;
+
   if v_used > coalesce(v_cfg.join_quota_user, 10) then
-    raise exception 'too_many_join_attempts' using errcode = 'P0003';
+    return query select null::uuid, null::text, 'rate_limited'::text;
+    return;
   end if;
 
   select r.id, r.name into v_id, v_name
     from public.restaurants r where r.join_code = upper(btrim(p_code));
 
   if v_id is null then
-    insert into public.scan_usage (day, scope, scope_id, used)
-    values (v_day, 'join_global', v_nil, 1)
-    on conflict (day, scope, scope_id) do update set used = public.scan_usage.used + 1
-    returning used into v_used;
+    with bumped as (
+      insert into public.scan_usage (day, scope, scope_id, used)
+      values (v_day, 'join_global', v_nil, 1)
+      on conflict (day, scope, scope_id) do update set used = public.scan_usage.used + 1
+      returning scan_usage.used
+    )
+    select b.used into v_used from bumped b;
+
     if v_used > coalesce(v_cfg.join_quota_global, 500) then
-      raise exception 'too_many_join_attempts' using errcode = 'P0003';
+      return query select null::uuid, null::text, 'rate_limited'::text;
+    else
+      return query select null::uuid, null::text, 'invalid_code'::text;
     end if;
-    raise exception 'invalid_code' using errcode = 'P0002';
+    return;
   end if;
 
   -- Named-constraint form, not `on conflict (restaurant_id, user_id)`: this function's own
@@ -121,7 +153,7 @@ begin
   insert into public.memberships (restaurant_id, user_id, role)
   values (v_id, v_uid, 'cook')
   on conflict on constraint memberships_pkey do nothing;
-  return query select v_id, v_name;
+  return query select v_id, v_name, 'ok'::text;
 end $$;
 
 -- ── rotate_join_code: a key that can be changed ──────────────────────────────
@@ -202,7 +234,7 @@ begin
     from public.memberships m where m.user_id = v_uid;
 
   if v_rest is not null then
-    select count(*) filter (where true),
+    select count(*),
            count(*) filter (where m.role = 'chef')
       into v_others, v_other_chefs
       from public.memberships m
@@ -225,5 +257,9 @@ end $$;
 
 -- ── grants ───────────────────────────────────────────────────────────────────
 
-revoke all on function public.rotate_join_code(), public.delete_my_account() from public;
-grant execute on function public.rotate_join_code(), public.delete_my_account() to authenticated;
+-- join_restaurant is included because it was dropped and recreated above, which drops its
+-- grants with it.
+revoke all on function
+  public.join_restaurant(text), public.rotate_join_code(), public.delete_my_account() from public;
+grant execute on function
+  public.join_restaurant(text), public.rotate_join_code(), public.delete_my_account() to authenticated;

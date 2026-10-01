@@ -76,12 +76,24 @@ async function main() {
   check('the new code differs from the old one', rotated !== originalCode);
 
   // The point of rotating: the old code must stop working immediately.
+  //
+  // `join_restaurant` reports refusals in a `status` column rather than raising — raising would
+  // roll back the attempt counter the refusal is based on, which is how the rate limiter came to
+  // count nothing at all. See migration 0007 and scripts/verify-migrations-local.sh.
   const stranger = await account('stranger');
-  const { error: oldCodeErr } = await stranger.client.rpc('join_restaurant', { p_code: originalCode });
-  check('the OLD code no longer joins anyone', oldCodeErr?.code === 'P0002', oldCodeErr?.message ?? 'it still worked');
+  const { data: oldTry, error: oldCodeErr } = await stranger.client.rpc('join_restaurant', {
+    p_code: originalCode,
+  });
+  check(
+    'the OLD code no longer joins anyone',
+    !oldCodeErr && oldTry?.[0]?.status === 'invalid_code',
+    oldCodeErr?.message ?? `status was ${oldTry?.[0]?.status}`,
+  );
 
-  const { error: newCodeErr } = await stranger.client.rpc('join_restaurant', { p_code: rotated });
-  check('the NEW code does', !newCodeErr, newCodeErr?.message);
+  const { data: newTry, error: newCodeErr } = await stranger.client.rpc('join_restaurant', {
+    p_code: rotated,
+  });
+  check('the NEW code does', !newCodeErr && newTry?.[0]?.status === 'ok', newCodeErr?.message);
 
   // A cook is not a chef.
   const { error: cookRotateErr } = await stranger.client.rpc('rotate_join_code');
@@ -138,13 +150,18 @@ async function main() {
     const guesser = await account('guesser');
     let limited = null;
     for (let i = 0; i < limit + 2; i++) {
-      const { error } = await guesser.client.rpc('join_restaurant', { p_code: 'ZZZZZZ' });
-      if (error?.code === 'P0003') {
+      const { data, error } = await guesser.client.rpc('join_restaurant', { p_code: 'ZZZZZZ' });
+      const status = data?.[0]?.status;
+      if (error) {
+        check('a wrong guess is answered, not raised', false, error.message);
+        break;
+      }
+      if (status === 'rate_limited') {
         limited = i + 1;
         break;
       }
-      if (error?.code !== 'P0002') {
-        check('every wrong guess is reported as an invalid code until the limit', false, error?.message);
+      if (status !== 'invalid_code') {
+        check('every wrong guess is reported as an invalid code until the limit', false, String(status));
         break;
       }
     }

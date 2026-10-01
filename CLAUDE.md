@@ -231,6 +231,17 @@ are manual, throwaway verification tools against the live project — not part o
 build. `scripts/{verify-a11y-ui,verify-auth-forms,verify-legal-and-account}.mjs` are the same idea
 against a local dev server and a real browser instead (see "Commands" above).
 
+**`scripts/verify-migrations-local.sh` is the one that runs before shipping a migration**, and it
+exists because nothing else could: every other SQL check talks to the live project, so a migration
+could only be tested *after* being pasted into the dashboard by hand. It spins up a throwaway
+local PostgreSQL with a two-table stand-in for `auth`, applies all seven migrations in order, and
+then exercises the RPCs. The property that makes it worth keeping is that **every RPC call is its
+own `psql -c`, hence its own transaction**, exactly as PostgREST gives each call. Driving the same
+functions from inside one `DO` block hides a whole class of bug, because an exception handler's
+subtransaction rollback looks like success from outside — which is precisely how 0007's rate
+limiter shipped in a commit while counting nothing at all. Add a case here for any new RPC that
+writes and then decides.
+
 ### Nothing white-screens: boundaries, the route table, and scrubbed crash reports
 
 `src/routes.tsx` holds the route table **as data** (`{ path, name, element, redirect? }[]`). `App.tsx`
@@ -334,6 +345,20 @@ split, a global limit is a denial-of-service switch anyone can flip — exhaust 
 nobody in any restaurant can join for the rest of the day. The per-account limit alone bounds
 nothing, because signup is open and an attacker mints a fresh account every ten guesses; the
 global counter is the real ceiling, and the split is what makes it safe to set low.
+
+**`join_restaurant` therefore reports a refusal in a `status` column rather than raising**, and
+that is the single most important thing to preserve about it. The first version raised
+`invalid_code` / `too_many_join_attempts`, and **RAISE aborts the transaction — rolling back the
+counter bump the refusal was based on**. Counting before judging buys nothing if judging erases
+the count: measured against a real database, every failed guess left `scan_usage` exactly as it
+found it, `join_global` never got a single row, and the limit never fired however many times it
+was called. It compiled, it read correctly, and it was decoration. `consume_scan_quota()` in 0006
+already had this right — it *returns* `{"status":"quota"}` — and that precedent is the one to
+follow for anything that must both record an attempt and refuse it. Raising is still correct for
+"not authenticated", where nothing has been written and a rollback loses nothing. Client side,
+`mapJoinStatus` (`lib/rpcErrors.ts`) turns the status into Hebrew and treats an **unrecognised**
+status as a refusal, because reading it as success would cache a membership with a null
+restaurant id.
 
 **Turnstile** (`src/lib/turnstile.ts`, `src/components/Turnstile.tsx`) is **dormant without
 `VITE_TURNSTILE_SITE_KEY`**, the same shape as `sentry.ts` without a DSN. It attacks the problem

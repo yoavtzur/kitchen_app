@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import { mapRpcError } from '../lib/rpcErrors';
+import { mapJoinStatus, mapRpcError } from '../lib/rpcErrors';
 import { readCachedMembership, writeCachedMembership, type CachedMembership } from './authCache';
 import { fullReset } from '../lib/resetLocalData';
 
@@ -194,23 +194,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: null };
   }
 
+  /** `join_restaurant` reports a refusal in its `status` column instead of raising — see
+   * `mapJoinStatus`. So an empty result or any status other than 'ok' is a refusal, and only
+   * 'ok' may write a membership: the old code trusted the mere presence of a row, which under
+   * the new shape would cache a membership with a null restaurant id. */
   async function joinRestaurant(code: string): Promise<ActionResult> {
     if (!supabase) return { error: 'Supabase אינו מוגדר' };
     const { data, error } = await supabase.rpc('join_restaurant', { p_code: code });
     if (error) return { error: mapRpcError(error) };
     const row = data?.[0];
-    if (row) {
-      const next: Membership = {
-        restaurantId: row.restaurant_id,
-        restaurantName: row.name,
-        cookId: null,
-        role: 'cook',
-        canEditRecipes: false,
-        canDeleteRecipes: false,
-      };
-      setMembership(next);
-      writeCachedMembership(next);
-    }
+    if (!row) return { error: 'ההצטרפות נכשלה. נסו שוב.' };
+    const refusal = mapJoinStatus(String(row.status));
+    if (refusal) return { error: refusal };
+    const next: Membership = {
+      restaurantId: row.restaurant_id,
+      restaurantName: row.name,
+      cookId: null,
+      role: 'cook',
+      canEditRecipes: false,
+      canDeleteRecipes: false,
+    };
+    setMembership(next);
+    writeCachedMembership(next);
     return { error: null };
   }
 

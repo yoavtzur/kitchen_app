@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mapRpcError } from '../rpcErrors';
+import { mapJoinStatus, mapRpcError } from '../rpcErrors';
 
 describe('mapRpcError', () => {
   it('tells the last chef to appoint a replacement rather than that they cannot be demoted', () => {
@@ -14,7 +14,6 @@ describe('mapRpcError', () => {
 
   it.each([
     ['P0002', 'invalid_code', 'קוד לא נמצא'],
-    ['P0003', 'too_many_join_attempts', 'יותר מדי ניסיונות'],
     ['23505', 'duplicate key', 'כבר משויך'],
     ['42501', 'chef_only', 'רק שף'],
     ['42501', 'cannot_remove_self', 'לא ניתן להסיר את עצמך'],
@@ -35,5 +34,25 @@ describe('mapRpcError', () => {
   it('passes an unrecognised error through unchanged rather than inventing a reason', () => {
     expect(mapRpcError({ code: 'XX000', message: 'boom' })).toBe('boom');
     expect(mapRpcError({ message: 'no code at all' })).toBe('no code at all');
+  });
+});
+
+describe('mapJoinStatus', () => {
+  it('reports no error for a successful join', () => {
+    expect(mapJoinStatus('ok')).toBeNull();
+  });
+
+  it.each([
+    ['invalid_code', 'קוד לא נמצא'],
+    ['rate_limited', 'יותר מדי ניסיונות'],
+  ])('maps %s', (status, expected) => {
+    expect(mapJoinStatus(status)).toContain(expected);
+  });
+
+  it('treats an unrecognised status as a refusal, not a success', () => {
+    // A server newer than this build. The one thing we know is that it did not say 'ok', and
+    // reading it as success would write a membership with no restaurant id.
+    expect(mapJoinStatus('something_new')).toBeTruthy();
+    expect(mapJoinStatus('')).toBeTruthy();
   });
 });

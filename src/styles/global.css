@@ -75,6 +75,10 @@ p {
   gap: var(--space-3);
 }
 
+.screen-header > :first-child {
+  min-width: 0;
+}
+
 .screen-title {
   font-size: 22px;
   font-weight: 700;
@@ -144,6 +148,7 @@ p {
   padding: 0;
 }
 
+.icon-btn,
 .print-icon-btn {
   width: var(--tap-min);
   height: var(--tap-min);
@@ -155,122 +160,41 @@ p {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--color-border);
 }
+.icon-btn:hover,
 .print-icon-btn:hover {
   background: rgba(255, 255, 255, 0.1);
 }
+.icon-btn:active,
 .print-icon-btn:active {
   transform: scale(0.95);
-}
-
-.assignee-select {
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--color-text);
-  border: 1px solid var(--color-border-input);
-  border-radius: var(--radius-s);
-  padding: 4px 8px;
-  height: var(--tap-min);
-  width: auto;
-  font-size: 13px;
-}
-.assignee-select:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-/* The colour and width now come from the global :focus-visible rule at the bottom of this
-   file; all this needs is a tighter offset, because the select sits in a crowded task row. */
-.assignee-select:focus-visible {
-  outline-offset: 1px;
-}
-
-.priority-dot {
-  /* 14px to look at, 44px to hit: the button is the dot, the pseudo-element is the area around it. */
-  position: relative;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  border: none;
-  padding: 0;
-}
-button.priority-dot::after {
-  content: '';
-  position: absolute;
-  inset: -15px;
-}
-.priority-dot.red {
-  background: var(--color-red);
-  animation: dot-ping 1.8s ease-out infinite;
-}
-.priority-dot.yellow {
-  background: var(--color-yellow);
-}
-.priority-dot.green {
-  background: var(--color-green);
-}
-
-@keyframes dot-ping {
-  0% {
-    box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.5);
-  }
-  70% {
-    box-shadow: 0 0 0 8px rgba(255, 59, 48, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(255, 59, 48, 0);
-  }
 }
 
 .priority-card {
   border: 3px solid transparent;
 }
-/* Each priority gets its own glow instead of sharing --shadow-pop (which is now a
-   green glow reserved for .home-mascot) — an urgent red card shouldn't glow green. */
-.priority-card.red {
-  border-color: var(--color-red-bright);
-  box-shadow: 0 0 16px -4px rgba(255, 59, 48, 0.6);
-}
-.priority-card.yellow {
-  border-color: var(--color-yellow-bright);
-  box-shadow: 0 0 14px -4px rgba(255, 170, 0, 0.45);
-}
+/* Only the "green" variant is still used (Consumption marks the selected day with it). The task list
+   moved to .task-row, below. */
 .priority-card.green {
   border-color: var(--color-border);
-}
-.priority-card.done {
-  border-color: var(--color-green-bright);
-  background: var(--color-green-bg);
-  box-shadow: 0 0 16px -4px rgba(0, 255, 135, 0.5);
-}
-.priority-card.done .task-title {
-  text-decoration: line-through;
-  opacity: 0.55;
 }
 
 .tasks-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: var(--space-2);
   align-items: stretch;
-}
-/* A leftover single card at the end of an odd-length list spans the full row instead of
-   sitting stranded in one column with empty space beside it. */
-.tasks-grid > :last-child:nth-child(odd) {
-  grid-column: 1 / -1;
-}
-
-.task-card-compact .row {
-  flex-wrap: wrap;
 }
 
 .task-title {
   word-break: break-word;
   position: relative;
 }
-/* The title is the button that opens a task, and one line of text is 16px tall. Its inline style
-   zeroes the padding, so the 44px comes from a pseudo-element instead. */
+/* The title is the button that opens a task. A line of text is shorter than a thumb, so the area
+   around it is part of the button (only 8px, because the priority chip under it claims the rest). */
 .task-title::after {
   content: '';
   position: absolute;
-  inset-block: -14px;
+  inset-block: -8px;
   inset-inline: 0;
 }
 
@@ -948,88 +872,6 @@ textarea {
   color: var(--color-text);
 }
 
-/* Home hero decoration */
-.home-hero {
-  position: relative;
-  margin-bottom: var(--space-4);
-}
-
-.home-hero .screen-header {
-  position: relative;
-  z-index: 1;
-  margin-bottom: 0;
-}
-
-.home-blob {
-  position: absolute;
-  z-index: 0;
-  pointer-events: none;
-  opacity: 0.8;
-}
-
-.home-blob-a {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: var(--color-yellow-bright);
-  top: -10px;
-  inset-inline-start: 2px;
-  animation: float-a 4.5s ease-in-out infinite;
-}
-
-.home-blob-b {
-  width: 14px;
-  height: 14px;
-  border-radius: 5px;
-  background: #3bb6ff;
-  bottom: -6px;
-  inset-inline-start: 40px;
-  animation: float-b 3.8s ease-in-out infinite;
-}
-
-.home-mascot {
-  width: 48px;
-  height: 48px;
-  border-radius: var(--radius-s);
-  background: var(--color-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: var(--shadow-pop);
-  flex-shrink: 0;
-  animation: wiggle 3.5s ease-in-out infinite;
-}
-
-@keyframes float-a {
-  0%,
-  100% {
-    transform: translateY(0) rotate(0deg);
-  }
-  50% {
-    transform: translateY(-8px) rotate(6deg);
-  }
-}
-
-@keyframes float-b {
-  0%,
-  100% {
-    transform: translateY(0) rotate(0deg);
-  }
-  50% {
-    transform: translateY(6px) rotate(-8deg);
-  }
-}
-
-@keyframes wiggle {
-  0%,
-  100% {
-    transform: rotate(-3deg);
-  }
-  50% {
-    transform: rotate(3deg);
-  }
-}
-
 /* Print — prep lists leaving the phone onto paper for a station with no screen. Everything
    in the app renders with the OLED-dark tokens above, so without this override a printout
    would come out near-black; the rules below force a plain black-on-white page instead. */
@@ -1043,14 +885,14 @@ textarea {
   .count-save-bar,
   .toast,
   .btn,
-  .home-blob,
   .swipe-action,
   .no-print {
     display: none !important;
   }
 
   body,
-  .card {
+  .card,
+  .task-row {
     background: #fff !important;
     color: #000 !important;
     box-shadow: none !important;
@@ -1059,8 +901,24 @@ textarea {
     font-variant-numeric: tabular-nums;
   }
 
-  .card {
+  .card,
+  .task-row {
     page-break-inside: avoid;
+  }
+
+  /* The edge stripe and the red outline are colour signals; on paper the words say the same. */
+  .task-row::before {
+    display: none;
+  }
+
+  .task-row {
+    outline: none !important;
+    border-bottom: 1px solid #000;
+  }
+
+  .task-row .task-meta,
+  .task-row .task-meta * {
+    color: #000 !important;
   }
 
   .print-only {
@@ -1096,12 +954,6 @@ textarea {
   /* Two columns on screen, one on paper — a prep list is read top to bottom. */
   .tasks-grid {
     grid-template-columns: 1fr !important;
-  }
-
-  /* Only .home-blob was hidden; the hero's own gradient still printed as a grey slab. */
-  .home-hero {
-    background: none !important;
-    padding: 0 !important;
   }
 }
 
@@ -1183,6 +1035,11 @@ textarea {
   background: var(--color-surface);
 }
 
+.task-row .task-check::before {
+  inset: 9px;
+  border-radius: 8px;
+}
+
 .task-check[aria-checked='true']::before {
   border-color: var(--color-green);
   background: var(--color-green);
@@ -1192,9 +1049,9 @@ textarea {
   content: '';
   position: absolute;
   inset-inline-start: 19px;
-  top: 17px;
-  width: 5px;
-  height: 10px;
+  top: 15px;
+  width: 6px;
+  height: 12px;
   border: solid #fff;
   border-width: 0 2.5px 2.5px 0;
   transform: rotate(45deg);
@@ -1269,17 +1126,9 @@ textarea {
     --content-max: 900px;
   }
 
+  /* Rows, not cards: a task is one line of work, so two across is plenty at this width. */
   .tasks-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-
-  /* The full-row stretch below .tasks-grid is written for exactly two columns
-     (`:last-child:nth-child(odd)` is "alone on its row" only when rows hold two).
-     At three and four columns it fires on the wrong cards, and a lone task card
-     stretched across a 1040px row would tower over its siblings anyway, so the
-     stretch is simply dropped rather than re-derived per column count. */
-  .tasks-grid > :last-child:nth-child(odd) {
-    grid-column: auto;
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .nav-grid {
@@ -1293,13 +1142,13 @@ textarea {
   }
 
   .tasks-grid {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
   }
 }
 
 /* ---------------------------------------------------------------------------
    Focus. There was exactly one :focus-visible rule in this whole stylesheet
-   (.assignee-select, below) — fine while every control was touch-only, and a
+   (the assignee picker) — fine while every control was touch-only, and a
    real hole the moment phase 4 gave the completion checkbox a keyboard path:
    a cook tabbing through a prep list could not see where they were. `body` sets
    -webkit-tap-highlight-color: transparent, which removes the touch flash, so
@@ -1344,10 +1193,6 @@ textarea {
     scroll-behavior: auto !important;
   }
 
-  .priority-dot,
-  .home-blob-a,
-  .home-blob-b,
-  .home-mascot,
   .skeleton-block {
     animation: none !important;
   }
@@ -1507,7 +1352,7 @@ textarea {
   background: var(--color-bg);
 }
 
-/* A small status dot. Not .priority-dot: that one means task urgency and pulses. */
+/* A small status dot. */
 .dot {
   display: inline-block;
   flex-shrink: 0;
@@ -1823,28 +1668,6 @@ textarea {
   transform: scaleX(-1);
 }
 
-/* The date picker on the task screen. It sits beside the one real action ("+ משימה") and used to be
-   drawn as loud as it: the browser's default light, full-size field on a dark app. It is a
-   secondary control — most visits never touch it — so it is small, takes the app's own surface
-   and text colours, and lets the browser's picker draw itself dark (`color-scheme`) instead of
-   in whatever the platform default is. */
-.date-chip {
-  flex: none;
-  width: auto;
-  height: var(--tap-min);
-  padding: 0 10px;
-  border: 1px solid var(--color-border-input);
-  border-radius: var(--radius-s);
-  background: transparent;
-  color: var(--color-text-muted);
-  font-size: 13px;
-  color-scheme: dark;
-}
-
-.date-chip:focus-visible {
-  color: var(--color-text);
-}
-
 /* ---------------------------------------------------------------------------
    Pressed state. `body` turns off the browser's own tap flash (-webkit-tap-highlight-color), and
    most controls had no :active rule of their own, so a tap gave no feedback at all until the
@@ -1853,6 +1676,7 @@ textarea {
    and finishes the work afterwards.
    --------------------------------------------------------------------------- */
 .btn:active,
+.icon-btn:active,
 .print-icon-btn:active {
   filter: brightness(0.85);
 }
@@ -2031,13 +1855,6 @@ textarea {
   min-width: 0;
 }
 
-/* A task that cannot be made with what is on the shelf: a thick red stripe down the start edge and a
-   warning line, so urgency reads without reading. It sits on top of the priority border rather than
-   replacing it — priority is about the product's stock, this is about its ingredients. */
-.priority-card.critical {
-  border-inline-start: 10px solid var(--color-red-bright);
-}
-
 .critical-note {
   display: flex;
   align-items: center;
@@ -2080,16 +1897,7 @@ textarea {
   font-size: 17px;
 }
 
-/* "נשארה מאתמול": a quiet note on a task carried over from an earlier day. Muted yellow, small — it
-   informs without competing with the red stripe or the priority border. */
-.carried-note {
-  margin-top: var(--space-2);
-  color: var(--color-yellow);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-/* Standing tasks: the weekday toggles and the little tag on a card made from one. */
+/* Standing tasks: the weekday toggles. */
 .weekday-picker {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
@@ -2110,13 +1918,6 @@ textarea {
   border-color: var(--color-primary);
   background: var(--color-primary);
   color: var(--color-primary-contrast);
-}
-
-.recurring-tag {
-  margin-top: var(--space-2);
-  color: var(--color-text-muted);
-  font-size: 13px;
-  font-weight: 600;
 }
 
 /* "N items past their date" at the top of the task list. A single full-width tap target: the
@@ -2142,4 +1943,269 @@ textarea {
 
 .expiry-banner-text {
   flex: 1;
+}
+
+/* ---------------------------------------------------------------------------
+   The task row. One line of work: a box to tick, the name, who and how urgent, and a menu.
+
+   Priority used to be said four times on one card (a 3px border with a glow, a pulsing dot, a pill),
+   so when the whole list was urgent nothing was. Now it is said twice, in two different ways: the
+   colour as a stripe on the edge, the word as a chip under the name. The red outline is kept for the
+   one other thing that can be wrong with a task, an ingredient that is missing.
+   --------------------------------------------------------------------------- */
+.task-row {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding-inline: var(--space-4) var(--space-3);
+  background: var(--color-surface);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.task-row::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 4px;
+  background: var(--color-border);
+}
+
+.task-row.red::before {
+  background: var(--color-red-bright);
+}
+
+.task-row.yellow::before {
+  background: var(--color-yellow-bright);
+}
+
+.task-row.critical {
+  outline: 2px solid var(--color-red-bright);
+  outline-offset: -2px;
+}
+
+.task-row.done {
+  background: var(--color-green-bg);
+}
+
+.task-row.done::before {
+  background: var(--color-green-bright);
+}
+
+.task-row.done .task-title {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+
+.task-row-main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 64px;
+  padding-block: var(--space-2);
+}
+
+.task-row-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.task-row .task-title {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: start;
+}
+
+.task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--space-3);
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.task-meta-carried {
+  color: var(--color-yellow);
+}
+
+.prio-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-weight: 700;
+}
+
+/* 12px of text, 44px of button. */
+.prio-chip::after {
+  content: '';
+  position: absolute;
+  inset: -16px -8px;
+}
+
+.prio-chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.prio-chip.red {
+  color: var(--color-red);
+}
+
+.prio-chip.yellow {
+  color: var(--color-yellow);
+}
+
+.assignee-chip {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  border: 1px solid var(--color-border-input);
+  border-radius: 50%;
+  background: var(--color-surface-2);
+  color: var(--color-text-muted);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* The real control, invisible over the circle. 16px so iOS does not zoom the page on focus. */
+.assignee-chip select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.assignee-chip:has(select:focus-visible) {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.task-more {
+  background: none;
+  border-color: transparent;
+}
+
+.task-row .unit-mismatch {
+  margin-bottom: var(--space-2);
+}
+
+.task-row .critical-note {
+  margin: 0 0 var(--space-2);
+}
+
+/* Header icons: search, date, print. */
+.header-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex: none;
+}
+
+.icon-btn[aria-pressed='true'] {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+/* A real date input laid invisibly over the icon, so the platform's own picker opens. */
+.date-btn {
+  position: relative;
+  cursor: pointer;
+  color-scheme: dark;
+}
+
+.date-btn input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.date-btn:has(input:focus-visible) {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Shown only while looking at a day that is not today, because the date itself is behind an icon. */
+.day-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: var(--tap-min);
+  margin-bottom: var(--space-3);
+  padding-inline: var(--space-3) var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-s);
+  background: var(--color-surface);
+  font-size: 14px;
+}
+
+.day-banner button {
+  min-height: var(--tap-min);
+  padding-inline: var(--space-3);
+  border: none;
+  background: none;
+  color: var(--color-link);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* "+ משימה": floats above the nav at the end edge. Opposite .sync-badge (start edge, same row), so the
+   sync pill that asks a person to act is never underneath it. Click-through except the button. */
+.fab-bar {
+  position: fixed;
+  inset-inline: 0;
+  bottom: calc(var(--nav-total-height) + var(--space-3));
+  max-width: var(--content-max);
+  margin-inline: auto;
+  display: flex;
+  justify-content: flex-end;
+  padding-inline: var(--space-4);
+  z-index: 20;
+  pointer-events: none;
+}
+
+.fab {
+  min-height: var(--btn-height);
+  padding-inline: var(--space-5);
+  border-radius: 999px;
+  font-size: 16px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+  pointer-events: auto;
+}
+
+/* So the last row can scroll clear of the floating button. */
+.fab-spacer {
+  height: calc(var(--btn-height) + var(--space-5));
 }

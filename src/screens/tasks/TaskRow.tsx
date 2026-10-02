@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { useApp } from '../../store/AppContext';
 import type { DisplayTask } from '../../lib/tasks';
-import { PriorityDot, PriorityPill } from '../../components/PriorityDot';
-import { AlertIcon } from '../../components/icons';
+import { PriorityChip } from '../../components/PriorityChip';
+import { AlertIcon, MoreIcon } from '../../components/icons';
 import { SwipeToComplete } from '../../components/SwipeToComplete';
 import { completeTask } from './completeTask';
 import { TaskDetailSheet } from './TaskDetailSheet';
 import { QuickActionsSheet } from './QuickActionsSheet';
+import { TaskMenuSheet } from './TaskMenuSheet';
+import { AssigneeChip } from './AssigneeChip';
 import { useUndo } from '../../lib/undo';
 import { daysBetween } from '../../lib/date';
 import { useToday } from '../../lib/useToday';
@@ -27,6 +29,7 @@ export function TaskRow({ task }: { task: DisplayTask }) {
   const today = useToday();
   const [detailOpen, setDetailOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const recipe = state.recipes.find((r) => r.id === task.recipeId);
 
   const isAuto = task.source === 'auto';
@@ -86,6 +89,8 @@ export function TaskRow({ task }: { task: DisplayTask }) {
       : `${recipe.name} — מתכון ×${task.multiplier}`
     : task.title ?? 'משימה';
 
+  const assignee = state.cooks.find((c) => c.id === task.assigneeId);
+
   return (
     <SwipeToComplete
       onComplete={task.done ? undoDone : markDone}
@@ -93,64 +98,64 @@ export function TaskRow({ task }: { task: DisplayTask }) {
       // Left is quick actions on a recipe-backed task; a free-text one has no ingredients to report.
       onAction={recipe ? () => setActionsOpen(true) : undefined}
     >
-      <div
-        className={`card priority-card task-card-compact ${task.priority}${task.done ? ' done' : ''}${task.blocked ? ' critical' : ''}`}
-      >
-        <div className="row">
-          <div className="row" style={{ gap: 6 }}>
-            {/*
-              The single action in this app's core loop used to be swipe-only: SwipeToComplete
-              listens for touch events and nothing else, and its reveal panel is aria-hidden.
-              That made "mark this done" unreachable by mouse, by keyboard and by screen reader.
+      {/* Priority is the stripe on the row's edge (colour) and the chip under the title (word); a
+          red outline is kept for the other thing that can be wrong, a missing ingredient. */}
+      <div className={`task-row ${task.priority}${task.done ? ' done' : ''}${task.blocked ? ' critical' : ''}`}>
+        <div className="task-row-main">
+          {/*
+            The single action in this app's core loop used to be swipe-only: SwipeToComplete
+            listens for touch events and nothing else, and its reveal panel is aria-hidden.
+            That made "mark this done" unreachable by mouse, by keyboard and by screen reader.
 
-              Rather than adding a new control, the decorative print-only box that already sat in
-              exactly this slot is promoted to a real one. Zero net layout change, and the same
-              handlers the swipe calls.
+            Rather than adding a new control, the decorative print-only box that already sat in
+            exactly this slot is promoted to a real one. Zero net layout change, and the same
+            handlers the swipe calls.
 
-              The class is `task-check`, deliberately NOT `btn`: `@media print` carries
-              `.btn { display: none !important }`, so a checkbox carrying that class would
-              vanish from the printed prep list — and nobody would notice until it was on paper.
-            */}
-            <button
-              type="button"
-              className="task-check print-check"
-              role="checkbox"
-              aria-checked={task.done}
-              aria-label={task.done ? 'בטל סימון בוצע' : 'סמן כבוצע'}
-              onClick={task.done ? undoDone : markDone}
-            />
-            <PriorityDot priority={task.priority} onClick={cyclePriority} />
-            <PriorityPill priority={task.priority} />
+            The class is `task-check`, deliberately NOT `btn`: `@media print` carries
+            `.btn { display: none !important }`, so a checkbox carrying that class would
+            vanish from the printed prep list — and nobody would notice until it was on paper.
+          */}
+          <button
+            type="button"
+            className="task-check print-check"
+            role="checkbox"
+            aria-checked={task.done}
+            aria-label={task.done ? 'בטל סימון בוצע' : 'סמן כבוצע'}
+            onClick={task.done ? undoDone : markDone}
+          />
+          <div className="task-row-body">
             <button
               type="button"
               className="task-title"
               onClick={() => recipe && setDetailOpen(true)}
-              style={{
-                background: 'none',
-                border: 'none',
-                padding: 0,
-                textAlign: 'start',
-                fontWeight: 600,
-                cursor: recipe ? 'pointer' : 'default',
-              }}
+              style={{ cursor: recipe ? 'pointer' : 'default' }}
             >
               {title}
             </button>
+            <div className="task-meta">
+              <PriorityChip priority={task.priority} onClick={cyclePriority} />
+              {assignee && (
+                <span className="task-meta-cook" style={{ color: assignee.color }}>
+                  {assignee.name}
+                </span>
+              )}
+              {task.recurring && <span>↻ קבועה</span>}
+              {task.carriedFrom && !task.done && (
+                <span className="task-meta-carried">{carriedLabel(daysBetween(task.carriedFrom, today))}</span>
+              )}
+            </div>
           </div>
+          <AssigneeChip cooks={state.cooks} value={task.assigneeId} onChange={setAssignee} />
           <button
             type="button"
-            className="btn btn-icon no-print"
-            style={{ minHeight: 48, minWidth: 48 }}
-            onClick={deleteTask}
-            aria-label="מחק משימה"
+            className="icon-btn task-more no-print"
+            onClick={() => setMenuOpen(true)}
+            aria-label="עוד פעולות"
+            aria-haspopup="dialog"
           >
-            ✕
+            <MoreIcon size={20} />
           </button>
         </div>
-        {task.recurring && <p className="recurring-tag">↻ קבועה</p>}
-        {task.carriedFrom && !task.done && (
-          <p className="carried-note">{carriedLabel(daysBetween(task.carriedFrom, today))}</p>
-        )}
         {task.blocked && (
           <p className="critical-note">
             <AlertIcon size={18} />
@@ -158,28 +163,27 @@ export function TaskRow({ task }: { task: DisplayTask }) {
           </p>
         )}
         {task.unitMismatch && (
-          <p className="pill red" style={{ marginTop: 'var(--space-2)' }}>
-            יחידת המלאי לא תואמת ליחידת המתכון — צריך לתקן בעריכת הפריט
-          </p>
+          <p className="pill red unit-mismatch">יחידת המלאי לא תואמת ליחידת המתכון — צריך לתקן בעריכת הפריט</p>
         )}
-        <div className="row" style={{ marginTop: 'var(--space-2)', gap: 8 }}>
-          <select
-            value={task.assigneeId ?? ''}
-            onChange={(e) => setAssignee(e.target.value)}
-            aria-label="שיוך לטבח"
-            className="assignee-select"
-          >
-            <option value="">— ללא —</option>
-            {state.cooks.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        {menuOpen && (
+          <TaskMenuSheet
+            title={title}
+            hasRecipe={Boolean(recipe)}
+            onClose={() => setMenuOpen(false)}
+            onDetails={() => {
+              setMenuOpen(false);
+              setDetailOpen(true);
+            }}
+            onQuickActions={() => {
+              setMenuOpen(false);
+              setActionsOpen(true);
+            }}
+            onDelete={deleteTask}
+          />
+        )}
         {detailOpen && <TaskDetailSheet task={task} onClose={() => setDetailOpen(false)} />}
-        {/* Inside the card, like the detail sheet: a sibling of the swipe wrapper would become a second
-            child of `.tasks-grid` and break its "lone last card spans the row" rule. */}
+        {/* Inside the row, like the sheets above: a sibling of the swipe wrapper would become a second
+            child of `.tasks-grid` and add a phantom cell to the list. */}
         {actionsOpen && recipe && (
           <QuickActionsSheet task={task} recipe={recipe} onClose={() => setActionsOpen(false)} />
         )}

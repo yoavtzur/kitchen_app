@@ -26,6 +26,18 @@ html {
   touch-action: manipulation;
 }
 
+/* A solid strip exactly as tall as the status bar, so a list scrolling up never slides its text
+   behind the clock. Height 0 (nothing drawn) wherever the device reserves no top inset. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: env(safe-area-inset-top, 0px);
+  background: var(--color-bg);
+  z-index: 15;
+  pointer-events: none;
+}
+
 button {
   font-family: inherit;
   color: inherit;
@@ -54,7 +66,11 @@ p {
 
 .app-main {
   flex: 1;
-  padding: var(--space-4) var(--space-4) calc(var(--nav-total-height) + var(--space-5));
+  /* The top inset is the status bar / Dynamic Island on a notched iPhone launched from the home
+     screen (status-bar-style black-translucent draws the page *under* it). Without it the clock
+     and signal sit on top of the screen title. 0 everywhere else. */
+  padding: calc(var(--space-4) + env(safe-area-inset-top, 0px)) var(--space-4)
+    calc(var(--nav-total-height) + var(--space-5));
   max-width: var(--content-max);
   margin: 0 auto;
   width: 100%;
@@ -415,7 +431,8 @@ p {
   max-width: var(--content-max);
   max-height: 88vh;
   overflow-y: auto;
-  padding: var(--space-5) var(--space-4) var(--space-6);
+  /* The last button of a sheet must clear the home indicator, not sit under it. */
+  padding: var(--space-5) var(--space-4) calc(var(--space-6) + env(safe-area-inset-bottom, 0px));
 }
 
 .sheet-header {
@@ -1484,7 +1501,8 @@ textarea {
    without it the rows would show through behind the pills. */
 .sticky-tabs {
   position: sticky;
-  top: 0;
+  /* Stick below the status bar strip, not under it. */
+  top: env(safe-area-inset-top, 0px);
   z-index: 5;
   margin-inline: calc(var(--space-4) * -1);
   padding: var(--space-2) var(--space-4) 0;

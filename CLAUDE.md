@@ -864,6 +864,15 @@ reason the invite link (`kitchen-pending-invite` is banked in the browser's stor
 browser before installing. WhatsApp's in-app viewer cannot be told from Safari by its user agent, so it simply
 shows the steps. Not built: a real install button for Android (its browser has its own prompt).
 
+**Notched iPhones: the page is drawn under the status bar, so the top inset is handled in CSS.**
+`index.html` sets `viewport-fit=cover` and `black-translucent`, which makes an installed app edge-to-edge —
+and puts the clock and Dynamic Island on top of whatever is at y=0. `.app-main` therefore pads its top by
+`env(safe-area-inset-top)` (every screen, including auth and the crash screen, renders inside it), a
+`body::before` strip of exactly that height keeps scrolling content from sliding behind the clock, and
+`.sticky-tabs` sticks below it. Sheets pad their bottom by the home-indicator inset. All of it is 0 where the
+device reserves nothing. Check it in Chromium with CDP `Emulation.setSafeAreaInsetsOverride` (a context with
+`isMobile`, 440x956, top 62 / bottom 34) — the only way to see an inset without the device.
+
 **Do not add `manualChunks`.** It was measured on this codebase and is a net loss; `vite.config.ts`
 carries the numbers.
 

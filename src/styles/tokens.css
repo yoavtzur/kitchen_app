@@ -33,6 +33,10 @@
   --color-yellow-bg: #2a2210;
   --color-yellow-bright: #ffaa00;
   --color-green: #00ff87;
+  /* What "fine" looks like. The neon green above is the brand and means "this is the action" or "this
+     is done"; a status that is merely OK (enough stock, nothing to prepare, saved) is this quieter
+     green, so a list of fine things does not read as a list of buttons. 6.7:1 on --color-green-bg. */
+  --color-ok: #4fbf8a;
   --color-green-bg: #10291f;
   --color-green-bright: #00ff87;
 

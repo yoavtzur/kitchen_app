@@ -834,6 +834,28 @@ Anything that looks smaller than 44px gets the area without looking bigger: `.pr
 `.task-title` use a `::after` that extends past the box. No text below 12px. `.count-save-bar::before` fades the list out under the
 floating save/approve button.
 
+### Each colour means one thing (2026-10-02, no migration)
+
+The neon green was carrying five meanings (the action, the active tab, done, "fine", and every number
+on the planning screen), so a list of fine things read as a list of buttons. The rule now:
+
+- **`--color-primary` (neon green): do this, or you are here.** Primary buttons, the active tab and nav
+  slot, a selected chip, the field you fill in on the morning order. Also *done* (the ticked box, the
+  swipe-right panel, the progress fill), because completing is the action.
+- **`--color-ok` (muted green): fine.** `.pill.green` (enough stock, nothing to prepare today, a saved
+  toast). A status is never the brand green.
+- **White: a number.** `.number-editor-value` is white with a dotted underline as the hint that it can be
+  tapped. `.emphasis` (neon) marks the one number on a row that asks something of you ("הכנה להיום"
+  when above zero); `.zero` mutes it when nothing is needed.
+- **Yellow: needs attention, but not yet.** **Red: this cannot be done now** (an expired item, a task
+  missing an ingredient, a failed action). A projected shortfall in the week strip is yellow while it is
+  for a later day and red (`.week-day.urgent`) only for today or a day already past.
+- Headings are muted text, not green (`.supplier-group`).
+
+`WeekStrip` also brings the selected day to the middle of its scroll area and calls today "היום". The
+`.stat-card` rules (including a purple "neutral" variant) have no caller and were left alone; they are
+dead code, not part of this palette.
+
 ### Tablet, focus, motion
 
 Three rules at the bottom of `global.css`, each fixing something that was invisible on the phone

@@ -214,9 +214,10 @@ p {
   background: var(--color-yellow-bg);
   color: var(--color-yellow);
 }
+/* A status of "fine". Deliberately not the brand green: see --color-ok in tokens.css. */
 .pill.green {
   background: var(--color-green-bg);
-  color: var(--color-green);
+  color: var(--color-ok);
 }
 
 .sync-badge {
@@ -375,14 +376,30 @@ p {
   width: 100%;
 }
 
+/* A number you can tap to change. White, like any other number, with a dotted underline as the
+   hint that it is editable: green meant "action" everywhere else and used to colour every figure on
+   the planning screen. `.emphasis` is the one number on a row that asks something of you. */
 .number-editor-value {
   font-weight: 700;
-  color: var(--color-primary);
+  color: var(--color-text);
+  text-decoration: underline dotted var(--color-text-muted);
+  text-underline-offset: 5px;
   background: none;
   border: none;
   padding: 4px 8px;
   border-radius: var(--radius-s);
   font-size: inherit;
+}
+
+.number-editor-value.emphasis {
+  color: var(--color-primary);
+  font-weight: 900;
+  text-decoration-color: currentColor;
+}
+
+.number-editor-value.zero {
+  color: var(--color-text-muted);
+  font-weight: 400;
 }
 
 .number-editor-value:active {
@@ -454,9 +471,19 @@ table.data-table th {
   font-weight: 700;
 }
 
+/* A projected shortfall. Yellow while it is a forecast for a later day; red (`.urgent`) only when it is
+   today or already past, because red is reserved for "this cannot be done now". */
 .week-day.alert {
-  border: 2px solid var(--color-red);
+  border: 2px solid var(--color-yellow);
   position: relative;
+}
+
+.week-day.alert.urgent {
+  border-color: var(--color-red);
+}
+
+.week-day .week-day-name {
+  font-weight: 700;
 }
 
 .week-day.alert .pill {
@@ -713,7 +740,7 @@ textarea {
 .supplier-group {
   font-size: 13px;
   font-weight: 700;
-  color: var(--color-primary);
+  color: var(--color-text-muted);
   padding: var(--space-3) var(--space-2) var(--space-1);
 }
 

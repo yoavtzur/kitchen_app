@@ -46,8 +46,13 @@ export type Product = {
   dailyUsageByWeekday?: WeekdayUsage;
   recipeId?: string;
   coverageDaysOverride?: number;
-  /** Last day it is good (YYYY-MM-DD) — see `Ingredient.expiresOn`. */
+  /** Last day it is good (YYYY-MM-DD) — see `Ingredient.expiresOn`. For a prepared product this is
+   * the **earliest** date among what is on the shelf (the conservative one), set when a prep task
+   * is completed — see lib/expiry.ts `batchExpiry`. */
   expiresOn?: string;
+  /** Last day the **most recently prepared** batch is good. Only there to answer "what is left
+   * good until?" after the older batch is thrown (the earliest date is then stale). Optional. */
+  lastBatchExpiresOn?: string;
 };
 
 /** A station's id (see `Station`), or the built-in `'general'` ("כללי") fallback for
@@ -80,16 +85,27 @@ export type Recipe = {
   yieldQty: number;
   yieldUnit: Unit;
   producesProductId?: string;
+  /** How many days after the day it is made the product stays good (0 = that day only). Absent =
+   * no date is set on completion. Whole days; the chef enters it, nobody else changes it. */
+  shelfLifeDays?: number;
   items: RecipeItem[];
   steps: string[];
 };
 
 export type Priority = 'red' | 'yellow' | 'green';
 
+/** What a completion did to the produced product's expiry dates, kept so "undo" puts back exactly
+ * what was there rather than recomputing. Absent when the recipe has no shelf life. */
+export type ExpiryChange = {
+  before: { expiresOn?: string; lastBatchExpiresOn?: string };
+  after: { expiresOn: string; lastBatchExpiresOn: string };
+};
+
 export type TaskCompletion = {
   ingredientDeltas: { id: string; delta: number }[];
   producedProductId?: string;
   producedQty?: number;
+  expiryChange?: ExpiryChange;
 };
 
 export type Task = {

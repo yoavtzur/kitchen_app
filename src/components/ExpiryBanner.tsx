@@ -3,7 +3,7 @@ import { useApp } from '../store/AppContext';
 import { useAuth } from '../auth/AuthContext';
 import { useToday } from '../lib/useToday';
 import { useUndo } from '../lib/undo';
-import { expiredItems, type ExpiredItem } from '../lib/expiry';
+import { expiredItems, remainingExpiry, soonItems, type ExpiredItem } from '../lib/expiry';
 import { formatDayMonth } from '../lib/date';
 import { newWasteEntry } from '../lib/waste';
 import { formatQty, unitLabel } from '../lib/units';
@@ -11,7 +11,12 @@ import { BottomSheet } from './BottomSheet';
 import { ExpirySheet } from './ExpirySheet';
 import { NumberEditor } from './NumberEditor';
 
-type Step = { kind: 'list' } | { kind: 'discard'; item: ExpiredItem } | { kind: 'extend'; item: ExpiredItem };
+type Step =
+  | { kind: 'list' }
+  | { kind: 'discard'; item: ExpiredItem }
+  | { kind: 'extend'; item: ExpiredItem }
+  // Part of a product was thrown and a newer batch is left: ask until when the rest is good.
+  | { kind: 'remaining'; item: ExpiredItem; left: number; suggested: string };
 
 /**
  * "3 פריטים פגי תוקף — בדקו אותם", at the top of the task list, and gone when nothing is past its
@@ -28,20 +33,39 @@ export function ExpiryBanner() {
   const today = useToday();
   const [open, setOpen] = useState(false);
   const items = expiredItems(state, today);
+  const soon = soonItems(state, today);
 
-  if (items.length === 0) return null;
+  if (items.length === 0 && soon.length === 0) return null;
 
   return (
     <>
-      <button type="button" className="expiry-banner" onClick={() => setOpen(true)}>
-        <span className="dot red" aria-hidden="true" />
-        <span className="expiry-banner-text">
-          {items.length === 1 ? 'פריט אחד פג תוקף' : `${items.length} פריטים פגי תוקף`} — בדקו אותם
-        </span>
-      </button>
+      {items.length > 0 && (
+        <button type="button" className="expiry-banner" onClick={() => setOpen(true)}>
+          <span className="dot red" aria-hidden="true" />
+          <span className="expiry-banner-text">
+            {items.length === 1 ? 'פריט אחד פג תוקף' : `${items.length} פריטים פגי תוקף`} — בדקו אותם
+          </span>
+        </button>
+      )}
+      {/* Not a button: nothing to decide yet. It names what to use first, before it becomes waste. */}
+      {soon.length > 0 && (
+        <p className="expiry-banner soon" role="status">
+          <span className="dot amber" aria-hidden="true" />
+          <span className="expiry-banner-text">
+            {soon.some((i) => i.daysLeft === 0) ? 'פג היום' : 'פג מחר'}: {soonNames(soon)}
+          </span>
+        </p>
+      )}
       {open && <ExpirySheetFlow today={today} onClose={() => setOpen(false)} />}
     </>
   );
+}
+
+/** Up to three names, then "ועוד N" — a banner that wraps to five lines pushes the task list off screen. */
+function soonNames(items: { name: string }[]): string {
+  const names = items.slice(0, 3).map((i) => i.name);
+  const more = items.length - names.length;
+  return more > 0 ? `${names.join(', ')} ועוד ${more}` : names.join(', ');
 }
 
 function ExpirySheetFlow({ today, onClose }: { today: string; onClose: () => void }) {
@@ -66,7 +90,12 @@ function ExpirySheetFlow({ today, onClose }: { today: string; onClose: () => voi
     });
     dispatch({ type: 'LOG_WASTE', entry });
     showUndo(`נזרק ${formatQty(qty, item.unit)} מ"${item.name}"`, () => dispatch({ type: 'UNDO_WASTE', id: entry.id }));
-    setStep({ kind: 'list' });
+    // The earliest date was the old batch's. If a newer one is what remains, its date is the one
+    // that is true now — ask, rather than leave good food flagged or guess silently.
+    const left = Math.round((item.qty - qty) * 1000) / 1000;
+    const product = item.itemType === 'product' ? state.products.find((p) => p.id === item.id) : undefined;
+    const suggested = left > 0 && product ? remainingExpiry(product, item.expiresOn, today) : undefined;
+    setStep(suggested ? { kind: 'remaining', item, left, suggested } : { kind: 'list' });
   }
 
   function extend(item: ExpiredItem, expiresOn: string | null) {
@@ -83,6 +112,22 @@ function ExpirySheetFlow({ today, onClose }: { today: string; onClose: () => voi
     if (allDone) onClose();
   }, [allDone, onClose]);
   if (allDone) return null;
+
+  if (step.kind === 'remaining') {
+    return (
+      <RemainingSheet
+        item={step.item}
+        left={step.left}
+        suggested={step.suggested}
+        today={today}
+        onConfirm={(expiresOn) => {
+          extend(step.item, expiresOn);
+          setStep({ kind: 'list' });
+        }}
+        onClose={() => setStep({ kind: 'list' })}
+      />
+    );
+  }
 
   if (step.kind === 'discard') {
     return <DiscardSheet item={step.item} onDiscard={discard} onClose={() => setStep({ kind: 'list' })} />;
@@ -165,6 +210,58 @@ function DiscardSheet({
         <p className="muted">במלאי: {formatQty(item.qty, item.unit)}. הזריקה תירשם ביומן הזריקות של השף.</p>
         <button type="button" className="btn btn-danger btn-block" disabled={qty <= 0} onClick={() => onDiscard(item, qty)}>
           זרוק
+        </button>
+      </div>
+    </BottomSheet>
+  );
+}
+
+/**
+ * "נשאר X — עד מתי?" after the old batch was thrown. The suggestion is the date of the last batch
+ * made, one tap; "תאריך אחר" is for when the cook knows better, and closing leaves the item flagged
+ * (the list above still asks about it).
+ */
+function RemainingSheet({
+  item,
+  left,
+  suggested,
+  today,
+  onConfirm,
+  onClose,
+}: {
+  item: ExpiredItem;
+  left: number;
+  suggested: string;
+  today: string;
+  onConfirm: (expiresOn: string | null) => void;
+  onClose: () => void;
+}) {
+  const [picking, setPicking] = useState(false);
+  if (picking) {
+    return (
+      <ExpirySheet
+        title={`תוקף — ${item.name}`}
+        today={today}
+        value={suggested}
+        onSave={(next) => onConfirm(next)}
+        onClose={() => setPicking(false)}
+      />
+    );
+  }
+  return (
+    <BottomSheet title={`נשאר — ${item.name}`} onClose={onClose}>
+      <div className="stack-gap-3">
+        <p>
+          נשארו {formatQty(left, item.unit)}. עד מתי הם טובים?
+        </p>
+        <button type="button" className="btn btn-primary btn-block" onClick={() => onConfirm(suggested)}>
+          עד {formatDayMonth(suggested)} (ההכנה האחרונה)
+        </button>
+        <button type="button" className="btn btn-block" onClick={() => setPicking(true)}>
+          תאריך אחר
+        </button>
+        <button type="button" className="btn btn-block" onClick={onClose}>
+          אחר כך
         </button>
       </div>
     </BottomSheet>

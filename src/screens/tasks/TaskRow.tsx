@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { useApp } from '../../store/AppContext';
 import type { DisplayTask } from '../../lib/tasks';
-import { PriorityDot, PriorityPill } from '../../components/PriorityDot';
+import { PriorityChip } from '../../components/PriorityDot';
 import { AlertIcon } from '../../components/icons';
 import { SwipeToComplete } from '../../components/SwipeToComplete';
 import { completeTask } from './completeTask';
 import { TaskDetailSheet } from './TaskDetailSheet';
 import { QuickActionsSheet } from './QuickActionsSheet';
 import { useUndo } from '../../lib/undo';
+import { useBatchLabel } from '../../lib/batchLabel';
+import { expiryStatus } from '../../lib/expiry';
 import { daysBetween } from '../../lib/date';
 import { useToday } from '../../lib/useToday';
 import type { Priority } from '../../types';
@@ -24,18 +26,28 @@ const PRIORITY_CYCLE: Priority[] = ['red', 'yellow', 'green'];
 export function TaskRow({ task }: { task: DisplayTask }) {
   const { state, dispatch } = useApp();
   const { showUndo } = useUndo();
+  const { showBatchLabel } = useBatchLabel();
   const today = useToday();
   const [detailOpen, setDetailOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const recipe = state.recipes.find((r) => r.id === task.recipeId);
 
   const isAuto = task.source === 'auto';
+  // Stock past its date stays counted until someone confirms it was thrown, so the card says so —
+  // otherwise "enough on the shelf" reads as true while the shelf holds something that has turned.
+  const producedProduct = recipe?.producesProductId
+    ? state.products.find((p) => p.id === recipe.producesProductId)
+    : undefined;
+  const staleStock =
+    !task.done && producedProduct !== undefined && producedProduct.currentQty > 0 && expiryStatus(producedProduct.expiresOn, today) === 'expired';
 
   function markDone() {
-    completeTask(task, recipe, task.multiplier, state, dispatch);
+    const label = completeTask(task, recipe, task.multiplier, state, dispatch, today);
     // The completed card leaves the open list, so a slip of the thumb has to be undoable from
     // where the cook is looking — this toast now, or "הושלמו" at the bottom of the list later.
-    showUndo('המשימה הושלמה', undoDone);
+    // A batch with a shelf life shows the label sheet instead, which carries its own undo.
+    if (label) showBatchLabel(label, undoDone);
+    else showUndo('המשימה הושלמה', undoDone);
   }
 
   function cyclePriority() {
@@ -97,7 +109,7 @@ export function TaskRow({ task }: { task: DisplayTask }) {
         className={`card priority-card task-card-compact ${task.priority}${task.done ? ' done' : ''}${task.blocked ? ' critical' : ''}`}
       >
         <div className="row">
-          <div className="row" style={{ gap: 6 }}>
+          <div className="row" style={{ gap: 6, flex: 1, minWidth: 0 }}>
             {/*
               The single action in this app's core loop used to be swipe-only: SwipeToComplete
               listens for touch events and nothing else, and its reveal panel is aria-hidden.
@@ -119,8 +131,6 @@ export function TaskRow({ task }: { task: DisplayTask }) {
               aria-label={task.done ? 'בטל סימון בוצע' : 'סמן כבוצע'}
               onClick={task.done ? undoDone : markDone}
             />
-            <PriorityDot priority={task.priority} onClick={cyclePriority} />
-            <PriorityPill priority={task.priority} />
             <button
               type="button"
               className="task-title"
@@ -157,12 +167,21 @@ export function TaskRow({ task }: { task: DisplayTask }) {
             חסר: {task.blocked.join(', ')}
           </p>
         )}
+        {staleStock && (
+          <p className="critical-note">
+            <AlertIcon size={18} />
+            יש מלאי שפג תוקפו — בדקו
+          </p>
+        )}
         {task.unitMismatch && (
           <p className="pill red" style={{ marginTop: 'var(--space-2)' }}>
             יחידת המלאי לא תואמת ליחידת המתכון — צריך לתקן בעריכת הפריט
           </p>
         )}
-        <div className="row" style={{ marginTop: 'var(--space-2)', gap: 8 }}>
+        {/* Urgency lives down here, a full row away from the done-checkbox: the two used to sit side by
+            side, and a thumb aiming at one hit the other. */}
+        <div className="row task-meta-row" style={{ marginTop: 'var(--space-2)', gap: 8 }}>
+          <PriorityChip priority={task.priority} onClick={cyclePriority} />
           <select
             value={task.assigneeId ?? ''}
             onChange={(e) => setAssignee(e.target.value)}

@@ -20,7 +20,7 @@ npm run preview   # preview a production build
 
 Run a single test file: `npx vitest run src/lib/__tests__/calc.test.ts`
 
-There are 38 test files (561 tests), colocated in `__tests__` folders next to what they cover:
+There are 40 test files (606 tests), colocated in `__tests__` folders next to what they cover:
 `src/lib/__tests__/` (calc, date, ids, integrity, tasks, swipe, units-adjacent helpers, geminiScanner,
 recipeDraft, migrateStations, sentry, analytics, appConfig, focusTrap, rpcErrors, nav, orders,
 ingredientCategories, stations, syncIndicator, invite, cookName, phone, todayFilter, restore, receiving, notices, quickActions, carryOver, recurring),
@@ -688,6 +688,11 @@ still counted in the progress bar, still one swipe from undone (`UNDO_*_COMPLETI
 `reducer.ts`: a count, a delivery) and not by going down (a waste report). It reaches the morning order
 through `suggestedQty` (par level, else a day of cover, else 1) and shows as a red dot.
 
+**The urgency control is a chip, on its own row.** It used to be a bare 14px dot next to the done-checkbox,
+and a thumb aiming at one hit the other — a wrong "done" moves stock. `PriorityChip` (dot + word, one button,
+40px tall) now sits in the meta row with the assignee select, a full row away from the checkbox; the first
+line is checkbox + title (18px) + ✕.
+
 **Tasks missing an ingredient jump the queue.** `blockedIngredients` (`lib/tasks.ts`) compares what the
 multiplier needs with stock *in the ingredient's own unit* (a cross-family line is skipped, not guessed)
 and counts `shortFlag`. `DisplayTask.blocked` is absent when nothing is missing and always absent on a
@@ -1062,6 +1067,30 @@ on it: זרוק with an editable quantity, or האריך), `ExpiryField`/`Expiry
 rule**: like orders and consumption, there is no table for RLS to guard (everything lives in the one
 snapshot blob), and no migration was needed — the new actions are open to every member in
 `action_requires`, on purpose, because discarding food is a floor-level action.
+
+**Also done — shelf life of prepared products (2026-10-02, no migration):** a recipe carries
+`shelfLifeDays` (whole days after the day it is made; 0 = that day only; blank = none), set in
+`RecipeEditor` under "חיי מדף (ימים)" — a recipe edit, so `can_edit_recipes` already governs it
+server-side and no rule was added. Completing a prep task dates the batch: `completeTask` computes
+`producedExpiresOn` from the **caller's `today`**, never the clock (the action replays on every device),
+and both `CONFIRM_*_COMPLETION` actions carry it. The reducer's rule is **earliest date wins**
+(`batchExpiry`, `lib/expiry.ts`): with stock already on the shelf the older, earlier date stays, so the
+whole stock is flagged as soon as the oldest part is due — it can only ever flag early, never hide
+something that has turned. `Product.lastBatchExpiresOn` remembers the newest batch's own date for the
+one moment it matters: when the expired part is thrown and a newer batch is left, `ExpiryBanner` asks
+"עד מתי?" with that date one tap away (`remainingExpiry`). The completion stores an `ExpiryChange`
+(before/after) in `appliedCompletion`, so undo puts back exactly the old dates — and **only if nobody
+changed them since** (an extension made after the completion is newer information). After completing,
+`BatchLabelProvider` (above `<Outlet />`, like `UndoProvider`, because the card leaves the open list the
+moment it is done) shows "כתבו על המכל": name, made-on, good-until, cook initials, and a warning when an
+older batch is still on the shelf. It carries its own "בטל" and replaces the toast for those completions.
+**Decision: expired stock stays counted as stock until someone confirms it was thrown** — nothing
+auto-subtracts it; the prep task for it appears only after the discard. Until then the task card says
+"יש מלאי שפג תוקפו — בדקו" and the red banner stays. The banner also has a quiet yellow line for what is
+due today or tomorrow (`soonItems`). **Easy to miss:** `SAVE_PREP_ITEM` / `UPDATE_PRODUCT` replaced the
+whole product with what the editor sent, and the editor has no expiry field, so every recipe edit used
+to erase the product's dates — `keepExpiry` in the reducer now carries them over. Not built, on purpose:
+real batches (FIFO), per-storage shelf lives (fridge vs. freezer), label printing, push notifications.
 
 ---
 

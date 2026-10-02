@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../store/AppContext';
 import { weekdayValue } from '../lib/calc';
 import { dayName } from '../lib/date';
+import { useToday } from '../lib/useToday';
 import type { Ingredient } from '../types';
 
 type Props = {
@@ -54,6 +55,17 @@ function DeficitPopover({ items, onClose }: { items: Shortfall[]; onClose: () =>
 export function WeekStrip({ dates, selected, onSelect }: Props) {
   const { state } = useApp();
   const [openDay, setOpenDay] = useState<string | null>(null);
+  const today = useToday();
+  const stripRef = useRef<HTMLDivElement>(null);
+
+  // The strip scrolls sideways, and used to open at its start with the day that matters clipped off
+  // the edge. Bring the selected day to the middle; 'nearest' on the block axis so the page itself
+  // never moves.
+  useEffect(() => {
+    stripRef.current
+      ?.querySelector('.week-day.active')
+      ?.scrollIntoView({ inline: 'center', block: 'nearest' });
+  }, [selected]);
 
   const deficits = useMemo(() => computeDeficits(dates, state.ingredients), [dates, state.ingredients]);
 
@@ -67,7 +79,7 @@ export function WeekStrip({ dates, selected, onSelect }: Props) {
 
   return (
     <div>
-      <div className="week-strip">
+      <div className="week-strip" ref={stripRef}>
         {dates.map((date) => {
           const [, m, d] = date.split('-');
           const shortfalls = deficits.get(date) ?? [];
@@ -76,17 +88,17 @@ export function WeekStrip({ dates, selected, onSelect }: Props) {
             <button
               key={date}
               type="button"
-              className={`week-day ${date === selected ? 'active' : ''} ${alert ? 'alert' : ''}`}
+              className={`week-day ${date === selected ? 'active' : ''} ${alert ? 'alert' : ''} ${alert && date <= today ? 'urgent' : ''}`}
               onClick={() => {
                 handleSelect(date);
                 if (alert) toggleAlert(date);
               }}
             >
-              <div>{dayName(date)}</div>
+              <div className={date === today ? 'week-day-name' : undefined}>{date === today ? 'היום' : dayName(date)}</div>
               <div>
                 {d}/{m}
               </div>
-              {alert && <span className="pill red">!{shortfalls.length}</span>}
+              {alert && <span className={`pill ${date <= today ? 'red' : 'yellow'}`}>!{shortfalls.length}</span>}
             </button>
           );
         })}

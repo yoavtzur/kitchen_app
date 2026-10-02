@@ -78,7 +78,7 @@ export function ForgotPassword({ onBack }: { onBack: () => void }) {
         <Turnstile onToken={setCaptcha} resetKey={captchaNonce} />
         {error && <p style={{ color: 'var(--color-red)' }}>{error}</p>}
         {sent && (
-          <p style={{ color: 'var(--color-green)' }}>
+          <p style={{ color: 'var(--color-ok)' }}>
             אם קיים חשבון עם הכתובת הזו, נשלח אליו קישור לאיפוס סיסמה
           </p>
         )}

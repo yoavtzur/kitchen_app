@@ -182,6 +182,7 @@ export function Consumption() {
                     <div className="row" style={{ gap: 4 }}>
                       <NumberEditor
                         value={prep}
+                        className={prep > 0 ? 'emphasis' : 'zero'}
                         label={`הכנה להיום — ${product.name}`}
                         onChange={(prepOverride) =>
                           dispatch({

@@ -20,10 +20,10 @@ npm run preview   # preview a production build
 
 Run a single test file: `npx vitest run src/lib/__tests__/calc.test.ts`
 
-There are 41 test files (613 tests), colocated in `__tests__` folders next to what they cover:
+There are 42 test files (622 tests), colocated in `__tests__` folders next to what they cover:
 `src/lib/__tests__/` (calc, date, ids, integrity, tasks, swipe, units-adjacent helpers, geminiScanner,
 recipeDraft, migrateStations, sentry, analytics, appConfig, focusTrap, rpcErrors, nav, orders,
-ingredientCategories, stations, syncIndicator, invite, cookName, phone, todayFilter, restore, receiving, notices, quickActions, carryOver, recurring),
+ingredientCategories, stations, syncIndicator, invite, cookName, phone, todayFilter, restore, receiving, notices, quickActions, carryOver, recurring, taskRow),
 `src/store/__tests__/{reducer,storage,importValidation}.test.ts`,
 `src/sync/__tests__/{backoff,engine,localAdapter,log,persist}.test.ts`, and **`api/__tests__/` — the one
 test directory outside `src/`**, covering the scan endpoint's guards (see "Closing /api/scan-recipe").
@@ -440,8 +440,8 @@ route, so a route boundary can never take them down; and the whole stack — `Ap
 which is the failure the browser check pins by DOM node identity rather than by reading the code.
 
 Screens live flat in `src/screens/` (app screens plus `Auth.tsx`/`Onboarding.tsx`), except the task UI,
-which is split under `src/screens/tasks/` (`TaskRow`, `TaskDetailSheet`, `AddManualTaskSheet`,
-`completeTask`). Shared UI lives in `src/components/`. Every screen except `Today` is lazily loaded via
+which is split under `src/screens/tasks/` (`TaskRow`, `AssigneeChip`, `TaskMenuSheet`, `TaskDetailSheet`,
+`AddManualTaskSheet`, `QuickActionsSheet`, `completeTask`). Shared UI lives in `src/components/`. Every screen except `Today` is lazily loaded via
 `src/routes.tsx`; `Today` stays eager because it is the PWA's `start_url` and the target of the `/`
 redirect.
 
@@ -475,6 +475,39 @@ station at once.
 list is counted, ordered and grouped — the screen and the nav badge both go through them, so they can
 never show two different numbers for the same day. `taskProgress(...).ratio` is exactly `1` when
 `total === 0`: "nothing to do" must read as complete, where a naive `done / total` gives `NaN`.
+
+**The task list is rows, not cards (2026-10-02, no migration).** The first task used to start about 43%
+of the way down a phone, below a title, a progress bar, a date and add row, a search box and the tabs;
+it now starts around 24%. What changed, and why each is the way it is:
+
+- **Header** is the restaurant name, the date, and three 44px icons (search, date, print). Search
+  opens on demand (`searchOpen`, closed again by the same button, which also clears the query). The
+  date is a real `<input type="date">` laid invisibly over the calendar icon, so the platform's own
+  picker opens; because the date is no longer visible text-in-a-field, a day other than today shows a
+  `.day-banner` with "חזרה להיום". The decorative blobs and mascot are gone (they overlapped the
+  subtitle and carried no information).
+- **Station tabs exist only once the kitchen has a station** (`showStationTabs`), and with the tabs
+  hidden the shown filter is forced to "הכל" (a stored station must not filter a list with no tabs
+  to undo it). A heading over the only group is dropped (`showStationHeadings`). "משימות שהושלמו לפי
+  טבח" waits for the first completion (`showCookCompletions`). All four are pure, in `lib/taskRow.ts`.
+- **"+ משימה" is a floating button** (`.fab-bar`) at the *end* edge, because `.sync-badge` is at the
+  start edge on the same row and the sync pill (stuck, error, read-only) is the one that asks a person
+  to act. The one thing it can sit under is `.update-prompt` (same edge, higher z-index), which is rare
+  and dismissable. `.fab-spacer` keeps the last row scrollable clear of it.
+- **Priority is said twice, not four times:** a 4px stripe on the row's start edge (colour) and
+  `PriorityChip` (dot + word, a real button that cycles it) under the title. The pulsing dot, the 3px
+  glowing border and the pill are gone. The red *outline* (`.task-row.critical`) now means only "an
+  ingredient is missing", so the two reds no longer share a mechanism.
+- **Who has it** is `AssigneeChip`: a 44px circle with the cook's initial, and a real `<select>` laid
+  invisibly over it. The name also shows in the meta line, in the cook's colour, which is what prints.
+- **Removing a task is behind "⋯"** (`TaskMenuSheet`), two taps instead of a ✕ beside the completion
+  box. The same sheet is the button route to the left-swipe quick actions and to the recipe detail,
+  because a gesture alone is unreachable by keyboard and screen reader, the problem the checkbox already
+  had. Removal itself is unchanged: it dispatches immediately, with no undo.
+- `.tasks-grid` is one column on a phone, two from 768px, three from 1024px. The "lone last card spans
+  the row" rule is gone with the cards.
+- Print: `.task-row` joins `.card` in the black-on-white block, the stripe and outline are hidden, and
+  the meta line is forced black. The checkbox rules are untouched.
 
 **Completion is reachable without a touchscreen.** `SwipeToComplete` listens for touch events only and
 its reveal panel is `aria-hidden`, so the app's single core action used to be unreachable by mouse,
@@ -681,23 +714,23 @@ and an older client simply ignores the new action types (`default: return state`
 גלם" flags an ingredient (`SET_INGREDIENT_SHORT`, absolute) and "פחת" takes ¼ / ½ / הכל off stock
 (`SET_INGREDIENT_QTY`) — nothing to type, each ends in "בטל". `swipeDirection` is physical (right is right
 in RTL too). Left springs the card back; the sheet is rendered **inside** the card, because a sibling of
-the swipe wrapper becomes a second child of `.tasks-grid` and breaks its "lone last card spans the row"
-rule (found live, not by a test). Finished tasks leave the working list for a collapsed "הושלמו (N)" —
+the swipe wrapper becomes a second child of `.tasks-grid`, a phantom cell in the list (found live, not by
+a test). The same sheet is reachable from the row's "⋯" menu. Finished tasks leave the working list for a collapsed "הושלמו (N)" —
 still counted in the progress bar, still one swipe from undone (`UNDO_*_COMPLETION` replays the stored
 `appliedCompletion`, so stock returns exactly). `shortFlag` is cleared by stock going *up* (`withQty` in
 `reducer.ts`: a count, a delivery) and not by going down (a waste report). It reaches the morning order
 through `suggestedQty` (par level, else a day of cover, else 1) and shows as a red dot.
 
-**The urgency control is a chip, on its own row.** It used to be a bare 14px dot next to the done-checkbox,
-and a thumb aiming at one hit the other — a wrong "done" moves stock. `PriorityChip` (dot + word, one button,
-40px tall) now sits in the meta row with the assignee select, a full row away from the checkbox; the first
-line is checkbox + title (18px) + ✕.
+**The urgency control is a chip, never next to the done-checkbox.** It used to be a bare 14px dot beside the
+checkbox, and a thumb aiming at one hit the other — a wrong "done" moves stock. `PriorityChip` (dot + word, one
+button, 44px hit area) sits in the meta line *under* the title, with the checkbox alone at the start edge. The
+title is 18px on purpose (read at arm's length over a hot pass); keep it when restyling the row.
 
 **Tasks missing an ingredient jump the queue.** `blockedIngredients` (`lib/tasks.ts`) compares what the
 multiplier needs with stock *in the ingredient's own unit* (a cross-family line is skipped, not guessed)
 and counts `shortFlag`. `DisplayTask.blocked` is absent when nothing is missing and always absent on a
-finished task; `sortDisplayTasks` is done → blocked → priority → id. The red stripe (`.critical`) sits on
-top of the priority border: priority is about the product's stock, this is about its ingredients.
+finished task; `sortDisplayTasks` is done → blocked → priority → id. A red outline (`.task-row.critical`)
+sits on top of the priority stripe: priority is about the product's stock, this is about its ingredients.
 
 **One shared "בטל"** (`UndoProvider`, `lib/undo.ts`, 4s) replaces "are you sure?" for cook / station /
 recipe / ingredient deletes and fill-to-par. It sits above `<Outlet />` and inside `AppProvider` because
@@ -791,6 +824,43 @@ breaks — the actions are simply open, as for any action the server does not li
 `AddManualTaskSheet` (chef, free-text tasks), and `screens/RecurringTasks.tsx` (`/recurring`, from the menu)
 to edit, pause or delete a rule (`deleteWithUndo`, so no confirmation). `WeekdayPicker` is seven real toggles.
 
+### Contrast and tap size are tokens (2026-10-02, no migration)
+
+Four tokens in `tokens.css` carry what used to be per-rule guesses, each measured rather than
+eyeballed. **`--color-border-input`** (3.18:1 on the surface) is the edge of anything you type or tap
+into; **`--color-border`** (1.34:1) stays for hairlines between cards, where it is right, and is too
+faint to be the only thing marking a field (WCAG 1.4.11). **`--color-link`** replaces the browser's
+default `#0000ee` (2.1:1 here), applied by one bare `a` rule that every classed link overrides.
+**`--color-red-solid`** is the red for a *fill under white text* (nav badge, `.btn-danger`, 5.56:1);
+`--color-red` is still the red for text and stripes on a dark ground, where it is 5.6:1 and white-on-it
+would be 3.55:1. **`--tap-min`** (44px) is the floor for anything a thumb must hit.
+
+Anything that looks smaller than 44px gets the area without looking bigger: `.prio-chip` and
+`.task-title` use a `::after` that extends past the box. No text below 12px. `.count-save-bar::before` fades the list out under the
+floating save/approve button.
+
+### Each colour means one thing (2026-10-02, no migration)
+
+The neon green was carrying five meanings (the action, the active tab, done, "fine", and every number
+on the planning screen), so a list of fine things read as a list of buttons. The rule now:
+
+- **`--color-primary` (neon green): do this, or you are here.** Primary buttons, the active tab and nav
+  slot, a selected chip, the field you fill in on the morning order. Also *done* (the ticked box, the
+  swipe-right panel, the progress fill), because completing is the action.
+- **`--color-ok` (muted green): fine.** `.pill.green` (enough stock, nothing to prepare today, a saved
+  toast). A status is never the brand green.
+- **White: a number.** `.number-editor-value` is white with a dotted underline as the hint that it can be
+  tapped. `.emphasis` (neon) marks the one number on a row that asks something of you ("הכנה להיום"
+  when above zero); `.zero` mutes it when nothing is needed.
+- **Yellow: needs attention, but not yet.** **Red: this cannot be done now** (an expired item, a task
+  missing an ingredient, a failed action). A projected shortfall in the week strip is yellow while it is
+  for a later day and red (`.week-day.urgent`) only for today or a day already past.
+- Headings are muted text, not green (`.supplier-group`).
+
+`WeekStrip` also brings the selected day to the middle of its scroll area and calls today "היום". The
+`.stat-card` rules (including a purple "neutral" variant) have no caller and were left alone; they are
+dead code, not part of this palette.
+
 ### Tablet, focus, motion
 
 Three rules at the bottom of `global.css`, each fixing something that was invisible on the phone
@@ -799,19 +869,15 @@ this app was built against:
 - **Breakpoints at 768/1024px.** `--content-max` (720 → 900 → 1040) is the single width every
   consumer reads — `.app-main`, `.sheet`, `.count-save-bar`'s button and `.bottom-nav` — because a
   breakpoint that widened three of the four would put the nav out of line with the content above it.
-  `.tasks-grid` goes 2 → 3 → 4 columns, since "how many prep tasks fit without scrolling" is what
-  the extra width is *for*. `.keypad-grid`, `.stat-grid` and `.weekday-usage-grid` deliberately do
-  not move — a keypad is a keypad, there are three stats, and there are seven weekdays. Note that
-  `.tasks-grid`'s trailing-card full-row stretch is written for exactly two columns
-  (`:last-child:nth-child(odd)` means "alone on its row" only when rows hold two) and is reset above
-  768px rather than re-derived per column count.
+  `.tasks-grid` goes 1 → 2 → 3 columns (rows, not cards), since "how many prep tasks fit without
+  scrolling" is what the extra width is *for*. `.keypad-grid`, `.stat-grid` and `.weekday-usage-grid` deliberately do
+  not move — a keypad is a keypad, there are three stats, and there are seven weekdays.
 - **A global `:focus-visible` ring.** There was exactly one focus rule in the whole stylesheet, which
   was fine while every control was touch-only and a real hole the moment phase 4 gave the completion
   checkbox a keyboard path — `body` sets `-webkit-tap-highlight-color: transparent`, so nothing else
   was left to show focus either. `:focus-visible` rather than `:focus`, and `outline` rather than a
   border or box-shadow so it never reflows what it is on.
-- **`prefers-reduced-motion`.** Everything animated in this app is decoration (the pulsing priority
-  dot, the drifting blobs, the wiggling mascot, the skeleton's shimmer) and none of it carries
+- **`prefers-reduced-motion`.** Everything animated in this app is decoration (the skeleton's shimmer) and none of it carries
   information the colour or shape doesn't, so it all simply stops. Transitions are cut to ~0 rather
   than to `0s`, because a few of them are `:active` feedback a cook does rely on feeling.
 

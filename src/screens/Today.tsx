@@ -14,7 +14,9 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { JoinRequestsBanner } from '../components/JoinRequestsBanner';
 import { ExpiryBanner } from '../components/ExpiryBanner';
 import { InstallHintCard } from '../components/InstallHint';
+import { CalendarIcon, SearchIcon } from '../components/icons';
 import { readStoredStation, resolveStation, writeStoredStation } from '../lib/todayFilter';
+import { showCookCompletions, showStationHeadings, showStationTabs } from '../lib/taskRow';
 import { categoryTabs, UNASSIGNED_CATEGORY, UNASSIGNED_LABEL, type CategoryFilter } from '../lib/recipeCategories';
 import { TaskRow } from './tasks/TaskRow';
 import { AddManualTaskSheet } from './tasks/AddManualTaskSheet';
@@ -24,9 +26,15 @@ import { AddManualTaskSheet } from './tasks/AddManualTaskSheet';
  *
  * This replaces Home and Tasks, which were two screens showing the same list: Home was
  * read-only and every card on it merely navigated to Tasks, so a cook saw their work twice
- * before they could touch it once. What survives from Home is its identity (the hero, the
- * restaurant name, the date) and the per-cook shift readout; what survives from Tasks is
- * everything that actually does something.
+ * before they could touch it once. What survives from Home is the restaurant name, the date and
+ * the per-cook shift readout; what survives from Tasks is everything that actually does something.
+ *
+ * ## What sits above the list
+ *
+ * Only what is used on every visit: the title with search, date and print as icons, and the
+ * progress bar. Search opens on demand, the date picker is the calendar icon, station tabs exist
+ * only once the kitchen has stations, and adding a task is a floating button in reach of the
+ * thumb. Before, the first task started below five rows of controls, around 43% down a phone.
  *
  * ## Grouping vs. filtering
  *
@@ -54,10 +62,13 @@ export function Today() {
   const [addingManual, setAddingManual] = useState(false);
   const [showDone, setShowDone] = useState(false);
   const [query, setQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
   // Remembered across screens (and reloads): see lib/todayFilter.ts. `stored` is what the cook
-  // picked; `category` is what is shown, which differs only when that station has been deleted.
+  // picked; `category` is what is shown, which differs when that station has been deleted, and
+  // when there are no stations at all (no tabs to change it back, so it must not filter).
   const [stored, setStored] = useState<CategoryFilter>(readStoredStation);
-  const category = resolveStation(stored, state.stations);
+  const tabsShown = showStationTabs(state.stations);
+  const category = tabsShown ? resolveStation(stored, state.stations) : 'all';
   function setCategory(next: CategoryFilter) {
     setStored(next);
     writeStoredStation(next);
@@ -65,6 +76,17 @@ export function Today() {
 
   const title = membership?.restaurantName?.trim() || 'ניהול מטבח';
   const searching = query.trim().length > 0;
+  const searchVisible = searchOpen || searching;
+  const viewingAnotherDay = picked !== null && picked !== today;
+
+  function toggleSearch() {
+    if (searchVisible) {
+      setQuery('');
+      setSearchOpen(false);
+    } else {
+      setSearchOpen(true);
+    }
+  }
 
   // Always read through getDisplayTasks: auto tasks are computed live and are not in
   // state.tasks, so counting state.tasks alone would miss almost everything.
@@ -87,6 +109,7 @@ export function Today() {
   const openTasks = visibleTasks.filter((t) => !t.done);
   const doneTasks = sortDisplayTasks(visibleTasks.filter((t) => t.done));
   const grouped = !searching && category === 'all';
+  const groups = grouped ? groupByStation(openTasks, state.stations) : [];
 
   const stationName =
     category === 'all'
@@ -107,26 +130,36 @@ export function Today() {
 
   return (
     <div>
-      <div className="home-hero">
-        <span className="home-blob home-blob-a" aria-hidden="true" />
-        <span className="home-blob home-blob-b" aria-hidden="true" />
-        <ScreenHeader
-          title={title}
-          subtitle={<>{formatToday(date)} &middot; המטבח מחכה לך</>}
-          actions={
-            <div className="row no-print" style={{ gap: 8, width: 'auto' }}>
-              <PrintStationButton label="הדפס רשימת עמדה" iconOnly />
-              <div className="home-mascot" aria-hidden="true">
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M4 10h16v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-6z" />
-                  <path d="M4 10a8 8 0 0 1 16 0" />
-                  <circle cx="12" cy="5" r="1.6" fill="#FFFFFF" stroke="none" />
-                </svg>
-              </div>
-            </div>
-          }
-        />
-      </div>
+      <ScreenHeader
+        title={title}
+        subtitle={formatToday(date)}
+        actions={
+          <div className="header-actions no-print">
+            <button
+              type="button"
+              className="icon-btn"
+              onClick={toggleSearch}
+              aria-label="חיפוש"
+              aria-expanded={searchVisible}
+              aria-pressed={searchVisible}
+            >
+              <SearchIcon size={20} />
+            </button>
+            {/* A real date input laid invisibly over the icon: tapping it opens the platform's own
+                picker, with no second control to keep in step. */}
+            <label className="icon-btn date-btn" title="תאריך">
+              <CalendarIcon size={20} />
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setPicked(e.target.value || null)}
+                aria-label="תאריך"
+              />
+            </label>
+            <PrintStationButton label="הדפס רשימת עמדה" iconOnly />
+          </div>
+        }
+      />
 
       {/* Only ever renders for a chef in synced mode, and only while someone is waiting. */}
       <div className="no-print">
@@ -135,6 +168,16 @@ export function Today() {
         {/* Last, and only on an iPhone that has not installed the app: it must never push a safety banner down. */}
         <InstallHintCard />
       </div>
+
+      {/* The date is now behind an icon, so looking at another day has to say so out loud. */}
+      {viewingAnotherDay && (
+        <div className="day-banner no-print">
+          <span>מוצגת רשימת {formatToday(date)}</span>
+          <button type="button" onClick={() => setPicked(null)}>
+            חזרה להיום
+          </button>
+        </div>
+      )}
 
       <div className="print-only print-banner">
         <p style={{ fontWeight: 700 }}>{title} — רשימת עמדה: {stationName}</p>
@@ -162,22 +205,13 @@ export function Today() {
         </div>
       )}
 
-      <div className="row no-print" style={{ gap: 8, marginBottom: 'var(--space-3)' }}>
-        <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={() => setAddingManual(true)}>
-          + משימה
-        </button>
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setPicked(e.target.value || null)}
-          aria-label="תאריך"
-          className="date-chip"
-        />
-      </div>
+      {searchVisible && (
+        <div className="no-print">
+          <SearchInput value={query} onChange={setQuery} placeholder="חיפוש משימה או טבח..." autoFocus />
+        </div>
+      )}
 
-      <SearchInput value={query} onChange={setQuery} placeholder="חיפוש משימה או טבח..." />
-
-      {!searching && (
+      {tabsShown && !searching && (
         <CategoryTabs tabs={categoryTabs(state.stations)} value={category} onChange={setCategory} />
       )}
 
@@ -194,9 +228,9 @@ export function Today() {
       ) : openTasks.length === 0 ? (
         <EmptyState text="כל המשימות הושלמו ✓" />
       ) : grouped ? (
-        groupByStation(openTasks, state.stations).map((group) => (
+        groups.map((group) => (
           <div key={group.value}>
-            <h2 className="section-title">{group.label}</h2>
+            {showStationHeadings(groups.length, tabsShown) && <h2 className="section-title">{group.label}</h2>}
             <div className="tasks-grid">
               {group.tasks.map((t) => (
                 <TaskRow key={t.id} task={t} />
@@ -232,7 +266,7 @@ export function Today() {
         </div>
       )}
 
-      {state.cooks.length > 0 && (
+      {state.cooks.length > 0 && showCookCompletions(cookCompletionCounts) && (
         <div className="no-print">
           <h2 className="section-title">משימות שהושלמו לפי טבח</h2>
           <div className="card">
@@ -245,6 +279,15 @@ export function Today() {
           </div>
         </div>
       )}
+
+      {/* Floats above the nav at the end edge, opposite .sync-badge, so the sync pill that asks a
+          person to act is never underneath it. The spacer keeps the last row scrollable clear of it. */}
+      <div className="fab-spacer no-print" />
+      <div className="fab-bar no-print">
+        <button type="button" className="btn btn-primary fab" onClick={() => setAddingManual(true)}>
+          + משימה
+        </button>
+      </div>
 
       {addingManual && <AddManualTaskSheet date={date} onClose={() => setAddingManual(false)} />}
     </div>

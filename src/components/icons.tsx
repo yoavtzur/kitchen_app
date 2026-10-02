@@ -262,3 +262,31 @@ export function ShareIcon(p: IconProps) {
     </Svg>
   );
 }
+
+export function SearchIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="M16 16l4.5 4.5" />
+    </Svg>
+  );
+}
+
+export function CalendarIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <rect x="4" y="5.5" width="16" height="14" rx="2.5" />
+      <path d="M4 10h16M8.5 3.5v4M15.5 3.5v4" />
+    </Svg>
+  );
+}
+
+export function MoreIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <circle cx="12" cy="5.5" r="1.3" fill="currentColor" />
+      <circle cx="12" cy="12" r="1.3" fill="currentColor" />
+      <circle cx="12" cy="18.5" r="1.3" fill="currentColor" />
+    </Svg>
+  );
+}

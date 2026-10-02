@@ -688,6 +688,11 @@ still counted in the progress bar, still one swipe from undone (`UNDO_*_COMPLETI
 `reducer.ts`: a count, a delivery) and not by going down (a waste report). It reaches the morning order
 through `suggestedQty` (par level, else a day of cover, else 1) and shows as a red dot.
 
+**The urgency control is a chip, on its own row.** It used to be a bare 14px dot next to the done-checkbox,
+and a thumb aiming at one hit the other — a wrong "done" moves stock. `PriorityChip` (dot + word, one button,
+40px tall) now sits in the meta row with the assignee select, a full row away from the checkbox; the first
+line is checkbox + title (18px) + ✕.
+
 **Tasks missing an ingredient jump the queue.** `blockedIngredients` (`lib/tasks.ts`) compares what the
 multiplier needs with stock *in the ingredient's own unit* (a cross-family line is skipped, not guessed)
 and counts `shortFlag`. `DisplayTask.blocked` is absent when nothing is missing and always absent on a

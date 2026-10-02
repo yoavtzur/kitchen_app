@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useApp } from '../../store/AppContext';
 import type { DisplayTask } from '../../lib/tasks';
-import { PriorityDot, PriorityPill } from '../../components/PriorityDot';
+import { PriorityChip } from '../../components/PriorityDot';
 import { AlertIcon } from '../../components/icons';
 import { SwipeToComplete } from '../../components/SwipeToComplete';
 import { completeTask } from './completeTask';
@@ -109,7 +109,7 @@ export function TaskRow({ task }: { task: DisplayTask }) {
         className={`card priority-card task-card-compact ${task.priority}${task.done ? ' done' : ''}${task.blocked ? ' critical' : ''}`}
       >
         <div className="row">
-          <div className="row" style={{ gap: 6 }}>
+          <div className="row" style={{ gap: 6, flex: 1, minWidth: 0 }}>
             {/*
               The single action in this app's core loop used to be swipe-only: SwipeToComplete
               listens for touch events and nothing else, and its reveal panel is aria-hidden.
@@ -131,8 +131,6 @@ export function TaskRow({ task }: { task: DisplayTask }) {
               aria-label={task.done ? 'בטל סימון בוצע' : 'סמן כבוצע'}
               onClick={task.done ? undoDone : markDone}
             />
-            <PriorityDot priority={task.priority} onClick={cyclePriority} />
-            <PriorityPill priority={task.priority} />
             <button
               type="button"
               className="task-title"
@@ -180,7 +178,10 @@ export function TaskRow({ task }: { task: DisplayTask }) {
             יחידת המלאי לא תואמת ליחידת המתכון — צריך לתקן בעריכת הפריט
           </p>
         )}
-        <div className="row" style={{ marginTop: 'var(--space-2)', gap: 8 }}>
+        {/* Urgency lives down here, a full row away from the done-checkbox: the two used to sit side by
+            side, and a thumb aiming at one hit the other. */}
+        <div className="row task-meta-row" style={{ marginTop: 'var(--space-2)', gap: 8 }}>
+          <PriorityChip priority={task.priority} onClick={cyclePriority} />
           <select
             value={task.assigneeId ?? ''}
             onChange={(e) => setAssignee(e.target.value)}

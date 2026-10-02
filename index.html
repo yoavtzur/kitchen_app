@@ -13,7 +13,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#090a0f" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!--
+      `black`, not `black-translucent`. Translucent draws the page under the status bar, and on an
+      iPhone 13 Pro launched from the home screen the layout viewport then comes out about one status
+      bar shorter than the screen: the bottom nav sat ~45pt above the bottom edge with a dead strip
+      beneath it (fine in a Safari tab, which does not use this setting). `black` starts the page
+      below the status bar, so the viewport and the screen agree. The bar is black on a near-black
+      page, so nothing visible is lost. iOS reads this when the icon is ADDED, so an icon added
+      earlier has to be removed and added again.
+    -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta name="apple-mobile-web-app-title" content="מטבח" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <title>ניהול מטבח</title>

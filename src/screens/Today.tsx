@@ -13,6 +13,7 @@ import { PrintStationButton } from '../components/PrintStationButton';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { JoinRequestsBanner } from '../components/JoinRequestsBanner';
 import { ExpiryBanner } from '../components/ExpiryBanner';
+import { InstallHintCard } from '../components/InstallHint';
 import { readStoredStation, resolveStation, writeStoredStation } from '../lib/todayFilter';
 import { categoryTabs, UNASSIGNED_CATEGORY, UNASSIGNED_LABEL, type CategoryFilter } from '../lib/recipeCategories';
 import { TaskRow } from './tasks/TaskRow';
@@ -131,6 +132,8 @@ export function Today() {
       <div className="no-print">
         <JoinRequestsBanner />
         <ExpiryBanner />
+        {/* Last, and only on an iPhone that has not installed the app: it must never push a safety banner down. */}
+        <InstallHintCard />
       </div>
 
       <div className="print-only print-banner">

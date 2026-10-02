@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { useTimedMessage } from '../lib/useTimedFlag';
+import { InstallHintCard } from '../components/InstallHint';
 
 const POLL_MS = 10_000;
 
@@ -67,6 +68,11 @@ export function PendingApproval() {
         <button type="button" className="btn btn-primary btn-block" disabled={checking} onClick={checkNow}>
           {checking ? 'בודק...' : 'בדוק עכשיו'}
         </button>
+      </div>
+      {/* The natural moment to install: they are waiting anyway, and installing now means the icon
+          is the one place they sign in from. */}
+      <div style={{ marginTop: 'var(--space-4)' }}>
+        <InstallHintCard />
       </div>
       <div className="row" style={{ gap: 8, marginTop: 'var(--space-4)' }}>
         <button type="button" className="btn" style={{ flex: 1 }} onClick={() => void dismissJoinRequest()}>

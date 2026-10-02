@@ -1,14 +1,17 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '../store/AppContext';
 import { useAuth } from '../auth/AuthContext';
 import { usePermissions } from '../auth/usePermissions';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { initialsOf } from '../lib/initials';
+import { useInstallHint } from '../lib/useInstallHint';
+import { InstallStepsSheet } from '../components/InstallHint';
 import {
   ChevronIcon,
   LegalIcon,
   LogoutIcon,
+  ShareIcon,
   ReceivingIcon,
   RepeatIcon,
   RecipesIcon,
@@ -42,6 +45,9 @@ export function Menu() {
   const { state } = useApp();
   const { membership, signOut } = useAuth();
   const { isChef } = usePermissions();
+  // The card on the task list can be dismissed; this row is where to find the steps afterwards.
+  const { applies: canInstall } = useInstallHint();
+  const [installOpen, setInstallOpen] = useState(false);
 
   const cook = membership?.cookId ? state.cooks.find((c) => c.id === membership.cookId) : undefined;
   const restaurantName = membership?.restaurantName?.trim() || 'ניהול מטבח';
@@ -89,8 +95,20 @@ export function Menu() {
           icon={<SettingsIcon size={22} />}
           label={isChef ? 'הגדרות' : 'הגדרות וחשבון'}
         />
+        {canInstall && (
+          <button type="button" className="menu-row" onClick={() => setInstallOpen(true)}>
+            <span className="menu-row-icon">
+              <ShareIcon size={22} />
+            </span>
+            <span className="menu-row-label">הוספה למסך הבית</span>
+            <span className="chevron">
+              <ChevronIcon />
+            </span>
+          </button>
+        )}
         <MenuLink to="/legal/privacy" icon={<LegalIcon size={22} />} label="פרטיות ותנאים" />
       </div>
+      {installOpen && <InstallStepsSheet onClose={() => setInstallOpen(false)} />}
 
       {isSupabaseConfigured && (
         <div className="list-card">

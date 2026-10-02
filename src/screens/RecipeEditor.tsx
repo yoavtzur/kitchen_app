@@ -43,6 +43,13 @@ const NEW_INGREDIENT_ID = NEW_INGREDIENT_REF;
 // lightweight, kitchen-wide reference entity like a Cook, not part of this one recipe's draft.
 const NEW_STATION_ID = '__new_station__';
 
+/** Whole days from the text field, or `undefined` for blank or anything that is not a day count. */
+function parseShelfLife(text: string): number | undefined {
+  if (text.trim() === '') return undefined;
+  const n = Number(text);
+  return Number.isInteger(n) && n >= 0 && n <= 365 ? n : undefined;
+}
+
 /**
  * Picking a recipe item is one tap here instead of "add a default row, then open its select
  * to change it" — "+ מצרך חדש" always leads so creating a new ingredient never requires
@@ -146,6 +153,9 @@ export function RecipeEditor({ recipe, defaultCategory, onClose, draft = null }:
   const [unit, setUnit] = useState<Unit>(linkedProduct?.unit ?? recipe?.yieldUnit ?? draft?.yieldUnit ?? 'unit');
   const [yieldQty, setYieldQty] = useState(String(recipe?.yieldQty ?? draft?.yieldQty ?? 1));
   const [tracksStock, setTracksStock] = useState(recipe ? linkedProduct !== undefined : true);
+  // Blank = no date is set when a batch is made. Kept as text so "0" (made and used the same day)
+  // stays distinguishable from "nothing entered".
+  const [shelfLifeDays, setShelfLifeDays] = useState(recipe?.shelfLifeDays === undefined ? '' : String(recipe.shelfLifeDays));
 
   const [currentQty, setCurrentQty] = useState(String(linkedProduct?.currentQty ?? 0));
   const [dailyUsage, setDailyUsage] = useState(String(linkedProduct?.dailyUsage ?? 0));
@@ -264,6 +274,8 @@ export function RecipeEditor({ recipe, defaultCategory, onClose, draft = null }:
       yieldQty: parseFloat(yieldQty) || 1,
       yieldUnit: unit,
       producesProductId: undefined,
+      // A shelf life belongs to the product the recipe makes, so a recipe that makes none has none.
+      shelfLifeDays: tracksStock ? parseShelfLife(shelfLifeDays) : undefined,
       items: finalItems,
       steps: finalSteps,
     };
@@ -422,6 +434,22 @@ export function RecipeEditor({ recipe, defaultCategory, onClose, draft = null }:
 
       {tracksStock && (
         <>
+          <div className="field">
+            <label>חיי מדף (ימים)</label>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              step={1}
+              value={shelfLifeDays}
+              onChange={(e) => setShelfLifeDays(e.target.value)}
+              placeholder="ללא"
+            />
+            <p className="muted">
+              כמה ימים אחרי יום ההכנה המוצר טוב (0 = אותו יום בלבד). כשמסיימים משימת הכנה, התאריך נקבע לבד ומופיע לכתיבה על
+              המכל.
+            </p>
+          </div>
           <div className="field">
             <label>סוג</label>
             <select value={kind} onChange={(e) => setKind(e.target.value as ProductKind)}>

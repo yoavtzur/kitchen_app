@@ -940,6 +940,20 @@ describe('actions survive a JSON round trip', () => {
       },
     },
     {
+      name: 'CONFIRM_AUTO_TASK_COMPLETION with a shelf life',
+      state: baseState({ products: [cremeBrulee], recipes: [recipe] }),
+      action: {
+        type: 'CONFIRM_AUTO_TASK_COMPLETION',
+        id: autoTaskId(cremeBrulee.id, date),
+        productId: cremeBrulee.id,
+        date,
+        ingredientDeltas: [{ id: 'ing-egg', delta: 9 }],
+        producedProductId: cremeBrulee.id,
+        producedQty: 12,
+        producedExpiresOn: '2026-09-09',
+      },
+    },
+    {
       name: 'DELETE_STATION moving recipes to another station',
       state: baseState({
         stations: [
@@ -1079,5 +1093,140 @@ describe('expiry and waste', () => {
     ] as Parameters<typeof reducer>[1][]) {
       expect(reducer(state, JSON.parse(JSON.stringify(action)))).toEqual(reducer(state, action));
     }
+  });
+});
+
+describe('shelf life: a completed prep task dates the batch it made', () => {
+  const id = autoTaskId(cremeBrulee.id, date);
+  const confirm = (state: AppState, producedExpiresOn?: string, taskId = id) =>
+    reducer(state, {
+      type: 'CONFIRM_AUTO_TASK_COMPLETION',
+      id: taskId,
+      productId: cremeBrulee.id,
+      date,
+      ingredientDeltas: [],
+      producedProductId: cremeBrulee.id,
+      producedQty: 12,
+      producedExpiresOn,
+    });
+
+  it('sets the expiry (and the last batch) on an empty shelf', () => {
+    const after = confirm(baseState({ products: [{ ...cremeBrulee, currentQty: 0 }] }), '2026-09-09');
+    expect(after.products[0]).toMatchObject({ currentQty: 12, expiresOn: '2026-09-09', lastBatchExpiresOn: '2026-09-09' });
+  });
+
+  it('sets nothing when no date is passed (a recipe without a shelf life)', () => {
+    const after = confirm(baseState({ products: [cremeBrulee] }));
+    expect(after.products[0].expiresOn).toBeUndefined();
+    expect(after.products[0].lastBatchExpiresOn).toBeUndefined();
+    expect(after.taskOverrides[0].appliedCompletion).not.toHaveProperty('expiryChange');
+  });
+
+  it('keeps the earlier date when older stock is on the shelf', () => {
+    const state = baseState({ products: [{ ...cremeBrulee, currentQty: 3, expiresOn: '2026-09-07', lastBatchExpiresOn: '2026-09-07' }] });
+    const after = confirm(state, '2026-09-09');
+    expect(after.products[0]).toMatchObject({ currentQty: 15, expiresOn: '2026-09-07', lastBatchExpiresOn: '2026-09-09' });
+  });
+
+  it('undo puts back exactly the dates that were there', () => {
+    const state = baseState({ products: [{ ...cremeBrulee, currentQty: 3, expiresOn: '2026-09-07', lastBatchExpiresOn: '2026-09-07' }] });
+    const undone = reducer(confirm(state, '2026-09-09'), { type: 'UNDO_AUTO_TASK_COMPLETION', id });
+    expect(undone.products[0]).toEqual(state.products[0]);
+  });
+
+  it('undo from an empty shelf removes both dates rather than leaving them behind', () => {
+    const state = baseState({ products: [{ ...cremeBrulee, currentQty: 0 }] });
+    const undone = reducer(confirm(state, '2026-09-09'), { type: 'UNDO_AUTO_TASK_COMPLETION', id });
+    expect(undone.products[0]).not.toHaveProperty('expiresOn');
+    expect(undone.products[0]).not.toHaveProperty('lastBatchExpiresOn');
+  });
+
+  it('undo leaves a date alone when someone changed it after the completion', () => {
+    const state = baseState({ products: [{ ...cremeBrulee, currentQty: 0 }] });
+    const confirmed = confirm(state, '2026-09-09');
+    const extended = reducer(confirmed, { type: 'SET_EXPIRY', itemType: 'product', id: cremeBrulee.id, expiresOn: '2026-09-12' });
+    const undone = reducer(extended, { type: 'UNDO_AUTO_TASK_COMPLETION', id });
+    expect(undone.products[0].expiresOn).toBe('2026-09-12');
+  });
+
+  it('is idempotent: a replayed completion does not re-date or re-add stock', () => {
+    const once = confirm(baseState({ products: [{ ...cremeBrulee, currentQty: 0 }] }), '2026-09-09');
+    const twice = confirm(once, '2026-09-20');
+    expect(twice).toEqual(once);
+  });
+
+  it('works the same for a manual task', () => {
+    const task = {
+      id: 't1',
+      date,
+      recipeId: recipe.id,
+      multiplier: 1,
+      priority: 'green' as const,
+      done: false,
+      source: 'manual' as const,
+    };
+    const state = baseState({ products: [{ ...cremeBrulee, currentQty: 0 }], recipes: [recipe], tasks: [task] });
+    const after = reducer(state, {
+      type: 'CONFIRM_TASK_COMPLETION',
+      taskId: 't1',
+      ingredientDeltas: [],
+      producedProductId: cremeBrulee.id,
+      producedQty: 8,
+      producedExpiresOn: '2026-09-08',
+    });
+    expect(after.products[0]).toMatchObject({ currentQty: 8, expiresOn: '2026-09-08' });
+    const undone = reducer(after, { type: 'UNDO_TASK_COMPLETION', id: 't1' });
+    expect(undone.products[0]).not.toHaveProperty('expiresOn');
+  });
+});
+
+describe('editing a prep item does not erase the product’s dates', () => {
+  const dated: Product = { ...cremeBrulee, expiresOn: '2026-09-07', lastBatchExpiresOn: '2026-09-09' };
+
+  it('SAVE_PREP_ITEM keeps the stored dates when the editor sends none', () => {
+    const state = baseState({ products: [dated], recipes: [recipe] });
+    const next = reducer(state, {
+      type: 'SAVE_PREP_ITEM',
+      recipe: { ...recipe, shelfLifeDays: 4 },
+      product: { ...cremeBrulee, name: 'קרם ברולה וניל' },
+    });
+    expect(next.products[0]).toMatchObject({ name: 'קרם ברולה וניל', expiresOn: '2026-09-07', lastBatchExpiresOn: '2026-09-09' });
+    expect(next.recipes[0].shelfLifeDays).toBe(4);
+  });
+
+  it('UPDATE_PRODUCT keeps them too', () => {
+    const next = reducer(baseState({ products: [dated] }), { type: 'UPDATE_PRODUCT', product: { ...cremeBrulee, weeklyTarget: 50 } });
+    expect(next.products[0]).toMatchObject({ weeklyTarget: 50, expiresOn: '2026-09-07', lastBatchExpiresOn: '2026-09-09' });
+  });
+
+  it('a date the editor does send wins', () => {
+    const next = reducer(baseState({ products: [dated] }), {
+      type: 'UPDATE_PRODUCT',
+      product: { ...cremeBrulee, expiresOn: '2026-09-20' },
+    });
+    expect(next.products[0].expiresOn).toBe('2026-09-20');
+  });
+});
+
+describe('throwing the old batch clears both dates once nothing is left', () => {
+  it('drops lastBatchExpiresOn together with expiresOn', () => {
+    const product: Product = { ...cremeBrulee, currentQty: 2, expiresOn: '2026-09-01', lastBatchExpiresOn: '2026-09-09' };
+    const next = reducer(baseState({ products: [product] }), {
+      type: 'LOG_WASTE',
+      entry: {
+        id: 'w1',
+        date,
+        at: '2026-09-05T08:00:00.000Z',
+        itemType: 'product',
+        itemId: product.id,
+        itemName: product.name,
+        unit: product.unit,
+        qty: 2,
+        reason: 'expired',
+        expiredOn: '2026-09-01',
+      },
+    });
+    expect(next.products[0]).not.toHaveProperty('expiresOn');
+    expect(next.products[0]).not.toHaveProperty('lastBatchExpiresOn');
   });
 });

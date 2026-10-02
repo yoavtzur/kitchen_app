@@ -2102,3 +2102,34 @@ textarea {
 .expiry-banner-text {
   flex: 1;
 }
+
+/* "Due today or tomorrow": quieter than the red banner, and not a control. */
+.expiry-banner.soon {
+  background: var(--color-yellow-bg);
+  border-color: var(--color-yellow);
+  cursor: default;
+}
+
+/* What to write on the container after a prep task — read at arm's length, so large. */
+.batch-label-name {
+  font-size: 22px;
+  font-weight: 700;
+  text-align: center;
+}
+.batch-label-dates {
+  display: flex;
+  justify-content: space-around;
+  gap: var(--space-3);
+  text-align: center;
+}
+.batch-label-dates > div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.batch-label-dates strong {
+  font-size: 28px;
+}
+.batch-label-expiry {
+  color: var(--color-green);
+}

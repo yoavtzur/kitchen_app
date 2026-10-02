@@ -8,6 +8,8 @@ import { completeTask } from './completeTask';
 import { TaskDetailSheet } from './TaskDetailSheet';
 import { QuickActionsSheet } from './QuickActionsSheet';
 import { useUndo } from '../../lib/undo';
+import { useBatchLabel } from '../../lib/batchLabel';
+import { expiryStatus } from '../../lib/expiry';
 import { daysBetween } from '../../lib/date';
 import { useToday } from '../../lib/useToday';
 import type { Priority } from '../../types';
@@ -24,18 +26,28 @@ const PRIORITY_CYCLE: Priority[] = ['red', 'yellow', 'green'];
 export function TaskRow({ task }: { task: DisplayTask }) {
   const { state, dispatch } = useApp();
   const { showUndo } = useUndo();
+  const { showBatchLabel } = useBatchLabel();
   const today = useToday();
   const [detailOpen, setDetailOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const recipe = state.recipes.find((r) => r.id === task.recipeId);
 
   const isAuto = task.source === 'auto';
+  // Stock past its date stays counted until someone confirms it was thrown, so the card says so —
+  // otherwise "enough on the shelf" reads as true while the shelf holds something that has turned.
+  const producedProduct = recipe?.producesProductId
+    ? state.products.find((p) => p.id === recipe.producesProductId)
+    : undefined;
+  const staleStock =
+    !task.done && producedProduct !== undefined && producedProduct.currentQty > 0 && expiryStatus(producedProduct.expiresOn, today) === 'expired';
 
   function markDone() {
-    completeTask(task, recipe, task.multiplier, state, dispatch);
+    const label = completeTask(task, recipe, task.multiplier, state, dispatch, today);
     // The completed card leaves the open list, so a slip of the thumb has to be undoable from
     // where the cook is looking — this toast now, or "הושלמו" at the bottom of the list later.
-    showUndo('המשימה הושלמה', undoDone);
+    // A batch with a shelf life shows the label sheet instead, which carries its own undo.
+    if (label) showBatchLabel(label, undoDone);
+    else showUndo('המשימה הושלמה', undoDone);
   }
 
   function cyclePriority() {
@@ -155,6 +167,12 @@ export function TaskRow({ task }: { task: DisplayTask }) {
           <p className="critical-note">
             <AlertIcon size={18} />
             חסר: {task.blocked.join(', ')}
+          </p>
+        )}
+        {staleStock && (
+          <p className="critical-note">
+            <AlertIcon size={18} />
+            יש מלאי שפג תוקפו — בדקו
           </p>
         )}
         {task.unitMismatch && (

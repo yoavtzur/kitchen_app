@@ -3,6 +3,7 @@ import type {
   AutoTaskOverride,
   Cook,
   DayPlanEntry,
+  ExpiryChange,
   Ingredient,
   OrderLine,
   Priority,
@@ -25,6 +26,7 @@ import { autoTaskId } from '../lib/tasks';
 import { pruneEntities } from '../lib/integrity';
 import { applyRestore, type Restore } from '../lib/restore';
 import { carryOver } from '../lib/carryOver';
+import { batchExpiry } from '../lib/expiry';
 import { materializeRecurring } from '../lib/recurring';
 import { ackAllFor, ackRecipeNotice, noteRecipeChange } from '../lib/notices';
 import { UNASSIGNED_CATEGORY } from '../lib/recipeCategories';
@@ -74,6 +76,8 @@ export type Action =
       ingredientDeltas: { id: string; delta: number }[];
       producedProductId?: string;
       producedQty?: number;
+      /** Last good day of the batch this completion makes (the caller's today + the recipe's shelf life). */
+      producedExpiresOn?: string;
     }
   | { type: 'UNDO_TASK_COMPLETION'; id: string }
   | {
@@ -84,6 +88,8 @@ export type Action =
       ingredientDeltas: { id: string; delta: number }[];
       producedProductId?: string;
       producedQty?: number;
+      /** See CONFIRM_TASK_COMPLETION. */
+      producedExpiresOn?: string;
     }
   | { type: 'UNDO_AUTO_TASK_COMPLETION'; id: string }
   | { type: 'DISMISS_AUTO_TASK'; id: string; productId: string; date: string }
@@ -235,6 +241,63 @@ function applyProducedQty(
   );
 }
 
+/** Sets or drops the two expiry keys without leaving `undefined` behind (JSON would drop it, and a replay must match). */
+function withExpiryFields(
+  product: Product,
+  fields: { expiresOn?: string; lastBatchExpiresOn?: string },
+): Product {
+  const { expiresOn: _e, lastBatchExpiresOn: _l, ...rest } = product;
+  return {
+    ...rest,
+    ...(fields.expiresOn ? { expiresOn: fields.expiresOn } : {}),
+    ...(fields.lastBatchExpiresOn ? { lastBatchExpiresOn: fields.lastBatchExpiresOn } : {}),
+  };
+}
+
+/**
+ * A prep completion's effect on the produced product's dates. Computed from the stock **before**
+ * the produced quantity is added — "was there already something on the shelf?" is the question.
+ * Returns the change to record on the completion, or `undefined` when there is nothing to set.
+ */
+function planBatchExpiry(
+  products: AppState['products'],
+  productId: string | undefined,
+  qty: number | undefined,
+  batchExpiresOn: string | undefined,
+): ExpiryChange | undefined {
+  if (!productId || !batchExpiresOn || qty === undefined || qty <= 0) return undefined;
+  const product = products.find((p) => p.id === productId);
+  return product ? batchExpiry(product, batchExpiresOn) : undefined;
+}
+
+function applyExpiryChange(products: AppState['products'], productId: string | undefined, change: ExpiryChange | undefined): AppState['products'] {
+  if (!productId || !change) return products;
+  return products.map((p) => (p.id === productId ? withExpiryFields(p, change.after) : p));
+}
+
+/** Undo puts the old dates back only if nobody has changed them since — an extension made after
+ * the completion is newer information than the completion's own. */
+function revertExpiryChange(products: AppState['products'], productId: string | undefined, change: ExpiryChange | undefined): AppState['products'] {
+  if (!productId || !change) return products;
+  return products.map((p) =>
+    p.id === productId && p.expiresOn === change.after.expiresOn && p.lastBatchExpiresOn === change.after.lastBatchExpiresOn
+      ? withExpiryFields(p, change.before)
+      : p,
+  );
+}
+
+/** Editing a product elsewhere (the recipe editor) must not erase its dates: the form has no field for them. */
+function keepExpiry(existing: Product | undefined, incoming: Product): Product {
+  if (!existing) return incoming;
+  return {
+    ...incoming,
+    ...(incoming.expiresOn === undefined && existing.expiresOn ? { expiresOn: existing.expiresOn } : {}),
+    ...(incoming.lastBatchExpiresOn === undefined && existing.lastBatchExpiresOn
+      ? { lastBatchExpiresOn: existing.lastBatchExpiresOn }
+      : {}),
+  };
+}
+
 /**
  * Builds the actual fields to merge into a DayPlanEntry from a patch that may have travelled
  * through JSON: a field is left untouched when omitted (or plain `undefined` — the two are
@@ -347,8 +410,8 @@ function withQty(ingredient: Ingredient, qty: number): Ingredient {
 }
 
 /** Drops the key without leaving `undefined` behind (JSON would drop it too, and a replay must match). */
-function withoutExpiry<T extends { expiresOn?: string }>(item: T): T {
-  const { expiresOn: _cleared, ...rest } = item;
+function withoutExpiry<T extends { expiresOn?: string; lastBatchExpiresOn?: string }>(item: T): T {
+  const { expiresOn: _cleared, lastBatchExpiresOn: _lastCleared, ...rest } = item;
   return rest as T;
 }
 
@@ -514,7 +577,7 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'UPDATE_PRODUCT': {
       const withProduct: AppState = {
         ...state,
-        products: state.products.map((p) => (p.id === action.product.id ? action.product : p)),
+        products: state.products.map((p) => (p.id === action.product.id ? keepExpiry(p, action.product) : p)),
       };
       if (action.product.recipeId) {
         return linkRecipeProduct(withProduct, action.product.recipeId, action.product.id);
@@ -537,7 +600,7 @@ export function reducer(state: AppState, action: Action): AppState {
       const withProduct: AppState = {
         ...state,
         products: hasProduct
-          ? state.products.map((p) => (p.id === action.product.id ? action.product : p))
+          ? state.products.map((p) => (p.id === action.product.id ? keepExpiry(p, action.product) : p))
           : [...state.products, action.product],
       };
       const hasRecipe = withProduct.recipes.some((r) => r.id === action.recipe.id);
@@ -595,15 +658,21 @@ export function reducer(state: AppState, action: Action): AppState {
       // retried/rebased op arriving after it was already applied).
       const existingTask = state.tasks.find((t) => t.id === action.taskId);
       if (existingTask?.done) return state;
+      const expiryChange = planBatchExpiry(state.products, action.producedProductId, action.producedQty, action.producedExpiresOn);
       const completion: TaskCompletion = {
         ingredientDeltas: action.ingredientDeltas,
         producedProductId: action.producedProductId,
         producedQty: action.producedQty,
+        ...(expiryChange ? { expiryChange } : {}),
       };
       return {
         ...state,
         ingredients: applyIngredientDeltas(state.ingredients, action.ingredientDeltas, -1),
-        products: applyProducedQty(state.products, action.producedProductId, action.producedQty, 1),
+        products: applyExpiryChange(
+          applyProducedQty(state.products, action.producedProductId, action.producedQty, 1),
+          action.producedProductId,
+          expiryChange,
+        ),
         tasks: state.tasks.map((t) =>
           t.id === action.taskId ? { ...t, done: true, appliedCompletion: completion } : t,
         ),
@@ -616,7 +685,11 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         ingredients: applyIngredientDeltas(state.ingredients, completion.ingredientDeltas, 1),
-        products: applyProducedQty(state.products, completion.producedProductId, completion.producedQty, -1),
+        products: revertExpiryChange(
+          applyProducedQty(state.products, completion.producedProductId, completion.producedQty, -1),
+          completion.producedProductId,
+          completion.expiryChange,
+        ),
         tasks: state.tasks.map((t) =>
           t.id === action.id ? { ...t, done: false, appliedCompletion: undefined } : t,
         ),
@@ -627,15 +700,21 @@ export function reducer(state: AppState, action: Action): AppState {
       // Same idempotency guard as CONFIRM_TASK_COMPLETION, keyed on the override row.
       const existingOverride = state.taskOverrides.find((o) => o.id === action.id);
       if (existingOverride?.done) return state;
+      const expiryChange = planBatchExpiry(state.products, action.producedProductId, action.producedQty, action.producedExpiresOn);
       const completion: TaskCompletion = {
         ingredientDeltas: action.ingredientDeltas,
         producedProductId: action.producedProductId,
         producedQty: action.producedQty,
+        ...(expiryChange ? { expiryChange } : {}),
       };
       const withInventory: AppState = {
         ...state,
         ingredients: applyIngredientDeltas(state.ingredients, action.ingredientDeltas, -1),
-        products: applyProducedQty(state.products, action.producedProductId, action.producedQty, 1),
+        products: applyExpiryChange(
+          applyProducedQty(state.products, action.producedProductId, action.producedQty, 1),
+          action.producedProductId,
+          expiryChange,
+        ),
       };
       return upsertTaskOverride(
         withInventory,
@@ -651,7 +730,11 @@ export function reducer(state: AppState, action: Action): AppState {
       const withInventory: AppState = {
         ...state,
         ingredients: applyIngredientDeltas(state.ingredients, completion.ingredientDeltas, 1),
-        products: applyProducedQty(state.products, completion.producedProductId, completion.producedQty, -1),
+        products: revertExpiryChange(
+          applyProducedQty(state.products, completion.producedProductId, completion.producedQty, -1),
+          completion.producedProductId,
+          completion.expiryChange,
+        ),
       };
       return upsertTaskOverride(
         withInventory,

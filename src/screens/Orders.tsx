@@ -107,7 +107,7 @@ function CurrentOrder() {
                         <td>
                           <div>{ing.name}</div>
                           {ing.category && (
-                            <div className="muted" style={{ fontSize: 11 }}>{ing.category}</div>
+                            <div className="muted" style={{ fontSize: 12 }}>{ing.category}</div>
                           )}
                         </td>
                         <td>{formatQty(ing.currentQty, ing.unit)}</td>

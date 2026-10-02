@@ -26,6 +26,13 @@ html {
   touch-action: manipulation;
 }
 
+/* Inline links (the sign-up notice, the legal pages). Everything that is a link but not prose sets
+   its own colour, so this only reaches what used to be the browser's default blue. */
+a {
+  color: var(--color-link);
+  text-underline-offset: 2px;
+}
+
 button {
   font-family: inherit;
   color: inherit;
@@ -101,6 +108,7 @@ p {
 .btn {
   border: none;
   border-radius: var(--radius-s);
+  min-height: var(--tap-min);
   padding: 10px 16px;
   font-size: 15px;
   font-weight: 600;
@@ -121,13 +129,13 @@ p {
 }
 
 .btn-danger {
-  background: var(--color-red);
+  background: var(--color-red-solid);
   color: #fff;
 }
 
 .btn-icon {
-  width: 40px;
-  height: 40px;
+  width: var(--tap-min);
+  height: var(--tap-min);
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
@@ -137,8 +145,8 @@ p {
 }
 
 .print-icon-btn {
-  width: 40px;
-  height: 40px;
+  width: var(--tap-min);
+  height: var(--tap-min);
   padding: 0;
   display: inline-flex;
   align-items: center;
@@ -157,10 +165,10 @@ p {
 .assignee-select {
   background: rgba(255, 255, 255, 0.06);
   color: var(--color-text);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-input);
   border-radius: var(--radius-s);
   padding: 4px 8px;
-  height: 28px;
+  height: var(--tap-min);
   width: auto;
   font-size: 13px;
 }
@@ -174,12 +182,19 @@ p {
 }
 
 .priority-dot {
+  /* 14px to look at, 44px to hit: the button is the dot, the pseudo-element is the area around it. */
+  position: relative;
   width: 14px;
   height: 14px;
   border-radius: 50%;
   flex-shrink: 0;
   border: none;
   padding: 0;
+}
+button.priority-dot::after {
+  content: '';
+  position: absolute;
+  inset: -15px;
 }
 .priority-dot.red {
   background: var(--color-red);
@@ -248,6 +263,15 @@ p {
 
 .task-title {
   word-break: break-word;
+  position: relative;
+}
+/* The title is the button that opens a task, and one line of text is 16px tall. Its inline style
+   zeroes the padding, so the 44px comes from a pseudo-element instead. */
+.task-title::after {
+  content: '';
+  position: absolute;
+  inset-block: -14px;
+  inset-inline: 0;
 }
 
 .pill {
@@ -302,7 +326,7 @@ p {
   align-items: center;
   justify-content: center;
   gap: 2px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--color-text-muted);
   text-decoration: none;
 }
@@ -351,6 +375,7 @@ p {
 
 .tab {
   flex-shrink: 0;
+  min-height: var(--tap-min);
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   border-radius: 999px;
@@ -416,7 +441,8 @@ p {
 .field input,
 .field select,
 .field textarea {
-  border: 1px solid var(--color-border);
+  min-height: var(--tap-min);
+  border: 1px solid var(--color-border-input);
   border-radius: var(--radius-s);
   padding: 10px 12px;
   font-size: 15px;
@@ -514,7 +540,7 @@ table.data-table th {
   margin: 4px auto 0;
   width: fit-content;
   padding: 1px 8px;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .stack-gap-2 > * + * {
@@ -551,8 +577,9 @@ textarea {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-height: var(--tap-min);
   background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-input);
   border-radius: var(--radius-s);
   padding: 0 var(--space-3);
   margin-bottom: var(--space-4);
@@ -567,6 +594,7 @@ textarea {
   font-size: 15px;
   padding: 10px 0;
   min-width: 0;
+  align-self: stretch;
 }
 
 .search-input input::-webkit-search-cancel-button {
@@ -779,7 +807,7 @@ textarea {
 .weekday-usage-cell label {
   display: block;
   text-align: center;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--color-text-muted);
   margin-bottom: 2px;
 }
@@ -787,7 +815,7 @@ textarea {
 .weekday-usage-cell input {
   width: 100%;
   text-align: center;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-input);
   border-radius: 6px;
   padding: 6px 2px;
   font-size: 13px;
@@ -804,6 +832,19 @@ textarea {
   padding: 0 var(--space-4);
   z-index: 20;
   pointer-events: none;
+}
+
+.count-save-bar::before {
+  /* Fade the list out under the floating button instead of letting rows run straight into it.
+     Behind the button (the bar is its own stacking context, so -1 stays inside it) and as
+     click-through as the bar itself. */
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  bottom: calc(-1 * var(--space-3));
+  height: calc(var(--save-bar-height) + var(--space-5) + var(--space-3));
+  background: linear-gradient(to top, var(--color-bg) 45%, transparent);
+  z-index: -1;
 }
 
 .count-save-bar > button {
@@ -897,8 +938,8 @@ textarea {
 
 .count-input {
   width: 80px;
-  min-height: 40px;
-  border: 1px solid var(--color-border);
+  min-height: var(--tap-min);
+  border: 1px solid var(--color-border-input);
   border-radius: var(--radius-s);
   padding: 6px 8px;
   font-size: 15px;
@@ -1195,17 +1236,17 @@ textarea {
    number read on its own means nothing. */
 .nav-badge {
   position: absolute;
-  top: -4px;
-  inset-inline-end: -8px;
-  min-width: 16px;
-  height: 16px;
+  top: -6px;
+  inset-inline-end: -10px;
+  min-width: 18px;
+  height: 18px;
   padding: 0 4px;
   border-radius: 999px;
-  background: var(--color-red);
+  background: var(--color-red-solid);
   color: #fff;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
-  line-height: 16px;
+  line-height: 18px;
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
@@ -1619,7 +1660,7 @@ textarea {
   width: 68px;
   height: 44px;
   padding: 0 4px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-input);
   border-radius: 10px;
   background: var(--color-surface-2);
   color: var(--color-text);
@@ -1790,9 +1831,9 @@ textarea {
 .date-chip {
   flex: none;
   width: auto;
-  height: 36px;
+  height: var(--tap-min);
   padding: 0 10px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-input);
   border-radius: var(--radius-s);
   background: transparent;
   color: var(--color-text-muted);

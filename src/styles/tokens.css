@@ -8,6 +8,13 @@
   --color-border: #2b3044;
   --color-text: #e7eaf3;
   --color-text-muted: #8891a8;
+  /* Edge of a control you type or tap into. --color-border is 1.34:1 against --color-surface,
+     which is right for a hairline between cards and wrong for the only thing that tells a person
+     where a field is (WCAG 1.4.11 asks 3:1). Measured: 3.18:1 on the surface. */
+  --color-border-input: #5f6888;
+  /* Inline links. Without a token the browser's default #0000ee was used, 2.1:1 on this
+     background. 9.2:1 on --color-bg. */
+  --color-link: #6cb6ff;
   --color-primary: #00ff87;
   --color-primary-dark: #00cc6c;
   /* Near-black, not white: white text on a bright acid-green background fails contrast. */
@@ -19,6 +26,9 @@
   --color-red: #ff3b30;
   --color-red-bg: #2a1512;
   --color-red-bright: #ff3b30;
+  /* A red FILL under white text. --color-red is the right red for text and stripes on a dark
+     ground (5.6:1 on --color-bg) but white on it is only 3.55:1; this is 5.56:1. */
+  --color-red-solid: #c9261d;
   --color-yellow: #ffaa00;
   --color-yellow-bg: #2a2210;
   --color-yellow-bright: #ffaa00;
@@ -58,6 +68,9 @@
   /* Tabit-style structure: one row height and one primary-button height, so a list of 50
      ingredients and a full-width action read as the same system rather than per-screen values. */
   --row-height: 56px;
+  /* The smallest thing a thumb is asked to hit. Anything that looks smaller than this gets the
+     area from padding or a pseudo-element, not from looking bigger. */
+  --tap-min: 44px;
   --btn-height: 56px;
   --radius-card: 16px;
 

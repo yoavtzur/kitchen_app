@@ -786,6 +786,22 @@ breaks — the actions are simply open, as for any action the server does not li
 `AddManualTaskSheet` (chef, free-text tasks), and `screens/RecurringTasks.tsx` (`/recurring`, from the menu)
 to edit, pause or delete a rule (`deleteWithUndo`, so no confirmation). `WeekdayPicker` is seven real toggles.
 
+### Contrast and tap size are tokens (2026-10-02, no migration)
+
+Four tokens in `tokens.css` carry what used to be per-rule guesses, each measured rather than
+eyeballed. **`--color-border-input`** (3.18:1 on the surface) is the edge of anything you type or tap
+into; **`--color-border`** (1.34:1) stays for hairlines between cards, where it is right, and is too
+faint to be the only thing marking a field (WCAG 1.4.11). **`--color-link`** replaces the browser's
+default `#0000ee` (2.1:1 here), applied by one bare `a` rule that every classed link overrides.
+**`--color-red-solid`** is the red for a *fill under white text* (nav badge, `.btn-danger`, 5.56:1);
+`--color-red` is still the red for text and stripes on a dark ground, where it is 5.6:1 and white-on-it
+would be 3.55:1. **`--tap-min`** (44px) is the floor for anything a thumb must hit.
+
+Anything that looks smaller than 44px gets the area without looking bigger: `.priority-dot` and
+`.task-title` use a `::after` that extends past the box (the title's inline style zeroes its padding,
+so padding was not available). No text below 12px. `.count-save-bar::before` fades the list out under the
+floating save/approve button.
+
 ### Tablet, focus, motion
 
 Three rules at the bottom of `global.css`, each fixing something that was invisible on the phone

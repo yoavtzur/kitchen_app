@@ -20,7 +20,7 @@ npm run preview   # preview a production build
 
 Run a single test file: `npx vitest run src/lib/__tests__/calc.test.ts`
 
-There are 40 test files (606 tests), colocated in `__tests__` folders next to what they cover:
+There are 41 test files (613 tests), colocated in `__tests__` folders next to what they cover:
 `src/lib/__tests__/` (calc, date, ids, integrity, tasks, swipe, units-adjacent helpers, geminiScanner,
 recipeDraft, migrateStations, sentry, analytics, appConfig, focusTrap, rpcErrors, nav, orders,
 ingredientCategories, stations, syncIndicator, invite, cookName, phone, todayFilter, restore, receiving, notices, quickActions, carryOver, recurring),
@@ -850,6 +850,19 @@ consequence to know: **the very first visit is never controlled by the worker**,
 works from the second launch onward. That is the correct trade — the alternative risks exactly
 the bundle mismatch `upgrade-required` exists to prevent — but it means "install and immediately
 go offline in the same tab" does not work.
+
+**Installing on an iPhone is explained, not offered.** iOS has no install prompt and no API to call, so
+`lib/installHint.ts` (pure, tested) decides whether the explanation is *true* for this page — an iPhone/iPad
+(including an iPad that reports itself as a Mac, told apart by its touchscreen), in a browser tab
+(`navigator.standalone` and `display-mode: standalone` both false), outside an in-app browser — and
+`InstallHintCard` shows on the task list and on `PendingApproval` (waiting for the chef is the natural moment).
+"לא עכשיו" is remembered in `kitchen-install-hint-dismissed`; the menu row "הוספה למסך הבית" ignores that, so
+the steps stay findable. The load-bearing line is step 3: **a home-screen icon is a separate app from the
+Safari tab it was added from and does not share its sign-in**, so the first launch asks for e-mail and
+password again — said up front it is a one-time step, unsaid it looks like the account was lost. For the same
+reason the invite link (`kitchen-pending-invite` is banked in the browser's storage) must be finished in the
+browser before installing. WhatsApp's in-app viewer cannot be told from Safari by its user agent, so it simply
+shows the steps. Not built: a real install button for Android (its browser has its own prompt).
 
 **Do not add `manualChunks`.** It was measured on this codebase and is a net loss; `vite.config.ts`
 carries the numbers.

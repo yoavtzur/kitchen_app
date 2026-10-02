@@ -35,6 +35,10 @@ export const INVITE_KEY = 'kitchen-pending-invite';
  * data: clearing it only puts the list back on "הכל". */
 export const TODAY_STATION_KEY = 'kitchen-today-station';
 
+/** "לא עכשיו" on the add-to-home-screen card (lib/installHint.ts). A device preference: clearing it
+ * only brings the card back on an iPhone that has not installed the app. */
+export const INSTALL_HINT_KEY = 'kitchen-install-hint-dismissed';
+
 const ALL_PREFIX = 'kitchen-';
 
 function safeKeys(): string[] {

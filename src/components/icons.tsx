@@ -251,3 +251,14 @@ export function RepeatIcon(p: IconProps) {
     </Svg>
   );
 }
+
+/** The iOS share glyph (a box with an arrow leaving it) — drawn so the steps can point at the exact
+ * button a person has to find. */
+export function ShareIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M12 15V3M8 7l4-4 4 4" />
+      <path d="M8 11H6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-2" />
+    </Svg>
+  );
+}

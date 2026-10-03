@@ -175,8 +175,11 @@ function toRows(items: (Ingredient | Product)[]): CountRow[] {
   }));
 }
 
-/** A product has no detail screen of its own, so this is the whole of it: its expiry date. */
+/** A product has no detail screen of its own, so this is the whole of it: its expiry date, and for
+ * a chef its minimum stock (the same field the recipe editor has). */
 function ProductDetailSheet({ product, onClose }: { product: Product; onClose: () => void }) {
+  const { dispatch } = useApp();
+  const { isChef } = usePermissions();
   return (
     <BottomSheet title={product.name} onClose={onClose}>
       <div className="row-item">
@@ -185,6 +188,19 @@ function ProductDetailSheet({ product, onClose }: { product: Product; onClose: (
           {product.currentQty} {unitLabel(product.unit)}
         </span>
       </div>
+      {isChef && (
+        <div className="row-item">
+          <span>מלאי מינימום</span>
+          <span className="row" style={{ gap: 6, width: 'auto' }}>
+            <NumberEditor
+              value={product.parLevel ?? 0}
+              label={`מלאי מינימום — ${product.name}`}
+              suffix={unitLabel(product.unit)}
+              onChange={(parLevel) => dispatch({ type: 'SET_PRODUCT_PAR', id: product.id, parLevel })}
+            />
+          </span>
+        </div>
+      )}
       <ExpiryField itemType="product" id={product.id} name={product.name} expiresOn={product.expiresOn} />
     </BottomSheet>
   );

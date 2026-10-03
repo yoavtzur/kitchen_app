@@ -54,6 +54,8 @@ export type Action =
       today?: string;
     }
   | { type: 'SET_PRODUCT_TARGETS'; id: string; weeklyTarget?: number; dailyUsage?: number }
+  /** Absolute; `null` clears the minimum (JSON drops `undefined`, so it cannot mean "clear"). */
+  | { type: 'SET_PRODUCT_PAR'; id: string; parLevel: number | null }
   | { type: 'SET_PRODUCT_WEEKDAY_USAGE'; id: string; weekday: Weekday; dailyUsage?: number }
   | { type: 'ADD_PRODUCT'; product: Product }
   | { type: 'UPDATE_PRODUCT'; product: Product }
@@ -549,6 +551,17 @@ export function reducer(state: AppState, action: Action): AppState {
       }
       return next;
     }
+    case 'SET_PRODUCT_PAR':
+      return {
+        ...state,
+        products: state.products.map((p) => {
+          if (p.id !== action.id) return p;
+          const next = { ...p };
+          if (action.parLevel === null || !(action.parLevel > 0)) delete next.parLevel;
+          else next.parLevel = action.parLevel;
+          return next;
+        }),
+      };
     case 'SET_PRODUCT_TARGETS':
       return {
         ...state,

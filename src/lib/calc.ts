@@ -50,7 +50,9 @@ function coverageDaysFor(product: Product, defaultCoverageDays: number): number 
   return product.coverageDaysOverride ?? defaultCoverageDays;
 }
 
-/** Quantity that needs to be prepared today: manual prep override, else max(0, required*coverageDays - currentQty). */
+/** Quantity that needs to be prepared today: manual prep override, else
+ * max(0, max(required*coverageDays, parLevel) - currentQty). The minimum stock is a floor on the
+ * target, not an addition to it. */
 export function toPrepare(
   product: Product,
   date: string,
@@ -62,7 +64,8 @@ export function toPrepare(
 
   const required = requiredQty(product, date, state.dayPlans, state.specialEvents);
   const coverageDays = coverageDaysFor(product, state.settings.defaultCoverageDays);
-  return Math.max(0, required * coverageDays - product.currentQty);
+  const target = Math.max(required * coverageDays, product.parLevel ?? 0);
+  return Math.max(0, target - product.currentQty);
 }
 
 function roundMultiplier(value: number, roundTo: RoundTo): number {

@@ -998,6 +998,11 @@ describe('actions survive a JSON round trip', () => {
       }),
       action: { type: 'REMOVE_COOK', id: 'cook-1' },
     },
+    {
+      name: 'SET_PRODUCT_PAR clearing the minimum',
+      state: baseState({ products: [{ ...cremeBrulee, parLevel: 20 }] }),
+      action: { type: 'SET_PRODUCT_PAR', id: cremeBrulee.id, parLevel: null },
+    },
   ];
 
   it.each(scenarios)('$name', ({ state, action }) => {
@@ -1005,6 +1010,19 @@ describe('actions survive a JSON round trip', () => {
     const roundTripped = JSON.parse(JSON.stringify(action)) as typeof action;
     const afterRoundTrip = reducer(state, roundTripped);
     expect(afterRoundTrip).toEqual(direct);
+  });
+});
+
+describe('SET_PRODUCT_PAR', () => {
+  it('sets, replaces and clears a product minimum (0 clears too)', () => {
+    let s = baseState({ products: [cremeBrulee] });
+    s = reducer(s, { type: 'SET_PRODUCT_PAR', id: cremeBrulee.id, parLevel: 20 });
+    expect(s.products[0].parLevel).toBe(20);
+    s = reducer(s, { type: 'SET_PRODUCT_PAR', id: cremeBrulee.id, parLevel: 0 });
+    expect('parLevel' in s.products[0]).toBe(false);
+    s = reducer(s, { type: 'SET_PRODUCT_PAR', id: cremeBrulee.id, parLevel: 5 });
+    s = reducer(s, { type: 'SET_PRODUCT_PAR', id: cremeBrulee.id, parLevel: null });
+    expect('parLevel' in s.products[0]).toBe(false);
   });
 });
 

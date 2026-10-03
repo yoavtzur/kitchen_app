@@ -42,6 +42,9 @@ export type Product = {
   currentQty: number;
   weeklyTarget: number;
   dailyUsage: number;
+  /** Minimum to keep on the shelf, in the product's own unit. The prep task makes up to at least
+   * this, even on a day whose usage alone would ask for less. Optional: no minimum. */
+  parLevel?: number;
   /** Per-weekday overrides of dailyUsage (e.g. Friday needs more dough than Monday). */
   dailyUsageByWeekday?: WeekdayUsage;
   recipeId?: string;

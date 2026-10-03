@@ -69,6 +69,24 @@ describe('toPrepare', () => {
     // required = 15 + 10 = 25, coverageDays = 1, current = 3 -> 22
     expect(toPrepare(cremeBrulee, '2026-09-05', state)).toBe(22);
   });
+
+  it('a minimum stock is a floor on the target, not an addition to it', () => {
+    const above = { ...cremeBrulee, parLevel: 30 }; // 30 > 15 -> make up to 30
+    expect(toPrepare(above, '2026-09-05', baseState({ products: [above] }))).toBe(27);
+    const below = { ...cremeBrulee, parLevel: 10 }; // 10 < 15 -> usage wins
+    expect(toPrepare(below, '2026-09-05', baseState({ products: [below] }))).toBe(12);
+    const idle = { ...cremeBrulee, dailyUsage: 0, parLevel: 8 }; // no usage today, still keeps the minimum
+    expect(toPrepare(idle, '2026-09-05', baseState({ products: [idle] }))).toBe(5);
+  });
+
+  it('a manual prep figure still wins over the minimum', () => {
+    const p = { ...cremeBrulee, parLevel: 30 };
+    const state = baseState({
+      products: [p],
+      dayPlans: [{ date: '2026-09-05', entries: [{ productId: p.id, prepOverride: 2 }] }],
+    });
+    expect(toPrepare(p, '2026-09-05', state)).toBe(2);
+  });
 });
 
 describe('recipeMultiplier', () => {

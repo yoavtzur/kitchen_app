@@ -165,6 +165,9 @@ export function RecipeEditor({ recipe, defaultCategory, onClose, draft = null }:
   const [weekdayUsage, setWeekdayUsage] = useState<WeekdayUsage>(
     linkedProduct?.dailyUsageByWeekday ?? {},
   );
+  const [parLevel, setParLevel] = useState(
+    linkedProduct?.parLevel === undefined ? '' : String(linkedProduct.parLevel),
+  );
   const [coverageDays, setCoverageDays] = useState(
     linkedProduct?.coverageDaysOverride === undefined
       ? ''
@@ -292,6 +295,7 @@ export function RecipeEditor({ recipe, defaultCategory, onClose, draft = null }:
 
     const productId = linkedProduct?.id ?? newId('prod');
     const parsedCoverage = parseFloat(coverageDays);
+    const parsedPar = parseFloat(parLevel);
     const product: Product = {
       id: productId,
       name: name.trim(),
@@ -304,6 +308,7 @@ export function RecipeEditor({ recipe, defaultCategory, onClose, draft = null }:
         showWeekdayUsage && Object.keys(weekdayUsage).length > 0 ? weekdayUsage : undefined,
       recipeId,
       coverageDaysOverride: Number.isNaN(parsedCoverage) ? undefined : parsedCoverage,
+      parLevel: parsedPar > 0 ? parsedPar : undefined,
     };
 
     dispatch({
@@ -523,6 +528,18 @@ export function RecipeEditor({ recipe, defaultCategory, onClose, draft = null }:
                 onChange={(e) => setCoverageDays(e.target.value)}
               />
             </div>
+          </div>
+          <div className="field">
+            {/* Kept on the product, not the recipe: a recipe holds no stock, the thing it makes does. */}
+            <label>מלאי מינימום (ריק = אין)</label>
+            <input
+              type="number"
+              inputMode="decimal"
+              min={0}
+              value={parLevel}
+              placeholder="ללא"
+              onChange={(e) => setParLevel(e.target.value)}
+            />
           </div>
         </>
       )}

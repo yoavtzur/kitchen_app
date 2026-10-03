@@ -149,6 +149,9 @@ export function checkShape(value: unknown): { ok: true; state: AppState } | { ok
   if (value.wasteLog !== undefined && !Array.isArray(value.wasteLog)) {
     return { ok: false, error: 'הגיבוי חסר או פגום: יומן זריקות.' };
   }
+  if (value.suppliers !== undefined && !Array.isArray(value.suppliers)) {
+    return { ok: false, error: 'הגיבוי חסר או פגום: ספקים.' };
+  }
 
   // `entries` is the one nested array anything reads without checking — `Consumption` and
   // `calc.ts` both walk it directly off a DayPlan.

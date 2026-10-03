@@ -260,6 +260,22 @@ export type WasteEntry = {
   cookId?: string;
 };
 
+/**
+ * A supplier's contact details and order days. Linked to ingredients **by name**
+ * (`Ingredient.supplier` stays a plain string), so every existing ingredient, order and grouping
+ * keeps working unchanged, and a name typed on an ingredient before any card existed simply
+ * gains one. Renaming a supplier re-points the ingredients that carry the old name.
+ */
+export type Supplier = {
+  id: string;
+  name: string;
+  contactName?: string;
+  phone?: string;
+  email?: string;
+  /** Days an order is placed with this supplier. Empty = any day. */
+  orderDays?: Weekday[];
+};
+
 export type AppState = {
   schemaVersion: number;
   ingredients: Ingredient[];
@@ -279,4 +295,6 @@ export type AppState = {
   recurringTasks?: RecurringTask[];
   /** Everything thrown away, newest last. Optional, so no schema bump. */
   wasteLog?: WasteEntry[];
+  /** Supplier cards. Optional, so no schema bump: an old snapshot or backup simply has none. */
+  suppliers?: Supplier[];
 };

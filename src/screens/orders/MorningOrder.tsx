@@ -24,12 +24,13 @@ import {
   type SupplierMessage,
 } from '../../lib/orders';
 import { matchesQuery } from '../../lib/search';
+import { ordersOn, supplierByName, todayFirst } from '../../lib/suppliers';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import { savedMessage } from '../../lib/syncIndicator';
 import { unitLabel } from '../../lib/units';
 import { useTimedMessage } from '../../lib/useTimedFlag';
 import { useUndo } from '../../lib/undo';
-import type { Ingredient } from '../../types';
+import type { AppState, Ingredient } from '../../types';
 
 
 /** Real weekend delta (Thu/Fri/Sat) against the ingredient's own base dailyUsage — never a
@@ -98,6 +99,12 @@ function IngredientInfoSheet({
 }
 
 const fmt = (n: number) => String(Math.round(n * 100) / 100);
+
+/** Suppliers ordered from today (their card's order days) lead the list. */
+function sortGroupsTodayFirst<T extends { supplier: string }>(groups: T[], state: AppState, today: string): T[] {
+  const order = todayFirst(groups.map((g) => g.supplier), state, today);
+  return order.map((name) => groups.find((g) => g.supplier === name)!);
+}
 
 const MorningRow = memo(function MorningRow({
   ingredient,
@@ -306,9 +313,12 @@ export function MorningOrder() {
               <span>הזמנה</span>
             </span>
           </div>
-          {groupBySupplier(filtered).map((group) => (
+          {sortGroupsTodayFirst(groupBySupplier(filtered), state, today).map((group) => (
             <div key={group.supplier}>
-              <div className="morning-supplier">{group.supplier}</div>
+              <div className="morning-supplier">
+                {group.supplier}
+                {ordersOn(supplierByName(state, group.supplier), today) && <span className="pill green">מזמינים היום</span>}
+              </div>
               {group.ingredients.map((ing) => {
                 const count = effectiveCount(ing, drafts);
                 return (

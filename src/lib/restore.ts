@@ -10,6 +10,7 @@ import type {
   RecurringTask,
   SpecialEvent,
   Station,
+  Supplier,
   Task,
 } from '../types';
 import { orderLineKey } from './date';
@@ -40,6 +41,7 @@ export type Restore = {
   cooks?: Cook[];
   stations?: Station[];
   recurringTasks?: RecurringTask[];
+  suppliers?: Supplier[];
 };
 
 type KeyedCollections = {
@@ -58,6 +60,7 @@ const COLLECTIONS: KeyedCollections = {
   cooks: { items: (s) => s.cooks, key: (c) => c.id },
   stations: { items: (s) => s.stations ?? [], key: (st) => st.id },
   recurringTasks: { items: (s) => s.recurringTasks ?? [], key: (r) => r.id },
+  suppliers: { items: (s) => s.suppliers ?? [], key: (x) => x.id },
 };
 
 const NAMES = Object.keys(COLLECTIONS) as (keyof Restore)[];

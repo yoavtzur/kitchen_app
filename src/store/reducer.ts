@@ -13,6 +13,7 @@ import type {
   Settings,
   SpecialEvent,
   Station,
+  Supplier,
   Task,
   TaskCompletion,
   Unit,
@@ -130,6 +131,10 @@ export type Action =
   // 'general'. It is resolved against the state at apply time, so the op stays deterministic and
   // an unknown target degrades to 'general' instead of orphaning anything.
   | { type: 'DELETE_STATION'; id: string; moveToId: string }
+  /** Upsert by id. A changed name re-points every ingredient that carried the old one. */
+  | { type: 'SAVE_SUPPLIER'; supplier: Supplier }
+  /** Removes the card only: ingredients keep the supplier's name. */
+  | { type: 'DELETE_SUPPLIER'; id: string }
   | { type: 'SET_ORDER_LINE_QTY'; ingredientId: string; date: string; qtyOverride?: number | null }
   | { type: 'SET_ORDER_LINE_ORDERED'; ingredientId: string; date: string; ordered: boolean }
   /** Sets how much of one order line has arrived. Absolute — stock moves by the *difference* from
@@ -886,6 +891,27 @@ export function reducer(state: AppState, action: Action): AppState {
     // so re-pointing the recipes *is* moving the day's prep list. Free-text tasks carry their own
     // `categoryOverride`. Nothing is deleted but the station row itself. A station that is
     // already gone is a no-op, so replaying the op on a second device changes nothing.
+    case 'SAVE_SUPPLIER': {
+      const name = action.supplier.name.trim();
+      if (!name) return state;
+      const list = state.suppliers ?? [];
+      // One card per name: saving a card under a name another card already has is refused (it
+      // would make "which phone does this ingredient's supplier have?" ambiguous).
+      if (list.some((x) => x.id !== action.supplier.id && x.name.trim() === name)) return state;
+      const existing = list.find((x) => x.id === action.supplier.id);
+      const next: Supplier = { ...action.supplier, name };
+      const suppliers = existing ? list.map((x) => (x.id === next.id ? next : x)) : [...list, next];
+      const oldName = existing?.name.trim();
+      const ingredients =
+        oldName && oldName !== name
+          ? state.ingredients.map((i) => (i.supplier?.trim() === oldName ? { ...i, supplier: name } : i))
+          : state.ingredients;
+      return { ...state, suppliers, ingredients };
+    }
+    case 'DELETE_SUPPLIER': {
+      if (!(state.suppliers ?? []).some((x) => x.id === action.id)) return state;
+      return { ...state, suppliers: (state.suppliers ?? []).filter((x) => x.id !== action.id) };
+    }
     case 'DELETE_STATION': {
       if (!state.stations.some((s) => s.id === action.id)) return state;
       const target =

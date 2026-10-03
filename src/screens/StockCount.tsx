@@ -26,6 +26,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { WeekdayUsageEditor } from '../components/WeekdayUsageEditor';
 import { Toast } from '../components/Toast';
 import { PrintButton } from '../components/PrintShare';
+import { supplierNames } from '../lib/suppliers';
 import { ExpiryField, ExpiryPill } from '../components/ExpiryField';
 import { matchesQuery } from '../lib/search';
 import {
@@ -360,7 +361,13 @@ function IngredientDetailSheet({ ingredient, onClose }: { ingredient: Ingredient
       </div>
       <div className="field">
         <label>ספק (לא חובה)</label>
-        <input value={supplierDraft} onChange={(e) => setSupplierDraft(e.target.value)} onBlur={commitSupplier} />
+        <input
+          value={supplierDraft}
+          onChange={(e) => setSupplierDraft(e.target.value)}
+          onBlur={commitSupplier}
+          list="ingredient-supplier-options"
+        />
+        <SupplierOptions />
       </div>
       <div className="field">
         <label>קטגוריה (לא חובה)</label>
@@ -465,6 +472,19 @@ function IngredientDetailSheet({ ingredient, onClose }: { ingredient: Ingredient
   );
 }
 
+/** Suppliers already known (cards and names on ingredients), so the same supplier is not typed
+ * three ways — the name is what links an ingredient to its supplier's phone. */
+function SupplierOptions() {
+  const { state } = useApp();
+  return (
+    <datalist id="ingredient-supplier-options">
+      {supplierNames(state).map((n) => (
+        <option key={n} value={n} />
+      ))}
+    </datalist>
+  );
+}
+
 function CategoryOptions({ categories }: { categories: string[] }) {
   return (
     <datalist id="ingredient-category-options">
@@ -541,7 +561,8 @@ function AddIngredientSheet({ onClose }: { onClose: () => void }) {
       </div>
       <div className="field">
         <label>ספק (לא חובה)</label>
-        <input value={supplier} onChange={(e) => setSupplier(e.target.value)} />
+        <input value={supplier} onChange={(e) => setSupplier(e.target.value)} list="ingredient-supplier-options" />
+        <SupplierOptions />
       </div>
       <div className="field">
         <label>קטגוריה (לא חובה)</label>

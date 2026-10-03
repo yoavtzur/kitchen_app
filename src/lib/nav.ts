@@ -31,7 +31,7 @@ const COUNT: NavTab = { to: '/count', label: 'מלאי', icon: 'count' };
 const CHEF_TABS: NavTab[] = [
   TASKS,
   COUNT,
-  { to: '/orders', label: 'הזמנות', icon: 'orders', alsoActiveOn: ['/morning'] },
+  { to: '/orders', label: 'הזמנות', icon: 'orders', alsoActiveOn: ['/morning', '/suppliers'] },
   { to: '/consumption', label: 'צריכה', icon: 'consumption' },
   { to: '/menu', label: 'תפריט', icon: 'menu', alsoActiveOn: ['/recipes', '/settings', '/stations', '/team', '/profile', '/receiving', '/recurring'] },
 ];

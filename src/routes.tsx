@@ -24,6 +24,7 @@ const Team = lazy(() => import('./screens/Team').then((m) => ({ default: m.Team 
 const Profile = lazy(() => import('./screens/Profile').then((m) => ({ default: m.Profile })));
 const Menu = lazy(() => import('./screens/Menu').then((m) => ({ default: m.Menu })));
 const Stations = lazy(() => import('./screens/Stations').then((m) => ({ default: m.Stations })));
+const Suppliers = lazy(() => import('./screens/Suppliers').then((m) => ({ default: m.Suppliers })));
 const NotFound = lazy(() => import('./screens/NotFound').then((m) => ({ default: m.NotFound })));
 const JoinRoute = lazy(() => import('./screens/JoinRoute').then((m) => ({ default: m.JoinRoute })));
 const Privacy = lazy(() => import('./screens/Legal').then((m) => ({ default: m.Privacy })));
@@ -53,6 +54,7 @@ export function preloadScreens(): void {
     void import('./screens/Team');
     void import('./screens/Profile');
     void import('./screens/Stations');
+    void import('./screens/Suppliers');
   };
   if (typeof window === 'undefined') return;
   const idle = (window as { requestIdleCallback?: (cb: () => void) => void }).requestIdleCallback;
@@ -97,6 +99,7 @@ export const APP_ROUTES: AppRoute[] = [
   { path: '/recurring', name: 'recurring', element: <ChefRoute><RecurringTasks /></ChefRoute> },
   { path: '/waste', name: 'waste', element: <ChefRoute><Waste /></ChefRoute> },
   { path: '/stations', name: 'stations', element: <ChefRoute><Stations /></ChefRoute> },
+  { path: '/suppliers', name: 'suppliers', element: <ChefRoute><Suppliers /></ChefRoute> },
   { path: '/settings', name: 'settings', element: <Settings /> },
   { path: '/menu', name: 'menu', element: <Menu /> },
   { path: '/team', name: 'team', element: <Team /> },

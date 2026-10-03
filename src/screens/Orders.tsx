@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '../store/AppContext';
 import { weeklyNeedForIngredient } from '../lib/calc';
@@ -11,6 +11,8 @@ import { SearchInput } from '../components/SearchInput';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { Segmented } from '../components/Segmented';
 import { PrintButton } from '../components/PrintShare';
+import { ordersOn, supplierByName, supplierNote, todayFirst } from '../lib/suppliers';
+import { ContactActions } from '../components/ContactActions';
 import { MorningOrder } from './orders/MorningOrder';
 import { useAuth } from '../auth/AuthContext';
 import { matchesQuery } from '../lib/search';
@@ -41,10 +43,13 @@ function CurrentOrder() {
       const supplier = ing.supplier?.trim() || NO_SUPPLIER;
       map.set(supplier, [...(map.get(supplier) ?? []), ing]);
     }
-    return [...map.entries()].sort(([a], [b]) =>
+    const sorted = [...map.entries()].sort(([a], [b]) =>
       a === NO_SUPPLIER ? 1 : b === NO_SUPPLIER ? -1 : a.localeCompare(b, 'he'),
     );
-  }, [state.ingredients, query]);
+    // Suppliers ordered from today (per their card) come first.
+    const order = todayFirst(sorted.map(([name]) => name), state, date);
+    return order.map((name) => sorted.find(([n]) => n === name)!);
+  }, [state, query, date]);
 
   const todaysLines = state.orderLines.filter((l) => l.date === date);
   // Deliveries still owed from the last week, not just today's — the receiving screen's own list.
@@ -79,6 +84,10 @@ function CurrentOrder() {
         </Link>
       </div>
 
+      <Link className="btn btn-block" style={{ marginBottom: 'var(--space-3)', textAlign: 'center', textDecoration: 'none' }} to="/suppliers">
+        פרטי הספקים
+      </Link>
+
       <SearchInput value={query} onChange={setQuery} placeholder="חיפוש מצרך או ספק..." />
 
       {groups.length === 0 ? (
@@ -87,7 +96,11 @@ function CurrentOrder() {
         <div className="card-list">
           {groups.map(([supplier, ingredients]) => (
             <div key={supplier} className="card">
-              <div className="supplier-group">{supplier}</div>
+              <div className="supplier-group">
+                {supplier}
+                {ordersOn(supplierByName(state, supplier), date) && <span className="pill green">מזמינים היום</span>}
+              </div>
+              {supplierByName(state, supplier)?.phone && <ContactActions phone={supplierByName(state, supplier)!.phone!} />}
               <table className="data-table">
                 <thead>
                   <tr>
@@ -329,6 +342,9 @@ const TABS: { value: OrdersTab; label: string }[] = [
 export function Orders() {
   const [tab, setTab] = useState<OrdersTab>('morning');
   const { membership } = useAuth();
+  const { state } = useApp();
+  // The line under each supplier on a printed order: who to call, on what number.
+  const noteFor = useCallback((name: string) => supplierNote(supplierByName(state, name)), [state]);
 
   return (
     <div>
@@ -338,7 +354,7 @@ export function Orders() {
         title={membership?.restaurantName?.trim() || 'הזמנות'}
         actions={
           <div className="header-actions no-print">
-            <PrintButton kind="orders" date={todayStr()} />
+            <PrintButton kind="orders" date={todayStr()} supplierNote={noteFor} />
           </div>
         }
       />

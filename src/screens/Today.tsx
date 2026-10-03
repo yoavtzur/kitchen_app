@@ -9,7 +9,7 @@ import { EmptyState } from '../components/EmptyState';
 import { CookPill } from '../components/CookPill';
 import { SearchInput } from '../components/SearchInput';
 import { CategoryTabs } from '../components/CategoryTabs';
-import { PrintStationButton } from '../components/PrintStationButton';
+import { PrintButton } from '../components/PrintShare';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { JoinRequestsBanner } from '../components/JoinRequestsBanner';
 import { ExpiryBanner } from '../components/ExpiryBanner';
@@ -156,7 +156,9 @@ export function Today() {
                 aria-label="תאריך"
               />
             </label>
-            <PrintStationButton label="הדפס רשימת עמדה" iconOnly />
+            {/* Opens a sheet that chooses what goes on paper (stations, a cook, done or not) — or
+                sends the same list to WhatsApp. */}
+            <PrintButton kind="tasks" date={date} />
           </div>
         }
       />

@@ -2362,3 +2362,128 @@ textarea {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
+
+/* ---------------------------------------------------------------------------
+   The print-and-share sheet (components/PrintShare.tsx) and the page it prints.
+   The page is mounted on <body>, outside the app, only while printing; on paper
+   `body.printing-doc` hides everything else, so the screen it started from
+   never leaks onto the sheet.
+--------------------------------------------------------------------------- */
+.print-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.print-opt-check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap-min);
+}
+
+.print-opt-check input {
+  width: 20px;
+  height: 20px;
+}
+
+a.btn.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.print-doc-root {
+  display: none;
+}
+
+@media print {
+  body.printing-doc > *:not(.print-doc-root) {
+    display: none !important;
+  }
+
+  body.printing-doc {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  body.printing-doc .print-doc-root {
+    display: block !important;
+    color: #000;
+    font-family: system-ui, sans-serif;
+    font-size: 12pt;
+  }
+
+  .print-doc-header h1 {
+    margin: 0;
+    font-size: 18pt;
+  }
+
+  .print-doc-header p {
+    margin: 2pt 0 10pt;
+  }
+
+  .print-doc-section {
+    margin-bottom: 12pt;
+  }
+
+  .print-doc-section.page-break {
+    page-break-before: always;
+    break-before: page;
+  }
+
+  .print-doc-section h2 {
+    margin: 0 0 4pt;
+    font-size: 14pt;
+    border-bottom: 2px solid #000;
+    page-break-after: avoid;
+  }
+
+  .print-doc-note {
+    margin: 0 0 4pt;
+  }
+
+  .print-doc-root table {
+    width: 100%;
+    border-collapse: collapse;
+    /* Every section's columns line up with the one above it. */
+    table-layout: fixed;
+  }
+
+  .print-doc-root th:not(.print-doc-check):first-of-type,
+  .print-doc-root td:not(.print-doc-check):first-of-type {
+    width: 40%;
+  }
+
+  .print-doc-root th,
+  .print-doc-root td {
+    border: 1px solid #000;
+    padding: 4pt 6pt;
+    text-align: start;
+    vertical-align: middle;
+  }
+
+  .print-doc-root tr {
+    page-break-inside: avoid;
+  }
+
+  .print-doc-root th {
+    background: #eee !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-doc-check {
+    width: 18pt;
+  }
+
+  .print-doc-box {
+    display: inline-block;
+    width: 12pt;
+    height: 12pt;
+    border: 1.5px solid #000;
+  }
+
+  .print-doc-blank {
+    min-width: 60pt;
+  }
+}

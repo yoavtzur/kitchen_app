@@ -10,6 +10,7 @@ import { EmptyState } from '../components/EmptyState';
 import { SearchInput } from '../components/SearchInput';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { Segmented } from '../components/Segmented';
+import { PrintButton } from '../components/PrintShare';
 import { MorningOrder } from './orders/MorningOrder';
 import { useAuth } from '../auth/AuthContext';
 import { matchesQuery } from '../lib/search';
@@ -333,7 +334,14 @@ export function Orders() {
     <div>
       {/* No subtitle: on a phone every 20px here is a third of an ingredient row, and the chef
           opens this screen to see rows. */}
-      <ScreenHeader title={membership?.restaurantName?.trim() || 'הזמנות'} />
+      <ScreenHeader
+        title={membership?.restaurantName?.trim() || 'הזמנות'}
+        actions={
+          <div className="header-actions no-print">
+            <PrintButton kind="orders" date={todayStr()} />
+          </div>
+        }
+      />
 
       <Segmented options={TABS} value={tab} onChange={setTab} label="תצוגת הזמנות" />
 

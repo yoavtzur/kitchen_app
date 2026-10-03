@@ -25,6 +25,7 @@ import { BottomSheet } from '../components/BottomSheet';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { WeekdayUsageEditor } from '../components/WeekdayUsageEditor';
 import { Toast } from '../components/Toast';
+import { PrintButton } from '../components/PrintShare';
 import { ExpiryField, ExpiryPill } from '../components/ExpiryField';
 import { matchesQuery } from '../lib/search';
 import {
@@ -682,11 +683,14 @@ export function StockCount() {
       <ScreenHeader
         title="מלאי"
         actions={
-          isChef ? (
-            <button type="button" className="btn btn-icon btn-primary" onClick={() => setAdding(true)} aria-label="הוסף מצרך">
-              +
-            </button>
-          ) : undefined
+          <div className="header-actions no-print">
+            <PrintButton kind="stock" date={today} />
+            {isChef && (
+              <button type="button" className="btn btn-icon btn-primary" onClick={() => setAdding(true)} aria-label="הוסף מצרך">
+                +
+              </button>
+            )}
+          </div>
         }
       />
 

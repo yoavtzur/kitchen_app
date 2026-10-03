@@ -18,6 +18,7 @@ import {
   SettingsIcon,
   StationsIcon,
   PhoneIcon,
+  CalendarIcon,
   TeamIcon,
   WasteIcon,
 } from '../components/icons';
@@ -86,6 +87,7 @@ export function Menu() {
 
       <div className="list-card">
         {isChef && <MenuLink to="/recipes" icon={<RecipesIcon size={22} />} label="מתכונים" />}
+        {isChef && <MenuLink to="/schedule" icon={<CalendarIcon size={22} />} label="סידור עבודה" />}
         {isChef && <MenuLink to="/recurring" icon={<RepeatIcon size={22} />} label="משימות קבועות" />}
         {isChef && <MenuLink to="/receiving" icon={<ReceivingIcon size={22} />} label="קבלת סחורה" />}
         {isChef && <MenuLink to="/suppliers" icon={<PhoneIcon size={22} />} label="ספקים" />}

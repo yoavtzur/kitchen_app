@@ -270,6 +270,11 @@ for T in ADD_RECURRING_TASK UPDATE_RECURRING_TASK DELETE_RECURRING_TASK; do
 done
 ck "a cook CAN send MATERIALIZE_RECURRING — whichever device opens first makes today's tasks" \
    "$(as "$COOK" "select count(*) from public.append_ops('$RID1'::uuid,'c',$(op MATERIALIZE_RECURRING))")" "1"
+for T in SET_STATION_COOK SAVE_SUPPLIER DELETE_SUPPLIER; do
+  ck "0011: a cook cannot send $T" \
+     "$(as "$COOK" "select 1 from public.append_ops('$RID1'::uuid,'c',$(op $T))" 2>&1 >/dev/null | grep -c forbidden_action)" "1"
+  ck "0011: a chef can send $T" "$(as "$CHEF" "select count(*) from public.append_ops('$RID1'::uuid,'c',$(op $T))")" "1"
+done
 ck "a rejected batch of standing-task ops took no sequence numbers" \
    "$($Q -c "select last_seq = (select max(seq) from public.ops where restaurant_id='$RID1') from public.restaurants where id='$RID1'")" "t"
 

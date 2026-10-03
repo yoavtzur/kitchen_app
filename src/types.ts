@@ -276,6 +276,14 @@ export type Supplier = {
   orderDays?: Weekday[];
 };
 
+/** Who works a station on a given day (the work schedule). A station's tasks that day with no
+ * one assigned by hand show as this cook's — see `getDisplayTasks`. */
+export type StationShift = {
+  date: string; // YYYY-MM-DD
+  stationId: string;
+  cookId: string;
+};
+
 export type AppState = {
   schemaVersion: number;
   ingredients: Ingredient[];
@@ -297,4 +305,6 @@ export type AppState = {
   wasteLog?: WasteEntry[];
   /** Supplier cards. Optional, so no schema bump: an old snapshot or backup simply has none. */
   suppliers?: Supplier[];
+  /** The work schedule, one row per (date, station). Optional, so no schema bump. */
+  stationShifts?: StationShift[];
 };

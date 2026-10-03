@@ -10,6 +10,7 @@ import { CookPill } from '../components/CookPill';
 import { SearchInput } from '../components/SearchInput';
 import { CategoryTabs } from '../components/CategoryTabs';
 import { PrintButton } from '../components/PrintShare';
+import { shiftCook } from '../lib/schedule';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { JoinRequestsBanner } from '../components/JoinRequestsBanner';
 import { ExpiryBanner } from '../components/ExpiryBanner';
@@ -109,6 +110,8 @@ export function Today() {
   const openTasks = visibleTasks.filter((t) => !t.done);
   const doneTasks = sortDisplayTasks(visibleTasks.filter((t) => t.done));
   const grouped = !searching && category === 'all';
+  const stationCookId = category !== 'all' ? shiftCook(state, date, category) : undefined;
+  const stationCook = stationCookId ? state.cooks.find((c) => c.id === stationCookId) : undefined;
   const groups = grouped ? groupByStation(openTasks, state.stations) : [];
 
   const stationName =
@@ -215,6 +218,12 @@ export function Today() {
 
       {tabsShown && !searching && (
         <CategoryTabs tabs={categoryTabs(state.stations)} value={category} onChange={setCategory} />
+      )}
+      {/* One station on screen: say who works it today, from the work schedule. */}
+      {tabsShown && !searching && category !== 'all' && stationCook && (
+        <p className="muted station-cook-line">
+          בעמדה היום: <strong style={{ color: stationCook.color }}>{stationCook.name}</strong>
+        </p>
       )}
 
       {visibleTasks.length === 0 ? (

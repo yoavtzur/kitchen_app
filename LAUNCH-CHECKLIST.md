@@ -23,7 +23,9 @@
 עדיין שף, אחרת השף הוותיק ביותר), ומגדירה מחדש את `set_member_permissions`, `remove_member` ו-
 `delete_my_account`, ומוסיפה `transfer_ownership`. רק הבעלים ממנה, מוריד ומסיר שפים; כל שף מנהל
 טבחים ויכול להוריד את עצמו; הבעלים מעביר בעלות לפני שהוא יורד מתפקיד או מוחק את החשבון.
-`scripts/verify-migrations-local.sh` בודק את כל זה מול PostgreSQL אמיתי (124 בדיקות).
+בנוסף היא הופכת לשף-בלבד את סידור העבודה (`SET_STATION_COOK`) ואת כרטיסי הספקים
+(`SAVE_SUPPLIER`, `DELETE_SUPPLIER`); בלעדיה הם פתוחים לכל חבר (הסתרה בצד הלקוח בלבד).
+`scripts/verify-migrations-local.sh` בודק את כל זה מול PostgreSQL אמיתי (130 בדיקות).
 
 ---
 

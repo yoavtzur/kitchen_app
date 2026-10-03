@@ -1,4 +1,5 @@
--- 0011 — more than one chef, and one owner.
+-- 0011 — more than one chef, and one owner. (Also: the work schedule and supplier cards are
+-- chef-only in `action_requires`, at the bottom.)
 --
 -- A kitchen could always have several chefs: `set_member_permissions` (0003) accepted role 'chef'
 -- from any chef. What it could not say is who is in charge of the chefs, so any chef could demote or
@@ -220,6 +221,32 @@ begin
   delete from auth.users where id = v_uid;
   return jsonb_build_object('status', 'deleted', 'restaurantDeleted', v_dropped);
 end $$;
+
+-- ── action_requires: the schedule and supplier cards are chef-only ─────────────
+
+-- Identical to 0010's, plus three chef entries: the work schedule (SET_STATION_COOK) decides who
+-- is given every station's tasks, and supplier cards (SAVE_SUPPLIER / DELETE_SUPPLIER) hold the
+-- numbers orders are sent to — structure, like stations, not a cook's call. Restated in full
+-- because a function body cannot be patched in place.
+create or replace function public.action_requires(p_action jsonb) returns text
+language sql immutable as $$
+  select case p_action ->> 'type'
+    when 'ADD_RECIPE'    then 'edit_recipes'
+    when 'UPDATE_RECIPE' then 'edit_recipes'
+    when 'SAVE_PREP_ITEM' then 'edit_recipes'
+    when 'DELETE_RECIPE'  then 'delete_recipes'
+    when 'DELETE_PRODUCT' then 'delete_recipes'
+    when 'RENAME_STATION' then 'chef'
+    when 'DELETE_STATION' then 'chef'
+    when 'ADD_RECURRING_TASK'    then 'chef'
+    when 'UPDATE_RECURRING_TASK' then 'chef'
+    when 'DELETE_RECURRING_TASK' then 'chef'
+    when 'SET_STATION_COOK' then 'chef'
+    when 'SAVE_SUPPLIER'    then 'chef'
+    when 'DELETE_SUPPLIER'  then 'chef'
+    else null
+  end;
+$$;
 
 -- ── grants ───────────────────────────────────────────────────────────────────
 

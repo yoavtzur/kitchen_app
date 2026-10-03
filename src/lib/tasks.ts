@@ -1,6 +1,7 @@
 import type { AppState, Priority, RecipeCategory, Station, Task, TaskCompletion } from '../types';
 import { multiplierForProduct, priorityFor, toPrepare, weightedRecipeItems } from './calc';
 import { stationOptions } from './recipeCategories';
+import { shiftsOn } from './schedule';
 import { convert } from './units';
 
 export type DisplayTask = {
@@ -32,6 +33,8 @@ export type DisplayTask = {
   carriedFrom?: string;
   /** Made from a standing task — shown with a small "↻ קבועה" tag. */
   recurring?: boolean;
+  /** `assigneeId` comes from the work schedule (lib/schedule.ts), not from a hand-picked cook. */
+  assigneeFromSchedule?: boolean;
 };
 
 /**
@@ -134,7 +137,15 @@ export function getDisplayTasks(date: string, state: AppState): DisplayTask[] {
     auto.push(withBlocked(displayTask, blockedIngredients(recipe, multiplier, state)));
   }
 
-  return [...auto, ...manual];
+  // The work schedule fills in whoever works the task's station that day — only where nobody was
+  // chosen by hand, so a hand-picked cook always wins.
+  const shifts = shiftsOn(state, date);
+  const withSchedule = (t: DisplayTask): DisplayTask => {
+    if (t.assigneeId) return t;
+    const cookId = shifts.get(t.category);
+    return cookId ? { ...t, assigneeId: cookId, assigneeFromSchedule: true } : t;
+  };
+  return [...auto.map(withSchedule), ...manual.map(withSchedule)];
 }
 
 // ── selectors over a DisplayTask list ────────────────────────────────────────

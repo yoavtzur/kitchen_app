@@ -20,10 +20,11 @@ npm run preview   # preview a production build
 
 Run a single test file: `npx vitest run src/lib/__tests__/calc.test.ts`
 
-There are 42 test files (622 tests), colocated in `__tests__` folders next to what they cover:
+There are 49 test files (662 tests), colocated in `__tests__` folders next to what they cover:
 `src/lib/__tests__/` (calc, date, ids, integrity, tasks, swipe, units-adjacent helpers, geminiScanner,
 recipeDraft, migrateStations, sentry, analytics, appConfig, focusTrap, rpcErrors, nav, orders,
-ingredientCategories, stations, syncIndicator, invite, cookName, phone, todayFilter, restore, receiving, notices, quickActions, carryOver, recurring, taskRow),
+ingredientCategories, stations, syncIndicator, invite, cookName, phone, todayFilter, restore, receiving, notices, quickActions, carryOver, recurring, taskRow, countDraft, orderHistory,
+teamRoles, printDoc, suppliers, excelExport, schedule),
 `src/store/__tests__/{reducer,storage,importValidation}.test.ts`,
 `src/sync/__tests__/{backoff,engine,localAdapter,log,persist}.test.ts`, and **`api/__tests__/` — the one
 test directory outside `src/`**, covering the scan endpoint's guards (see "Closing /api/scan-recipe").
@@ -823,6 +824,34 @@ app first, very often a cook's, and it is a pure function of state and date. Unt
 breaks — the actions are simply open, as for any action the server does not list. UI: a "חזרה" block in
 `AddManualTaskSheet` (chef, free-text tasks), and `screens/RecurringTasks.tsx` (`/recurring`, from the menu)
 to edit, pause or delete a rule (`deleteWithUndo`, so no confirmation). `WeekdayPicker` is seven real toggles.
+
+### Print, suppliers, schedule, several chefs (2026-10-03, migration 0011)
+
+- **Priority chip** sits at the far end of the meta line (never beside the done-checkbox) and opens a
+  choice instead of cycling. **Nav badge** on משימות is a red dot, no number.
+- **Counts are not lost.** Orders' count box saves to stock on blur (with undo), like the order box.
+  The stock screen keeps its typed count in `kitchen-count-draft` (`lib/countDraft.ts`, per kitchen,
+  never synced) until "שמור ספירה"; a row whose stored stock moved since it was typed says so.
+- **Order history** pages back a week at a time (`lib/orderHistory.ts`); highlights compare with the
+  ingredient's four-week mean. Consumption's "נוכחי" column is editable (`SET_PRODUCT_QTY`).
+- **Several chefs, one owner** (migration 0011): `restaurants.owner_id`; only the owner makes, unmakes
+  or removes a chef; the owner hands over (`transfer_ownership`) before stepping down or deleting the
+  account. `lib/teamRoles.ts` mirrors those rules for the Team screen. The membership is re-fetched on
+  focus and every 3 minutes so a promoted cook gets the chef's app without signing in again.
+- **Product minimum** (`Product.parLevel`, `SET_PRODUCT_PAR`): a floor on the prep target, set from the
+  recipe editor or the stock screen's product sheet.
+- **Print & share** (`components/PrintShare.tsx`, `lib/printDoc.ts`): one sheet on tasks, stock and
+  orders; the page is data, rendered on `<body>` outside the app only while printing
+  (`body.printing-doc`), and the same document goes to WhatsApp/clipboard as text.
+- **Suppliers** (`AppState.suppliers`, `/suppliers`): contact, phone, order days, linked to ingredients
+  **by name** (a rename re-points them). Today's suppliers lead the morning order; WhatsApp opens the
+  supplier's own chat when a phone is known.
+- **Excel export** (chef, Settings): `lib/excelExport.ts` + a ~100-line `lib/xlsx.ts` on `fflate`,
+  lazy-loaded. ASCII file name on purpose (a Hebrew one came out as "download").
+- **Work schedule** (`AppState.stationShifts`, `/schedule`, `SET_STATION_COOK`): `getDisplayTasks`
+  fills an unassigned task's cook from whoever works its station that day (`assigneeFromSchedule`);
+  a hand-picked cook always wins, and nothing is written onto the task.
+- 0011 also makes `SET_STATION_COOK`, `SAVE_SUPPLIER`, `DELETE_SUPPLIER` chef-only in `action_requires`.
 
 ### Contrast and tap size are tokens (2026-10-02, no migration)
 

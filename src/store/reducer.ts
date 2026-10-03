@@ -29,6 +29,7 @@ import { applyRestore, type Restore } from '../lib/restore';
 import { carryOver } from '../lib/carryOver';
 import { batchExpiry } from '../lib/expiry';
 import { materializeRecurring } from '../lib/recurring';
+import { withShift } from '../lib/schedule';
 import { ackAllFor, ackRecipeNotice, noteRecipeChange } from '../lib/notices';
 import { UNASSIGNED_CATEGORY } from '../lib/recipeCategories';
 import { convert } from '../lib/units';
@@ -131,6 +132,8 @@ export type Action =
   // 'general'. It is resolved against the state at apply time, so the op stays deterministic and
   // an unknown target degrades to 'general' instead of orphaning anything.
   | { type: 'DELETE_STATION'; id: string; moveToId: string }
+  /** The work schedule: who works `stationId` on `date`. Absolute; `null` clears the slot. */
+  | { type: 'SET_STATION_COOK'; date: string; stationId: string; cookId: string | null }
   /** Upsert by id. A changed name re-points every ingredient that carried the old one. */
   | { type: 'SAVE_SUPPLIER'; supplier: Supplier }
   /** Removes the card only: ingredients keep the supplier's name. */
@@ -891,6 +894,8 @@ export function reducer(state: AppState, action: Action): AppState {
     // so re-pointing the recipes *is* moving the day's prep list. Free-text tasks carry their own
     // `categoryOverride`. Nothing is deleted but the station row itself. A station that is
     // already gone is a no-op, so replaying the op on a second device changes nothing.
+    case 'SET_STATION_COOK':
+      return { ...state, stationShifts: withShift(state.stationShifts, action.date, action.stationId, action.cookId) };
     case 'SAVE_SUPPLIER': {
       const name = action.supplier.name.trim();
       if (!name) return state;

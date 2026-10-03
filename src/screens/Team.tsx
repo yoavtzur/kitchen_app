@@ -7,6 +7,7 @@ import { isSupabaseConfigured } from '../lib/supabase';
 import { newCook } from '../lib/cooks';
 import { buildInviteLink } from '../lib/invite';
 import { useTimedMessage } from '../lib/useTimedFlag';
+import { rowControls } from '../lib/teamRoles';
 import { useUndo } from '../lib/undo';
 import type { Cook } from '../types';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -26,16 +27,22 @@ import { Toast } from '../components/Toast';
  * with its cook, then any cook that has no account behind it.
  *
  * What a person sees depends on who they are:
- *   chef  everyone — role, phone, e-mail, permissions, remove; plus invite and approve
+ *   chef  everyone — role, phone, e-mail, permissions, remove; plus invite and approve.
+ *         Making, unmaking and removing a *chef* is the owner's (migration 0011, lib/teamRoles.ts).
  *   cook  the kitchen's people, and how to reach the chef (call / WhatsApp)
  *   local mode (no accounts at all): just the cooks, which is all there is to manage
  */
 export function Team() {
   const { state, dispatch } = useApp();
-  const { session, membership, setMemberPermissions, removeMember, createInvite, listTeamContacts } = useAuth();
+  const { session, membership, setMemberPermissions, removeMember, transferOwnership, createInvite, listTeamContacts } =
+    useAuth();
   const { isChef } = usePermissions();
   const { deleteWithUndo } = useUndo();
-  const { members, loading, error: membersError, reload, retry } = useTeamMembers();
+  const { members, ownerId, loading, error: membersError, reload, retry } = useTeamMembers();
+  // A role change waits for a confirmation: a chef can export everything, remove people and
+  // approve newcomers, so the switch is not something a stray tap should flip.
+  const [roleCandidate, setRoleCandidate] = useState<{ row: MemberRow; role: 'chef' | 'cook' } | null>(null);
+  const [transferCandidate, setTransferCandidate] = useState<MemberRow | null>(null);
 
   const [contacts, setContacts] = useState<Map<string, TeamContact>>(new Map());
   const [contactsFailed, setContactsFailed] = useState(false);
@@ -72,7 +79,31 @@ export function Team() {
   const membersKnown = !isSupabaseConfigured || (!loading && !membersError);
   const accountless = membersKnown ? state.cooks.filter((c) => !boundCookIds.has(c.id)) : [];
 
-  async function updatePermissions(row: MemberRow, patch: Partial<Pick<MemberRow, 'canEditRecipes' | 'canDeleteRecipes'>>) {
+  async function confirmRoleChange() {
+    if (!roleCandidate) return;
+    const { row, role } = roleCandidate;
+    setRoleCandidate(null);
+    await updatePermissions(row, { role });
+    showMessage(role === 'chef' ? 'מונה לשף ✓' : 'הוחזר לטבח ✓');
+  }
+
+  async function confirmTransfer() {
+    if (!transferCandidate) return;
+    setPermError('');
+    const { error } = await transferOwnership(transferCandidate.userId);
+    setTransferCandidate(null);
+    if (error) {
+      setPermError(error);
+      return;
+    }
+    reload();
+    showMessage('הבעלות הועברה ✓');
+  }
+
+  async function updatePermissions(
+    row: MemberRow,
+    patch: Partial<Pick<MemberRow, 'role' | 'canEditRecipes' | 'canDeleteRecipes'>>,
+  ) {
     setPermError('');
     const next = { ...row, ...patch };
     const { error } = await setMemberPermissions(row.userId, next.role, next.canEditRecipes, next.canDeleteRecipes);
@@ -170,15 +201,18 @@ export function Team() {
               const cook = cookOf(row.cookId);
               const contact = contacts.get(row.userId);
               const isMe = row.userId === myUserId;
+              const can = rowControls(row, myUserId, isChef, ownerId, members);
+              const nameOf = cook?.name ?? 'חבר צוות';
               return (
                 <div key={row.userId} className="team-row">
                   <div className="team-row-head">
                     <div className="row" style={{ gap: 8, width: 'auto' }}>
                       {cook ? <CookPill cook={cook} /> : <span className="muted">טבח לא משויך</span>}
                       {row.role === 'chef' && <span className="pill">שף</span>}
+                      {can.isOwner && <span className="pill green">בעלים</span>}
                       {isMe && <span className="muted">(אני)</span>}
                     </div>
-                    {isChef && row.role !== 'chef' && (
+                    {can.canRemove && (
                       <button
                         type="button"
                         className="btn btn-icon"
@@ -205,7 +239,24 @@ export function Team() {
                     </a>
                   )}
 
-                  {isChef && row.role !== 'chef' &&
+                  {(can.canMakeChef || can.canUnmakeChef) && (
+                    <label className="row team-chef-toggle" style={{ gap: 6, width: 'auto', justifyContent: 'flex-start' }}>
+                      <input
+                        type="checkbox"
+                        checked={row.role === 'chef'}
+                        onChange={(e) => setRoleCandidate({ row, role: e.target.checked ? 'chef' : 'cook' })}
+                        style={{ width: 'auto' }}
+                      />
+                      {isMe ? 'אני שף (ביטול יחזיר אותי לטבח)' : 'שף — גישה מלאה כמו שלך'}
+                    </label>
+                  )}
+                  {can.canTransferOwnership && (
+                    <button type="button" className="btn btn-sm" onClick={() => setTransferCandidate(row)}>
+                      העבר בעלות ל{nameOf}
+                    </button>
+                  )}
+
+                  {can.canEditPermissions &&
                     (cook ? (
                       <div className="row" style={{ gap: 12, width: 'auto', justifyContent: 'flex-start', flexWrap: 'wrap' }}>
                         <label className="row" style={{ gap: 4, width: 'auto' }}>
@@ -300,6 +351,42 @@ export function Team() {
           <p>
             האם אתה בטוח שברצונך להסיר את {cookOf(removeCandidate.cookId)?.name ?? 'טבח לא משויך'}? הפעולה תמחק את
             הגישה שלו למסעדה לצמיתות, אך היסטוריית המשימות שבוצעו תישמר.
+          </p>
+        </ConfirmDialog>
+      )}
+
+      {roleCandidate && (
+        <ConfirmDialog
+          title={roleCandidate.role === 'chef' ? 'מינוי לשף' : 'החזרה לטבח'}
+          confirmLabel={roleCandidate.role === 'chef' ? 'מנה לשף' : 'החזר לטבח'}
+          destructive={roleCandidate.role === 'cook'}
+          onClose={() => setRoleCandidate(null)}
+          onConfirm={confirmRoleChange}
+        >
+          {roleCandidate.role === 'chef' ? (
+            <p>
+              {cookOf(roleCandidate.row.cookId)?.name ?? 'חבר הצוות'} יראה את האפליקציה בדיוק כמו שף: הזמנות, צריכה,
+              עמדות, צוות, אישור מצטרפים, הסרת טבחים וייצוא כל הנתונים.
+            </p>
+          ) : roleCandidate.row.userId === myUserId ? (
+            <p>תחזור/י לתצוגה של טבח ותאבד/י את אפשרויות השף. רק בעלי המסעדה יוכלו למנות אותך שוב.</p>
+          ) : (
+            <p>{cookOf(roleCandidate.row.cookId)?.name ?? 'חבר הצוות'} יחזור לתצוגה של טבח ויאבד את אפשרויות השף.</p>
+          )}
+        </ConfirmDialog>
+      )}
+
+      {transferCandidate && (
+        <ConfirmDialog
+          title="העברת בעלות"
+          confirmLabel="העבר בעלות"
+          destructive
+          onClose={() => setTransferCandidate(null)}
+          onConfirm={confirmTransfer}
+        >
+          <p>
+            {cookOf(transferCandidate.cookId)?.name ?? 'השף'} יהיה הבעלים של המסעדה: רק הוא יוכל למנות, להוריד ולהסיר
+            שפים — גם אותך. את/ה תישאר/י שף.
           </p>
         </ConfirmDialog>
       )}

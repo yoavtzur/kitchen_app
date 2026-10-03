@@ -25,6 +25,10 @@ export function useTeamMembers() {
   const { membership } = useAuth();
   const enabled = isSupabaseConfigured && Boolean(membership);
   const [members, setMembers] = useState<MemberRow[]>([]);
+  // Who owns the restaurant (migration 0011). `undefined` = not known: the column is missing (0011
+  // not applied yet) or the read failed. The UI then falls back to the old rule, every chef equal —
+  // the server is what enforces either way.
+  const [ownerId, setOwnerId] = useState<string | null | undefined>(undefined);
   const [error, setError] = useState('');
   // Derived on the first render rather than announced from the effect: in remote mode the first
   // paint genuinely is loading.
@@ -34,6 +38,15 @@ export function useTeamMembers() {
 
   const reload = useCallback(() => {
     if (!isSupabaseConfigured || !supabase || !restaurantId) return;
+    supabase
+      .from('restaurants')
+      .select('owner_id')
+      .eq('id', restaurantId)
+      .maybeSingle()
+      .then(({ data, error: err }) => {
+        if (cancelledRef.current) return;
+        setOwnerId(err || !data ? undefined : ((data.owner_id as string | null) ?? null));
+      });
     supabase
       .from('memberships')
       .select('user_id, cook_id, role, can_edit_recipes, can_delete_recipes')
@@ -72,5 +85,5 @@ export function useTeamMembers() {
     reload();
   }, [reload]);
 
-  return { members, loading, error, reload, retry, enabled };
+  return { members, ownerId, loading, error, reload, retry, enabled };
 }

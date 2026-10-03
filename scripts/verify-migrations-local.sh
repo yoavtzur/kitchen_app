@@ -307,6 +307,48 @@ ck "approving a request keeps the number the cook typed" "$(as "$PH" "select pub
 as "$CHEF" "select public.remove_member('$PH'::uuid)" >/dev/null
 ck "removing the member removes their number" "$($Q -c "select count(*) from public.member_contacts where user_id='$PH'")" "0"
 
+echo; echo "== 0011: several chefs, one owner =="
+OWN=$(newuser own@t); C2=$(newuser c2@t); C3=$(newuser c3@t)
+OCODE=$(as "$OWN" "select join_code from public.create_restaurant('בעלים','{\"schemaVersion\":5}'::jsonb,5)")
+ORID=$($Q -c "select restaurant_id from public.memberships where user_id='$OWN'")
+for U in "$C2" "$C3"; do
+  ask "$U" "$OCODE" >/dev/null
+  as "$OWN" "select public.resolve_join_request('$U'::uuid, true, 'cook-$U')" >/dev/null
+done
+role() { $Q -c "select role from public.memberships where user_id='$1'"; }
+perm() { as "$1" "select public.set_member_permissions('$2'::uuid, '$3', false, false)" 2>&1 >/dev/null; }
+ck "a new restaurant is owned by its creator" "$($Q -c "select owner_id = '$OWN' from public.restaurants where id='$ORID'")" "t"
+ck "the owner can make a cook a chef" "$(perm "$OWN" "$C2" chef; role "$C2")" "chef"
+ck "a second chef cannot make a chef" "$(perm "$C2" "$C3" chef | grep -c owner_only)" "1"
+ck "...and the cook is still a cook" "$(role "$C3")" "cook"
+ck "a second chef can still change a cook's recipe permissions" \
+   "$(as "$C2" "select public.set_member_permissions('$C3'::uuid, 'cook', true, false)" >/dev/null 2>&1; $Q -c "select can_edit_recipes from public.memberships where user_id='$C3'")" "t"
+ck "a second chef cannot demote the owner" "$(perm "$C2" "$OWN" cook | grep -c owner_only)" "1"
+ck "a second chef cannot remove the owner" \
+   "$(as "$C2" "select public.remove_member('$OWN'::uuid)" 2>&1 >/dev/null | grep -c owner_protected)" "1"
+perm "$OWN" "$C3" chef >/dev/null
+ck "a second chef cannot remove another chef" \
+   "$(as "$C2" "select public.remove_member('$C3'::uuid)" 2>&1 >/dev/null | grep -c owner_only)" "1"
+ck "a chef can step down by themselves" "$(perm "$C3" "$C3" cook; role "$C3")" "cook"
+ck "a second chef can remove a cook" \
+   "$(as "$C2" "select public.remove_member('$C3'::uuid)" >/dev/null 2>&1; $Q -c "select count(*) from public.memberships where user_id='$C3'")" "0"
+ck "the owner cannot step down without handing over" "$(perm "$OWN" "$OWN" cook | grep -c owner_must_transfer)" "1"
+ck "the owner cannot delete their account without handing over" \
+   "$(as "$OWN" "select public.delete_my_account()" 2>&1 >/dev/null | grep -c owner_must_transfer)" "1"
+ck "only the owner can hand over" \
+   "$(as "$C2" "select public.transfer_ownership('$C2'::uuid)" 2>&1 >/dev/null | grep -c owner_only)" "1"
+C4=$(newuser c4@t); ask "$C4" "$OCODE" >/dev/null
+as "$OWN" "select public.resolve_join_request('$C4'::uuid, true, 'cook-c4')" >/dev/null
+ck "ownership goes only to a chef" \
+   "$(as "$OWN" "select public.transfer_ownership('$C4'::uuid)" 2>&1 >/dev/null | grep -c transfer_needs_chef)" "1"
+as "$OWN" "select public.transfer_ownership('$C2'::uuid)" >/dev/null
+ck "the owner can hand over to a chef" "$($Q -c "select owner_id = '$C2' from public.restaurants where id='$ORID'")" "t"
+ck "the former owner is still a chef" "$(role "$OWN")" "chef"
+ck "...and may now step down" "$(perm "$OWN" "$OWN" cook; role "$OWN")" "cook"
+ck "the new owner can promote" "$(perm "$C2" "$C4" chef; role "$C4")" "chef"
+$Q -c "delete from auth.users where id='$C2'" >/dev/null
+ck "with the owner gone, any chef acts as owner" "$(perm "$C4" "$OWN" chef; role "$OWN")" "chef"
+
 echo; echo "== delete_my_account =="
 # The cook authors an op first, so we can see what deletion does to the restaurant's history.
 as "$COOK" "select 1 from public.append_ops('$(as "$CHEF" "select restaurant_id from public.memberships where user_id='$CHEF'")'::uuid, 'dev-cook', jsonb_build_array(jsonb_build_object('op_id', gen_random_uuid(), 'action', '{\"type\":\"SET_PRODUCT_QTY\"}'::jsonb)))" >/dev/null

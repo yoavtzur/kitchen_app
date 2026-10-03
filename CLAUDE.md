@@ -197,10 +197,10 @@ they're pure functions over `AppState` and don't care where it came from.
   focus all trigger.
 
 **Supabase schema**: `supabase/migrations/0001_init.sql` through
-`0010_recurring_tasks_chef_only.sql`, **applied by hand to the live project** (0007 is the
+`0011_restaurant_owner.sql`, **applied by hand to the live project** (0007 is the
 one to check first if account deletion, code rotation or join rate limiting misbehaves, 0008 for
 invites, join requests and chef-only station edits, 0009 for phone numbers and the team's contact
-list, 0010 for chef-only standing tasks — see LAUNCH-CHECKLIST.md). Nothing in the build applies migrations, so any *future*
+list, 0010 for chef-only standing tasks, 0011 for several chefs with one owner — see LAUNCH-CHECKLIST.md). Nothing in the build applies migrations, so any *future*
 migration needs the same manual step before synced clients can use it — until then they sit at
 `upgrade-required` and refuse to append, which is the expected signal that it hasn't landed yet.
 `LAUNCH-CHECKLIST.md` at the repo root is the operator-facing version of this.

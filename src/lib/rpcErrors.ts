@@ -23,6 +23,13 @@ export function mapRpcError(err: RpcErrorLike): string {
     if (err.message.includes('last_chef_account')) {
       return 'את/ה השף היחיד במטבח. מנו שף נוסף לפני מחיקת החשבון.';
     }
+    // Migration 0011: several chefs, one owner.
+    if (err.message.includes('owner_must_transfer')) {
+      return 'את/ה הבעלים של המסעדה. העבירו את הבעלות לשף אחר קודם.';
+    }
+    if (err.message.includes('owner_protected')) return 'לא ניתן להסיר או להוריד את בעלי המסעדה';
+    if (err.message.includes('owner_only')) return 'רק בעלי המסעדה יכולים למנות, להוריד או להסיר שף';
+    if (err.message.includes('transfer_needs_chef')) return 'אפשר להעביר בעלות רק לשף';
     if (err.message.includes('last_chef')) return 'לא ניתן להוריד את השף האחרון מתפקידו';
     if (err.message.includes('cannot_remove_self')) return 'לא ניתן להסיר את עצמך';
     if (err.message.includes('chef_only')) return 'רק שף יכול לבצע את הפעולה הזו';

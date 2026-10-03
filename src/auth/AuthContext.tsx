@@ -99,6 +99,8 @@ type AuthContextValue = {
     canDeleteRecipes: boolean,
   ): Promise<ActionResult>;
   removeMember(userId: string): Promise<ActionResult>;
+  /** Owner-only (migration 0011). Hands the restaurant to another chef; the caller stays a chef. */
+  transferOwnership(userId: string): Promise<ActionResult>;
   /** Chef-only. Returns the new code on success, so the caller can show it without refetching. */
   rotateJoinCode(): Promise<{ code: string | null; error: string | null }>;
   /** Irreversible. On success the account no longer exists server-side, so this also wipes every
@@ -216,7 +218,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!next) await refreshJoinStatus();
         if (cancelled) return;
         setMembershipLoading(false);
-        setMembership(next);
+        // Re-fetched on every focus now (below), so an unchanged answer must not hand the whole
+        // app a new object to re-render from.
+        setMembership((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
         writeCachedMembership(next);
         // A member has no use for the invitation they arrived with.
         if (next) writePendingInvite(null);
@@ -225,6 +229,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, [session, membershipNonce, refreshJoinStatus]);
+
+  // A role is changed on someone else's phone (a chef makes a cook a chef, or the reverse), and the
+  // cached membership is authoritative until re-fetched — so without this, the person promoted kept
+  // the cook's app until they signed out and in. Re-check whenever the app comes back to the
+  // foreground (throttled) and every few minutes while it stays open. Offline, the fetch fails and
+  // the cache is kept, exactly as on launch.
+  const hasMembership = Boolean(membership);
+  useEffect(() => {
+    if (!supabase || !session || !hasMembership) return;
+    let last = Date.now();
+    const bump = () => {
+      if (Date.now() - last < 30_000) return;
+      last = Date.now();
+      setMembershipNonce((n) => n + 1);
+    };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') bump();
+    };
+    window.addEventListener('focus', bump);
+    document.addEventListener('visibilitychange', onVisible);
+    const timer = window.setInterval(() => setMembershipNonce((n) => n + 1), 3 * 60_000);
+    return () => {
+      window.removeEventListener('focus', bump);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.clearInterval(timer);
+    };
+  }, [session, hasMembership]);
 
   async function signUp(email: string, password: string, captchaToken?: string): Promise<ActionResult> {
     if (!supabase) return { error: 'Supabase אינו מוגדר' };
@@ -416,6 +447,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: null };
   }
 
+  async function transferOwnership(userId: string): Promise<ActionResult> {
+    if (!supabase) return { error: 'Supabase אינו מוגדר' };
+    const { error } = await supabase.rpc('transfer_ownership', { p_user_id: userId });
+    return { error: error ? mapRpcError(error) : null };
+  }
+
   async function setMemberPermissions(
     userId: string,
     role: 'chef' | 'cook',
@@ -513,6 +550,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         resolveJoinRequest,
         setMyCook,
         setMemberPermissions,
+        transferOwnership,
         removeMember,
         rotateJoinCode,
         deleteMyAccount,

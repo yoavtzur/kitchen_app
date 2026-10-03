@@ -1,6 +1,19 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useApp, useSync } from '../store/AppContext';
 import { usePermissions } from '../auth/usePermissions';
+import { useAuth } from '../auth/AuthContext';
+import {
+  changesIn,
+  draftSize,
+  loadDraft,
+  movedSince,
+  pruneMap,
+  removeEntry,
+  setEntry,
+  storeDraft,
+  type CountDraft,
+  type DraftMap,
+} from '../lib/countDraft';
 import { coverageColor, daysOfSupply } from '../lib/calc';
 import { CategoryTabs } from '../components/CategoryTabs';
 import { EmptyState } from '../components/EmptyState';
@@ -48,17 +61,6 @@ const VIEW_OPTIONS: { value: CountView; label: string }[] = [
   { value: 'products', label: 'מוצרים' },
 ];
 
-/** A pending update: only entries whose typed value actually differs from what's stored. */
-function collectChanges<T extends { id: string; currentQty: number }>(
-  items: T[],
-  drafts: Draft,
-): { id: string; qty: number }[] {
-  return items
-    .filter((item) => drafts[item.id] !== undefined)
-    .map((item) => ({ id: item.id, qty: parseFloat(drafts[item.id]) }))
-    .filter((u) => !Number.isNaN(u.qty) && u.qty !== items.find((i) => i.id === u.id)?.currentQty);
-}
-
 function isChanged(id: string, currentQty: number, drafts: Draft): boolean {
   const draft = drafts[id];
   if (draft === undefined) return false;
@@ -85,12 +87,31 @@ function CoverageCell({ ingredient, qty, today }: { ingredient: Ingredient; qty:
   return <span className={`pill ${coverageColor(days)}`}>{Math.round(days * 10) / 10} ימים</span>;
 }
 
+/** Shown on a row whose stored stock changed after this count was typed (another device counted,
+ * a delivery was received): saving would overwrite that, so it is said rather than done quietly. */
+function MovedNote({ show, current, unit }: { show: boolean; current: number; unit: Unit }) {
+  if (!show) return null;
+  return (
+    <div className="count-moved-note">
+      השתנה מאז שהתחלת · עכשיו {current} {unitLabel(unit)}
+    </div>
+  );
+}
+
+/** The plain typed values, which is all the tables need. */
+function valuesOf(map: DraftMap): Draft {
+  const out: Draft = {};
+  for (const [id, e] of Object.entries(map)) out[id] = e.value;
+  return out;
+}
+
 type CountRow = { id: string; name: string; currentQty: number; unit: Unit; expiresOn?: string };
 
 function CountTable({
   label,
   rows,
   drafts,
+  moved,
   today,
   onDraftChange,
   onOpenDetail,
@@ -98,6 +119,7 @@ function CountTable({
   label: string;
   rows: CountRow[];
   drafts: Draft;
+  moved: Set<string>;
   today: string;
   onDraftChange: (id: string, value: string) => void;
   onOpenDetail: (id: string) => void;
@@ -123,6 +145,7 @@ function CountTable({
                 <span>{row.name}</span>
                 <ExpiryPill expiresOn={row.expiresOn} today={today} />
               </button>
+              <MovedNote show={moved.has(row.id)} current={row.currentQty} unit={row.unit} />
             </td>
             <td>
               <div className="count-qty-cell">
@@ -170,12 +193,14 @@ function ProductDetailSheet({ product, onClose }: { product: Product; onClose: (
 function IngredientCountTable({
   ingredients,
   drafts,
+  moved,
   today,
   onDraftChange,
   onOpenDetail,
 }: {
   ingredients: Ingredient[];
   drafts: Draft;
+  moved: Set<string>;
   today: string;
   onDraftChange: (id: string, value: string) => void;
   /** Omitted for a cook: they count, they don't edit the ingredient database. */
@@ -207,6 +232,7 @@ function IngredientCountTable({
               ) : (
                 <span style={{ fontWeight: 600 }}>{ing.name}</span>
               )}
+              <MovedNote show={moved.has(ing.id)} current={ing.currentQty} unit={ing.unit} />
             </td>
             <td>
               <div className="count-qty-cell">
@@ -530,13 +556,45 @@ export function StockCount() {
   const { state, dispatch } = useApp();
   const { isChef } = usePermissions();
   const sync = useSync();
+  const { showUndo } = useUndo();
   const [view, setView] = useState<CountView>('ingredients');
   const [category, setCategory] = useState(ALL_CATEGORIES);
   const [station, setStation] = useState('all');
   const [savedText, setSavedText] = useState('');
   const [query, setQuery] = useState('');
-  const [ingredientDrafts, setIngredientDrafts] = useState<Draft>({});
-  const [productDrafts, setProductDrafts] = useState<Draft>({});
+  const { membership } = useAuth();
+  // The count in progress lives on this device until "שמור ספירה" (lib/countDraft.ts), so leaving
+  // the screen mid-count no longer throws it away. Scoped to the kitchen it was typed in.
+  const draftScope = membership?.restaurantId ?? 'local';
+  const [draft, setDraft] = useState<CountDraft>(() => loadDraft(draftScope));
+  // Told once, on arrival, that a count is waiting — not on every keystroke after.
+  const [restored] = useState(() => draftSize(loadDraft(draftScope)) > 0);
+  useEffect(() => storeDraft(draft), [draft]);
+  const ingredientMap = useMemo(() => pruneMap(draft.ingredients, state.ingredients), [draft.ingredients, state.ingredients]);
+  const productMap = useMemo(() => pruneMap(draft.products, state.products), [draft.products, state.products]);
+  const ingredientDrafts = useMemo(() => valuesOf(ingredientMap), [ingredientMap]);
+  const productDrafts = useMemo(() => valuesOf(productMap), [productMap]);
+  const movedIngredients = useMemo(() => movedSince(ingredientMap, state.ingredients), [ingredientMap, state.ingredients]);
+  const movedProducts = useMemo(() => movedSince(productMap, state.products), [productMap, state.products]);
+
+  function setIngredientDraft(id: string, value: string) {
+    const ing = state.ingredients.find((i) => i.id === id);
+    if (!ing) return;
+    setDraft((d) => ({ ...d, ingredients: setEntry(d.ingredients, id, value, ing.currentQty) }));
+  }
+  function setProductDraft(id: string, value: string) {
+    const p = state.products.find((x) => x.id === id);
+    if (!p) return;
+    setDraft((d) => ({ ...d, products: setEntry(d.products, id, value, p.currentQty) }));
+  }
+  function clearDraft() {
+    setDraft({ scope: draftScope, ingredients: {}, products: {} });
+  }
+  function discardDraft() {
+    const previous = draft;
+    clearDraft();
+    showUndo('הספירה בוטלה', () => setDraft(previous));
+  }
   const [justSaved, flagSaved] = useTimedFlag(2500);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -568,14 +626,8 @@ export function StockCount() {
   const menuProducts = filteredProducts.filter((p) => p.kind === 'menu');
   const componentProducts = filteredProducts.filter((p) => p.kind === 'component');
 
-  const changedIngredients = useMemo(
-    () => collectChanges(state.ingredients, ingredientDrafts),
-    [state.ingredients, ingredientDrafts],
-  );
-  const changedProducts = useMemo(
-    () => collectChanges(state.products, productDrafts),
-    [state.products, productDrafts],
-  );
+  const changedIngredients = useMemo(() => changesIn(ingredientMap, state.ingredients), [ingredientMap, state.ingredients]);
+  const changedProducts = useMemo(() => changesIn(productMap, state.products), [productMap, state.products]);
   const changeCount = changedIngredients.length + changedProducts.length;
 
   function save() {
@@ -585,8 +637,7 @@ export function StockCount() {
       products: changedProducts,
       today,
     });
-    setIngredientDrafts({});
-    setProductDrafts({});
+    clearDraft();
     // Offline, "saved" has to say *where*: in a walk-in the count is queued on this device and
     // leaves on its own when signal returns, and a cook should not have to wonder if it was lost.
     setSavedText(savedMessage(sync, isSupabaseConfigured).replace('נשמר ✓', 'הספירה נשמרה ✓'));
@@ -601,11 +652,7 @@ export function StockCount() {
       if (!Number.isNaN(qty) && qty !== ing.currentQty) {
         dispatch({ type: 'BULK_UPDATE_QUANTITIES', ingredients: [{ id, qty }], products: [], today });
       }
-      setIngredientDrafts((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
+      setDraft((d) => ({ ...d, ingredients: removeEntry(d.ingredients, id) }));
     }
     setDetailId(id);
   }
@@ -626,6 +673,15 @@ export function StockCount() {
           ) : undefined
         }
       />
+
+      {restored && changeCount > 0 && (
+        <div className="day-banner">
+          <span>יש ספירה שלא נשמרה ({changeCount} פריטים)</span>
+          <button type="button" className="btn btn-sm" onClick={discardDraft}>
+            בטל ספירה
+          </button>
+        </div>
+      )}
 
       <Segmented options={VIEW_OPTIONS} value={view} onChange={setView} label="מה סופרים" />
 
@@ -661,7 +717,8 @@ export function StockCount() {
                 ingredients={filteredIngredients}
                 drafts={ingredientDrafts}
                 today={today}
-                onDraftChange={(id, value) => setIngredientDrafts((prev) => ({ ...prev, [id]: value }))}
+                moved={movedIngredients}
+                onDraftChange={setIngredientDraft}
                 onOpenDetail={isChef ? openDetail : undefined}
               />
             </div>
@@ -676,7 +733,8 @@ export function StockCount() {
                   drafts={productDrafts}
                   today={today}
                   onOpenDetail={setProductDetailId}
-                  onDraftChange={(id, value) => setProductDrafts((prev) => ({ ...prev, [id]: value }))}
+                  moved={movedProducts}
+                  onDraftChange={setProductDraft}
                 />
               </div>
             </>
@@ -691,7 +749,8 @@ export function StockCount() {
                   drafts={productDrafts}
                   today={today}
                   onOpenDetail={setProductDetailId}
-                  onDraftChange={(id, value) => setProductDrafts((prev) => ({ ...prev, [id]: value }))}
+                  moved={movedProducts}
+                  onDraftChange={setProductDraft}
                 />
               </div>
             </>

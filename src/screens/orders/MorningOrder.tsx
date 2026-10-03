@@ -105,6 +105,7 @@ const MorningRow = memo(function MorningRow({
   order,
   tone,
   onCountChange,
+  onCountCommit,
   onOrderCommit,
   onInfo,
 }: {
@@ -114,6 +115,8 @@ const MorningRow = memo(function MorningRow({
   order: number;
   tone: 'red' | 'yellow' | null;
   onCountChange: (id: string, value: string) => void;
+  /** Leaving the count box writes it to stock — the count is a stock figure, not part of the order. */
+  onCountCommit: (ingredient: Ingredient) => void;
   onOrderCommit: (ingredient: Ingredient, value: number) => void;
   onInfo: (ingredient: Ingredient) => void;
 }) {
@@ -160,6 +163,10 @@ const MorningRow = memo(function MorningRow({
           value={countValue}
           onFocus={(e) => e.currentTarget.select()}
           onChange={(e) => onCountChange(ingredient.id, e.target.value)}
+          onBlur={() => onCountCommit(ingredient)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur();
+          }}
         />
         <input
           className="morning-input order"
@@ -186,6 +193,10 @@ const MorningRow = memo(function MorningRow({
  *
  * The approve button is enabled by exactly one thing: whether the order has any lines. Counting
  * is optional, so a suggestion that is already right can be sent without touching a single field.
+ *
+ * A count is saved to stock the moment the box is left (blur/Enter), with "בטל" in the shared undo
+ * toast. It used to wait for "אשר הכל", so leaving the screen first silently threw the count away —
+ * while the order box right beside it already saved on blur.
  */
 export function MorningOrder() {
   const { state, dispatch } = useApp();
@@ -210,6 +221,28 @@ export function MorningOrder() {
   const lines = useMemo(() => buildOrderLines(state, drafts, today), [state, drafts, today]);
   const fillPlan = useMemo(() => planFillToPar(state, today), [state, today]);
 
+  function commitCount(ingredient: Ingredient) {
+    const raw = drafts[ingredient.id];
+    setDrafts((prev) => {
+      if (!(ingredient.id in prev)) return prev;
+      const next = { ...prev };
+      delete next[ingredient.id];
+      return next;
+    });
+    const qty = parseQty(raw);
+    if (qty === undefined || qty === ingredient.currentQty) return;
+    const previous = ingredient.currentQty;
+    dispatch({ type: 'BULK_UPDATE_QUANTITIES', ingredients: [{ id: ingredient.id, qty }], products: [], today });
+    showUndo(`המלאי של ${ingredient.name} עודכן`, () =>
+      dispatch({
+        type: 'BULK_UPDATE_QUANTITIES',
+        ingredients: [{ id: ingredient.id, qty: previous }],
+        products: [],
+        today,
+      }),
+    );
+  }
+
   function approve() {
     const changes = collectCountChanges(state.ingredients, drafts);
     if (changes.length > 0) {
@@ -222,7 +255,7 @@ export function MorningOrder() {
     }
     setDrafts({});
     showMessage(
-      sync.online && sync.status !== 'offline' ? 'הספירה וההזמנה נשמרו ✓' : savedMessage(sync, isSupabaseConfigured),
+      sync.online && sync.status !== 'offline' ? 'ההזמנה נשמרה ✓' : savedMessage(sync, isSupabaseConfigured),
     );
   }
 
@@ -286,6 +319,7 @@ export function MorningOrder() {
                     order={suggestedQty(ing, state, today, drafts)}
                     tone={lowStockTone(ing, count, today)}
                     onCountChange={(id, value) => setDrafts((prev) => ({ ...prev, [id]: value }))}
+                    onCountCommit={commitCount}
                     onOrderCommit={(i, qtyOverride) =>
                       dispatch({ type: 'SET_ORDER_LINE_QTY', ingredientId: i.id, date: today, qtyOverride })
                     }

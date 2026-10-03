@@ -23,8 +23,6 @@ function carriedLabel(days: number): string {
   return `מלפני ${days} ימים`;
 }
 
-const PRIORITY_CYCLE: Priority[] = ['red', 'yellow', 'green'];
-
 export function TaskRow({ task }: { task: DisplayTask }) {
   const { state, dispatch } = useApp();
   const { showUndo } = useUndo();
@@ -56,9 +54,7 @@ export function TaskRow({ task }: { task: DisplayTask }) {
     else showUndo('המשימה הושלמה', undoDone);
   }
 
-  function cyclePriority() {
-    const idx = PRIORITY_CYCLE.indexOf(task.priority);
-    const next = PRIORITY_CYCLE[(idx + 1) % PRIORITY_CYCLE.length];
+  function setPriority(next: Priority) {
     if (isAuto) {
       dispatch({ type: 'SET_AUTO_TASK_PRIORITY', id: task.id, productId: task.productId!, date: task.date, priority: next });
     } else {
@@ -113,7 +109,7 @@ export function TaskRow({ task }: { task: DisplayTask }) {
       // Left is quick actions on a recipe-backed task; a free-text one has no ingredients to report.
       onAction={recipe ? () => setActionsOpen(true) : undefined}
     >
-      {/* Priority is the stripe on the row's edge (colour) and the chip under the title (word); a
+      {/* Priority is the stripe on the row's edge (colour) and the chip at the far end of the line under the title (word); a
           red outline is kept for the other thing that can be wrong, a missing ingredient. */}
       <div className={`task-row ${task.priority}${task.done ? ' done' : ''}${task.blocked ? ' critical' : ''}`}>
         <div className="task-row-main">
@@ -148,7 +144,6 @@ export function TaskRow({ task }: { task: DisplayTask }) {
               {title}
             </button>
             <div className="task-meta">
-              <PriorityChip priority={task.priority} onClick={cyclePriority} />
               {assignee && (
                 <span className="task-meta-cook" style={{ color: assignee.color }}>
                   {assignee.name}
@@ -158,6 +153,9 @@ export function TaskRow({ task }: { task: DisplayTask }) {
               {task.carriedFrom && !task.done && (
                 <span className="task-meta-carried">{carriedLabel(daysBetween(task.carriedFrom, today))}</span>
               )}
+              {/* Last, and pushed to the far edge of the line (beside the assignee), never next to
+                  the checkbox at the start: see PriorityChip. */}
+              <PriorityChip priority={task.priority} onChange={setPriority} />
             </div>
           </div>
           <AssigneeChip cooks={state.cooks} value={task.assigneeId} onChange={setAssignee} />

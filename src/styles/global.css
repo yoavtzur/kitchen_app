@@ -963,6 +963,10 @@ textarea {
     border-bottom: 1px solid #000;
   }
 
+  .task-row .prio-chip {
+    border-color: #000 !important;
+  }
+
   .task-row .task-meta,
   .task-row .task-meta * {
     color: #000 !important;
@@ -1140,19 +1144,14 @@ textarea {
    number read on its own means nothing. */
 .nav-badge {
   position: absolute;
-  top: -6px;
-  inset-inline-end: -10px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 4px;
-  border-radius: 999px;
+  top: -2px;
+  inset-inline-end: -4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
   background: var(--color-red-solid);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 18px;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
+  /* A ring in the nav's own colour keeps the dot readable against the active tab's green box. */
+  box-shadow: 0 0 0 2px var(--color-surface);
 }
 
 /* ---------------------------------------------------------------------------
@@ -2143,22 +2142,46 @@ textarea {
 
 .prio-chip {
   position: relative;
+  flex: none;
+  margin-inline-start: auto; /* the far edge of the meta line, away from the checkbox */
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 0;
-  border: none;
+  min-height: 28px;
+  margin-block: 2px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border-input);
+  border-radius: 999px;
   background: none;
   color: var(--color-text-muted);
   font: inherit;
+  font-size: 12px;
   font-weight: 700;
+  white-space: nowrap;
 }
 
-/* 12px of text, 44px of button. */
+/* 28px drawn, 44px to hit: safe now that the chip sits at the far edge, nowhere near the checkbox. */
 .prio-chip::after {
   content: '';
   position: absolute;
-  inset: -16px -8px;
+  inset: -8px -4px;
+}
+
+.prio-option {
+  justify-content: flex-start;
+  gap: var(--space-2);
+}
+
+.prio-option.red {
+  color: var(--color-red);
+}
+
+.prio-option.yellow {
+  color: var(--color-yellow);
+}
+
+.prio-option.selected {
+  border-color: var(--color-primary);
 }
 
 .prio-chip-dot {
@@ -2236,6 +2259,9 @@ textarea {
 /* A real date input laid invisibly over the icon, so the platform's own picker opens. */
 .date-btn {
   position: relative;
+  /* iOS gives a date input an intrinsic minimum width wider than this icon; without clipping, the
+     invisible input spilled over the print button beside it and stole its taps. */
+  overflow: hidden;
   cursor: pointer;
   color-scheme: dark;
 }
@@ -2245,6 +2271,13 @@ textarea {
   inset: 0;
   width: 100%;
   height: 100%;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  -webkit-appearance: none;
+  appearance: none;
   opacity: 0;
   cursor: pointer;
   font-size: 16px;
@@ -2256,6 +2289,13 @@ textarea {
 }
 
 /* Shown only while looking at a day that is not today, because the date itself is behind an icon. */
+.count-moved-note {
+  margin-top: 2px;
+  color: var(--color-yellow);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .day-banner {
   display: flex;
   align-items: center;
@@ -2307,4 +2347,18 @@ textarea {
 /* So the last row can scroll clear of the floating button. */
 .fab-spacer {
   height: calc(var(--btn-height) + var(--space-5));
+}
+
+/* Order history: one week at a time, older on the start (right) side as in a Hebrew calendar. */
+.history-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.history-range {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }

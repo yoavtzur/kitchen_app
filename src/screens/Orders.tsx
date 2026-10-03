@@ -4,7 +4,8 @@ import { useApp } from '../store/AppContext';
 import { weeklyNeedForIngredient } from '../lib/calc';
 import { suggestedQty, supplierMessages } from '../lib/orders';
 import { formatQty } from '../lib/units';
-import { addDays, dayOfWeek, dayShortLabel, orderLineKey, todayStr } from '../lib/date';
+import { dayOfWeek, dayShortLabel, orderLineKey, todayStr } from '../lib/date';
+import { baselineValues, historyDates, historyHighlight, historyRangeLabel } from '../lib/orderHistory';
 import { EmptyState } from '../components/EmptyState';
 import { SearchInput } from '../components/SearchInput';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -193,47 +194,81 @@ function CurrentOrder() {
   );
 }
 
-const HISTORY_DAYS = 7;
-
 function OrderHistory() {
   const { state } = useApp();
   const today = todayStr();
-  const dates = useMemo(
-    () => Array.from({ length: HISTORY_DAYS }, (_, i) => addDays(today, -(HISTORY_DAYS - 1 - i))),
-    [today],
-  );
-  const dateSet = new Set(dates);
+  const [weeksBack, setWeeksBack] = useState(0);
+  const dates = useMemo(() => historyDates(today, weeksBack), [today, weeksBack]);
+  const windowEnd = dates[dates.length - 1];
 
   const rows = useMemo(() => {
+    const dateSet = new Set(dates);
     const ingredientIds = new Set(
       state.orderLines.filter((l) => dateSet.has(l.date)).map((l) => l.ingredientId),
     );
     return state.ingredients.filter((ing) => ingredientIds.has(ing.id));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.orderLines, state.ingredients, today]);
+  }, [state.orderLines, state.ingredients, dates]);
 
   function valueFor(ingredientId: string, date: string): number | undefined {
     const line = state.orderLines.find((l) => l.ingredientId === ingredientId && l.date === date);
     return line?.qtyOverride;
   }
 
-  function highlightFor(ingredientId: string, value: number | undefined): 'red' | 'yellow' | undefined {
-    if (value === undefined) return undefined;
-    const values = dates
-      .map((d) => valueFor(ingredientId, d))
-      .filter((v): v is number => v !== undefined);
-    if (values.length < 3) return undefined;
-    const mean = values.reduce((a, b) => a + b, 0) / values.length;
-    if (mean <= 0) return undefined;
-    if (value > mean * 2) return 'red';
-    if (value > mean * 1.5) return 'yellow';
-    return undefined;
-  }
+  // Older than the oldest line there is nothing to page to; the "back" arrow stops there.
+  const oldest = useMemo(
+    () => state.orderLines.reduce<string | null>((min, l) => (min === null || l.date < min ? l.date : min), null),
+    [state.orderLines],
+  );
+  const canGoBack = oldest !== null && oldest < dates[0];
 
-  if (rows.length === 0) return <EmptyState text="אין עדיין היסטוריית הזמנות בשבוע האחרון." />;
+  const nav = (
+    <div className="history-nav">
+      <button
+        type="button"
+        className="btn btn-sm"
+        disabled={!canGoBack}
+        onClick={() => setWeeksBack((w) => w + 1)}
+        aria-label="שבוע קודם"
+      >
+        → שבוע קודם
+      </button>
+      <span className="history-range" aria-live="polite">
+        {historyRangeLabel(dates)}
+      </span>
+      <button
+        type="button"
+        className="btn btn-sm"
+        disabled={weeksBack === 0}
+        onClick={() => setWeeksBack((w) => Math.max(0, w - 1))}
+        aria-label="שבוע הבא"
+      >
+        שבוע הבא ←
+      </button>
+    </div>
+  );
+
+  if (rows.length === 0) {
+    return (
+      <div>
+        {nav}
+        {weeksBack > 0 && (
+          <button type="button" className="btn btn-block" onClick={() => setWeeksBack(0)}>
+            חזרה לשבוע הזה
+          </button>
+        )}
+        <EmptyState text={weeksBack === 0 ? 'אין עדיין היסטוריית הזמנות בשבוע האחרון.' : 'אין הזמנות בשבוע הזה.'} />
+      </div>
+    );
+  }
 
   return (
     <div>
+      {nav}
+      {weeksBack > 0 && (
+        <button type="button" className="btn btn-block" style={{ marginBottom: 'var(--space-3)' }} onClick={() => setWeeksBack(0)}>
+          חזרה לשבוע הזה
+        </button>
+      )}
       <div className="card" style={{ overflowX: 'auto' }}>
         <table className="data-table">
           <thead>
@@ -250,7 +285,7 @@ function OrderHistory() {
                 <td>{ing.name}</td>
                 {dates.map((d) => {
                   const value = valueFor(ing.id, d);
-                  const highlight = highlightFor(ing.id, value);
+                  const highlight = historyHighlight(value, baselineValues(state.orderLines, ing.id, windowEnd));
                   return (
                     <td key={orderLineKey(ing.id, d)}>
                       {value === undefined ? (
@@ -269,7 +304,7 @@ function OrderHistory() {
         </table>
       </div>
       <p className="muted" style={{ marginTop: 'var(--space-3)' }}>
-        מסומן בצהוב: כמות גבוהה פי 1.5 מהממוצע השבועי של המצרך. באדום: פי 2 ומעלה. שורה עם פחות
+        מסומן בצהוב: כמות גבוהה פי 1.5 מהממוצע של המצרך בארבעת השבועות האחרונים. באדום: פי 2 ומעלה. שורה עם פחות
         משלוש נקודות מידע אינה מסומנת.
       </p>
     </div>

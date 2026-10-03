@@ -42,16 +42,14 @@ export function BottomNav() {
             to={tab.to}
             className={active ? 'active' : ''}
             aria-current={active ? 'page' : undefined}
-            // A bare number read out on its own means nothing, so the count is folded into the
-            // link's accessible name rather than left as a loose digit beside it.
-            aria-label={count > 0 ? `${tab.label}, ${count} פתוחות` : undefined}
+            // The dot on screen is deliberately just a dot (a number in the corner of the nav read as
+            // a to-do counter nagging all shift); a screen reader still hears that there is work.
+            aria-label={count > 0 ? `${tab.label}, יש משימות פתוחות` : undefined}
           >
             <span className="nav-icon-box">
               {ICONS[tab.icon]()}
               {count > 0 && (
-                <span className="nav-badge" aria-hidden="true">
-                  {count > 99 ? '99+' : count}
-                </span>
+                <span className="nav-badge" aria-hidden="true" />
               )}
             </span>
             <span>{tab.label}</span>

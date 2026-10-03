@@ -116,7 +116,7 @@ export function Consumption() {
               <th>מוצר</th>
               <th>שבועי</th>
               <th>יומי ({dayName(selectedDate)})</th>
-              <th>נוכחי</th>
+              <th>{selectedDate === todayStr() ? 'נוכחי' : 'נוכחי (היום)'}</th>
               <th>הכנה להיום</th>
               <th>משימה</th>
             </tr>
@@ -177,7 +177,16 @@ export function Consumption() {
                       )}
                     </div>
                   </td>
-                  <td>{product.currentQty}</td>
+                  <td>
+                    {/* Stock is always today's, whichever day is selected above; editing it is an
+                        ordinary stock update (and, like everywhere else, clears today's manual
+                        prep figure so it recomputes). */}
+                    <NumberEditor
+                      value={product.currentQty}
+                      label={`מלאי נוכחי — ${product.name}`}
+                      onChange={(qty) => dispatch({ type: 'SET_PRODUCT_QTY', id: product.id, qty, today: todayStr() })}
+                    />
+                  </td>
                   <td>
                     <div className="row" style={{ gap: 4 }}>
                       <NumberEditor

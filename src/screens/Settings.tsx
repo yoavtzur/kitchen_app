@@ -14,6 +14,7 @@ import { useTimedFlag, useTimedMessage } from '../lib/useTimedFlag';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Toast } from '../components/Toast';
 import type { AppState, RoundTo } from '../types';
+import { todayStr } from '../lib/date';
 
 const ROUND_OPTIONS: { value: string; label: string }[] = [
   { value: 'none', label: 'ללא עיגול' },
@@ -39,6 +40,7 @@ export function Settings() {
   const sync = useSync();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importError, setImportError] = useState('');
+  const [excelState, setExcelState] = useState<'idle' | 'working' | 'error'>('idle');
   const [restaurant, setRestaurant] = useState<{ name: string; joinCode: string } | null>(null);
   // Only the headcount matters here — whether the caller is the last member, for the deletion
   // warning. The team itself is managed on its own screen (see Team.tsx).
@@ -83,6 +85,34 @@ export function Settings() {
     a.download = `kitchen-backup-${state.settings.weekStartsOn}-${Date.now()}.json`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  /** A readable workbook for the chef (lib/excelExport.ts). Loaded on demand: the writer and its zip
+   * dependency are not worth a byte of the app's first load. */
+  async function handleExcelExport() {
+    setExcelState('working');
+    try {
+      const [{ buildExportSheets, exportFileName }, { toXlsx }] = await Promise.all([
+        import('../lib/excelExport'),
+        import('../lib/xlsx'),
+      ]);
+      const bytes = toXlsx(buildExportSheets(state));
+      const blob = new Blob([bytes as BlobPart], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = exportFileName(todayStr());
+      a.click();
+      // Revoked a moment later: Safari starts the download asynchronously and a URL revoked in the
+      // same tick can come out as an empty file.
+      window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      setExcelState('idle');
+    } catch (err) {
+      console.error('excel export failed', err);
+      setExcelState('error');
+    }
   }
 
   /** Parses and validates, but commits nothing: an import replaces everything, so it goes
@@ -312,6 +342,14 @@ export function Settings() {
           {isSupabaseConfigured
             ? 'הנתונים מסונכרנים בין כל המכשירים במטבח. מומלץ לגבות מעת לעת.'
             : 'כל הנתונים שמורים בדפדפן הזה בלבד. מומלץ לגבות מעת לעת.'}
+        </p>
+        <button type="button" className="btn btn-block" disabled={excelState === 'working'} onClick={handleExcelExport}>
+          {excelState === 'working' ? 'מכין קובץ...' : 'ייצוא לאקסל'}
+        </button>
+        {excelState === 'error' && <p style={{ color: 'var(--color-red)' }}>הייצוא נכשל. נסו שוב.</p>}
+        <p className="muted">
+          קובץ אקסל לקריאה: מצרכים, מוצרים, מתכונים, הזמנות, יומן זריקות וספקים. זמין לשף בלבד. לשחזור
+          האפליקציה משתמשים בגיבוי.
         </p>
         <div className="row" style={{ gap: 8 }}>
           <button type="button" className="btn" style={{ flex: 1 }} onClick={handleExport}>
